@@ -33,16 +33,6 @@ body {
   padding: 0 20px;
 }
 
-/* ========== 团队标识 ========== */
-.team-name {
-  padding-left: 12px;
-  border-left: 1px solid var(--border-color);
-  font-size: 14px;
-  letter-spacing: 2px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
 /* ========== 头部导航 ========== */
 .header {
   background: var(--bg-secondary);
