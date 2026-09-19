@@ -174,8 +174,7 @@ class App {
     try {
       const lang = getLanguageById(langId);
       const result = await this.runner.execute(
-        lang.jdoodleLang,
-        lang.versionIndex,
+        lang.judge0LanguageId,
         code,
         customInput
       );

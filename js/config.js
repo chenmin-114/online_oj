@@ -7,12 +7,6 @@ window.OJ_CONFIG = {
   // 部署后替换为你自己的 Worker URL
   WORKER_URL: 'https://oj-proxy.1930566173.workers.dev',
 
-  // JDoodle API 凭据（在 Worker 中使用，安全存储）
-  // 注册获取: https://www.jdoodle.com/compiler-api
-  // 每日额度取决于 JDoodle Compiler API 套餐，以控制台显示为准
-  JDOODLE_CLIENT_ID: '',     // ← 注册后填入
-  JDOODLE_CLIENT_SECRET: '',  // ← 注册后填入
-
   // GitHub 配置（仅开发测试时使用，生产环境应通过 Worker 代理）
   GITHUB_TOKEN: '',
   GITHUB_REPO: '',  // 格式: 'username/repo'

@@ -1,14 +1,12 @@
 /**
  * 支持的编程语言定义
- * JDoodle API: https://api.jdoodle.com/v1/execute
- * 语言标识参考: https://www.jdoodle.com/compiler-api/docs
+ * Judge0 CE 语言 ID: https://ce.judge0.com/languages
  */
 window.LANGUAGES = [
   {
     id: 'c',
     name: 'C',
-    jdoodleLang: 'c',
-    versionIndex: '5',  // GCC 11.2.0
+    judge0LanguageId: 103, // GCC 14.1.0
     monacoLang: 'c',
     template: `#include <stdio.h>
 
@@ -22,8 +20,7 @@ int main() {
   {
     id: 'cpp',
     name: 'C++',
-    jdoodleLang: 'cpp17',
-    versionIndex: '0',  // GCC 11.2.0
+    judge0LanguageId: 105, // GCC 14.1.0
     monacoLang: 'cpp',
     template: `#include <iostream>
 using namespace std;
@@ -38,8 +35,7 @@ int main() {
   {
     id: 'python',
     name: 'Python 3',
-    jdoodleLang: 'python3',
-    versionIndex: '4',  // 3.11.2
+    judge0LanguageId: 92, // Python 3.11.2
     monacoLang: 'python',
     template: `# 在此编写你的代码
 `,
@@ -47,8 +43,7 @@ int main() {
   {
     id: 'java',
     name: 'Java',
-    jdoodleLang: 'java',
-    versionIndex: '4',  // JDK 17.0.6
+    judge0LanguageId: 91, // JDK 17.0.6
     monacoLang: 'java',
     template: `import java.util.Scanner;
 
@@ -64,8 +59,7 @@ public class Main {
   {
     id: 'javascript',
     name: 'JavaScript',
-    jdoodleLang: 'nodejs',
-    versionIndex: '4',  // 18.15.0
+    judge0LanguageId: 93, // Node.js 18.15.0
     monacoLang: 'javascript',
     template: `const readline = require('readline');
 const rl = readline.createInterface({ input: process.stdin });
@@ -82,8 +76,7 @@ rl.on('line', (line) => lines.push(line))
   {
     id: 'go',
     name: 'Go',
-    jdoodleLang: 'go',
-    versionIndex: '4',  // 1.20.1
+    judge0LanguageId: 106, // Go 1.22.0
     monacoLang: 'go',
     template: `package main
 
@@ -98,8 +91,7 @@ func main() {
   {
     id: 'rust',
     name: 'Rust',
-    jdoodleLang: 'rust',
-    versionIndex: '1',  // 1.66.1
+    judge0LanguageId: 108, // Rust 1.85.0
     monacoLang: 'rust',
     template: `use std::io;
 

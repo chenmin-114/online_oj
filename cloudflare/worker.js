@@ -1,15 +1,14 @@
 /**
  * Cloudflare Worker - 安全代理层
  * 功能：
- * 1. 代理 JDoodle API 执行代码（type: 'execute'）
+ * 1. 代理 Judge0 CE 执行代码（type: 'execute'）
  * 2. 代理 GitHub API 提交结果（默认行为）
- * 3. 保护所有 API 凭据，不暴露在前端
+ * 3. 保护 GitHub API 凭据，不暴露在前端
  * 
  * 需要配置的环境变量/Secrets：
- * - JDOODLE_CLIENT_ID (Secret)
- * - JDOODLE_CLIENT_SECRET (Secret)
  * - GITHUB_TOKEN (Secret)
  * - GITHUB_REPO (Plaintext)
+ * - JUDGE0_API_URL (Plaintext, 可选，默认使用公共 CE 实例)
  */
 
 const CORS_HEADERS = {
@@ -47,74 +46,75 @@ export default {
 };
 
 /**
- * 处理代码执行请求（代理 JDoodle API）
+ * 处理代码执行请求（代理 Judge0 CE API）
  */
 async function handleExecute(body, env) {
-  const { script, language, versionIndex, stdin } = body;
+  const { script, languageId, stdin } = body;
 
-  if (!script || !language) {
-    return jsonResponse({ error: 'Missing script or language' }, 400);
+  if (!script || !Number.isInteger(languageId)) {
+    return jsonResponse({ error: 'Missing script or invalid languageId' }, 400);
   }
 
-  // Secret 存在但值为空、仍是示例值时，不要把难以理解的上游 401/403
-  // 原样返回给前端。注意：JDoodle 普通账号凭据不能代替 Compiler API 凭据。
-  if (!isConfiguredSecret(env.JDOODLE_CLIENT_ID) || !isConfiguredSecret(env.JDOODLE_CLIENT_SECRET)) {
-    return jsonResponse({
-      error: '代码执行服务尚未正确配置',
-      code: 'JDOODLE_NOT_CONFIGURED',
-    }, 503);
+  const allowedLanguageIds = new Set([103, 105, 92, 91, 93, 106, 108]);
+  if (!allowedLanguageIds.has(languageId)) {
+    return jsonResponse({ error: 'Unsupported language' }, 400);
   }
 
-  let jdoodleRes;
+  const judge0BaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
+  let judge0Res;
   try {
-    jdoodleRes = await fetch('https://api.jdoodle.com/v1/execute', {
+    judge0Res = await fetch(`${judge0BaseUrl}/submissions?base64_encoded=false&wait=true`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({
-        script,
-        language,
-        versionIndex: String(versionIndex ?? '0'),
+        source_code: script,
+        language_id: languageId,
         stdin: stdin || '',
-        clientId: env.JDOODLE_CLIENT_ID.trim(),
-        clientSecret: env.JDOODLE_CLIENT_SECRET.trim(),
       }),
     });
   } catch {
     return jsonResponse({
       error: '暂时无法连接代码执行服务，请稍后重试',
-      code: 'JDOODLE_UNAVAILABLE',
+      code: 'JUDGE0_UNAVAILABLE',
     }, 502);
   }
 
-  const data = await parseJsonResponse(jdoodleRes);
+  const data = await parseJsonResponse(judge0Res);
 
-  if (jdoodleRes.status === 401 || jdoodleRes.status === 403) {
+  if (judge0Res.status === 429) {
     return jsonResponse({
-      error: 'JDoodle API 鉴权失败，请重新配置有效的 Compiler API Client ID 和 Client Secret',
-      code: 'JDOODLE_AUTH_FAILED',
-    }, 503);
-  }
-
-  if (jdoodleRes.status === 429) {
-    return jsonResponse({
-      error: '今日代码执行额度已用完，请在额度重置后重试',
-      code: 'JDOODLE_QUOTA_EXCEEDED',
+      error: '公共代码执行服务当前请求过多，请稍后重试',
+      code: 'JUDGE0_RATE_LIMITED',
     }, 429);
   }
 
-  if (!jdoodleRes.ok) {
+  if (!judge0Res.ok) {
     return jsonResponse({
-      error: data.error || '代码执行服务请求失败',
-      code: 'JDOODLE_REQUEST_FAILED',
+      error: data.error || data.message || '代码执行服务请求失败',
+      code: 'JUDGE0_REQUEST_FAILED',
     }, 502);
   }
 
-  return jsonResponse(data, jdoodleRes.status);
-}
+  const statusId = data.status?.id;
+  const statusText = data.status?.description || 'Unknown';
+  const accepted = statusId === 3;
+  const compileError = statusId === 6;
+  const error = data.compile_output || data.stderr || data.message ||
+    (accepted ? '' : statusText);
 
-function isConfiguredSecret(value) {
-  if (typeof value !== 'string' || !value.trim()) return false;
-  return !/^(your[_-]?|replace[_-]?me|xxx)/i.test(value.trim());
+  return jsonResponse({
+    output: data.stdout || '',
+    error,
+    exitCode: accepted ? 0 : 1,
+    compileError,
+    time: data.time ? Math.round(Number(data.time) * 1000) : null,
+    memory: data.memory ?? null,
+    signal: data.signal ?? null,
+    status: statusText,
+  });
 }
 
 async function parseJsonResponse(response) {

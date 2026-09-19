@@ -25,8 +25,7 @@ class Judge {
       const tc = testCases[i];
       try {
         const execResult = await this.runner.execute(
-          lang.jdoodleLang,
-          lang.versionIndex,
+          lang.judge0LanguageId,
           code,
           tc.input
         );
@@ -52,27 +51,11 @@ class Judge {
         results.push(result);
         if (onProgress) onProgress(i + 1, testCases.length, result);
 
-        // 编译错误直接终止（后续用例无意义）
-        if (execResult.compileError) {
-          allPassed = false;
-          break;
-        }
+        // 首个失败测试点即可确定本次提交未通过，避免继续占用公共执行资源。
+        if (!passed) break;
       } catch (err) {
-        allPassed = false;
-        results.push({
-          index: i + 1,
-          passed: false,
-          input: tc.input,
-          expectedOutput: tc.expectedOutput,
-          actualOutput: '',
-          stderr: err.message,
-          exitCode: -1,
-          time: 0,
-          signal: null,
-          compileError: false,
-          error: true,
-        });
-        if (onProgress) onProgress(i + 1, testCases.length, results[results.length - 1]);
+        // 网络、限流等基础设施错误不是 Wrong Answer，不应记录为用户提交失败。
+        throw new Error(`测试点 ${i + 1} 执行失败: ${err.message}`);
       }
     }
 
