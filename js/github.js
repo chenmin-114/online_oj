@@ -94,16 +94,28 @@ class GitHubStore {
    * 获取排名数据（从 dist/ranking.json 读取）
    */
   async getRanking() {
-    if (!this.repo) return [];
+    // GitHub Pages 会把 dist/ranking.json 与前端一起发布，优先读取同源文件。
+    // 这不需要在浏览器中配置仓库名或暴露 GitHub Token。
+    const url = window.OJ_CONFIG.RANKING_URL ||
+      (this.repo ? `https://raw.githubusercontent.com/${this.repo}/main/dist/ranking.json` : '');
 
-    try {
-      const url = `https://raw.githubusercontent.com/${this.repo}/main/dist/ranking.json`;
-      const response = await fetch(url);
-      if (!response.ok) return [];
-      return response.json();
-    } catch {
-      return [];
+    if (!url) return [];
+
+    const separator = url.includes('?') ? '&' : '?';
+    const response = await fetch(`${url}${separator}t=${Date.now()}`, {
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw new Error(`无法读取排名数据 (${response.status})`);
     }
+
+    const ranking = await response.json();
+    if (!Array.isArray(ranking)) {
+      throw new Error('排名数据格式不正确');
+    }
+
+    return ranking;
   }
 
   /**

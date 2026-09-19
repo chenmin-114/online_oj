@@ -132,6 +132,11 @@ class App {
     // 提交代码
     document.getElementById('submit-btn').addEventListener('click', () => this.submitCode());
 
+    // 每次打开排行榜都重新获取，避免继续显示浏览器缓存中的旧数据
+    document.querySelector('[data-view="ranking"]').addEventListener('click', () => {
+      this.loadRanking();
+    });
+
     // 修改用户名
     document.getElementById('change-username-btn').addEventListener('click', () => {
       this._promptUsername();
@@ -265,6 +270,8 @@ class App {
 
   async loadRanking() {
     const container = document.getElementById('ranking-table');
+    container.innerHTML = '<p class="info">⏳ 正在加载排名...</p>';
+
     try {
       const ranking = await this.github.getRanking();
       if (ranking.length === 0) {
