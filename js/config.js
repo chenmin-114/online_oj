@@ -8,8 +8,9 @@ window.OJ_CONFIG = {
   PISTON_API: 'https://emkc.org/api/v2/piston',
 
   // Cloudflare Worker 代理地址（用于安全提交）
-  // 部署后替换为你自己的 Worker URL
-  WORKER_URL: '',
+  // 部署后替换为你自己的 Worker URL，例如：
+  // WORKER_URL: 'https://oj-proxy.yourname.workers.dev',
+  WORKER_URL: 'https://oj-proxy.1930566173.workers.dev',
 
   // GitHub 配置（仅开发测试时使用，生产环境应通过 Worker 代理）
   GITHUB_TOKEN: '',

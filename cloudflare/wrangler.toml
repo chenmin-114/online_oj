@@ -1,0 +1,7 @@
+name = "oj-proxy"
+main = "worker.js"
+compatibility_date = "2026-09-19"
+
+[vars]
+# 请在这里填写你的 GitHub 仓库名，格式：username/repo
+GITHUB_REPO = "chenmin-114/online_oj"
