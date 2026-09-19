@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Online OJ 管理后台</title>
   <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/admin.css?v=20260919-1">
+  <link rel="stylesheet" href="css/admin.css?v=20260919-2">
 </head>
 <body class="admin-body">
   <header class="admin-header">
@@ -65,13 +65,46 @@
         <div class="admin-page-title row">
           <div><p class="eyebrow">CONTENT</p><h2>题目管理</h2><p>查看题目状态，并通过 GitHub 安全修改题库</p></div>
           <div class="title-actions">
-            <a class="admin-button secondary" target="_blank" rel="noopener" href="https://github.com/chenmin-114/online_oj/edit/main/problems/index.json">编辑题目索引</a>
-            <a class="admin-button primary" target="_blank" rel="noopener" href="https://github.com/chenmin-114/online_oj/new/main/problems">＋ 新增题目</a>
+            <a class="admin-button secondary" target="_blank" rel="noopener" href="https://github.com/chenmin-114/online_oj/edit/main/problems/index.json">高级编辑</a>
+            <button id="show-problem-editor" class="admin-button primary">＋ 可视化新增题目</button>
           </div>
         </div>
         <article class="admin-card">
           <div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>题目</th><th>难度</th><th>实际提交</th><th>AC 数</th><th>操作</th></tr></thead><tbody id="problem-admin-list"></tbody></table></div>
         </article>
+
+        <form id="problem-editor" class="admin-card problem-editor" hidden>
+          <div class="card-heading">
+            <div><h3>新增题目</h3><p>填写后会自动创建题目文件并加入题目列表</p></div>
+            <button id="close-problem-editor" type="button" class="text-button">关闭 ×</button>
+          </div>
+          <div class="problem-form">
+            <div class="form-grid three-columns">
+              <label class="form-field"><span>题号 *</span><input id="problem-id" class="admin-input" required placeholder="P006"></label>
+              <label class="form-field"><span>题目名称 *</span><input id="problem-title" class="admin-input" required placeholder="两数相乘"></label>
+              <label class="form-field"><span>难度</span><select id="problem-difficulty" class="admin-input"><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option></select></label>
+            </div>
+            <label class="form-field"><span>文件名 *</span><input id="problem-file" class="admin-input" required placeholder="p006-multiply.json"><small>只使用小写字母、数字和短横线</small></label>
+            <label class="form-field"><span>题目描述 *</span><textarea id="problem-description" class="admin-input" required rows="4" placeholder="描述需要完成的任务，可使用简单 Markdown"></textarea></label>
+            <div class="form-grid two-columns">
+              <label class="form-field"><span>输入格式 *</span><textarea id="problem-input-format" class="admin-input" required rows="3"></textarea></label>
+              <label class="form-field"><span>输出格式 *</span><textarea id="problem-output-format" class="admin-input" required rows="3"></textarea></label>
+            </div>
+            <label class="form-field"><span>数据范围</span><textarea id="problem-constraints" class="admin-input" rows="3"></textarea></label>
+            <div class="form-grid two-columns">
+              <label class="form-field"><span>样例输入</span><textarea id="problem-sample-input" class="admin-input code-input" rows="3"></textarea></label>
+              <label class="form-field"><span>样例输出</span><textarea id="problem-sample-output" class="admin-input code-input" rows="3"></textarea></label>
+            </div>
+            <div class="testcase-heading"><div><strong>测试点 *</strong><p>每个测试点都会独立运行一次</p></div><button id="add-test-case" type="button" class="admin-button secondary">＋ 添加测试点</button></div>
+            <div id="test-case-editor" class="test-case-editor"></div>
+            <label class="form-field"><span>提示</span><textarea id="problem-hints" class="admin-input" rows="3" placeholder="每行一条提示"></textarea></label>
+          </div>
+          <div class="problem-form-actions">
+            <span id="problem-save-status"></span>
+            <button id="reset-problem-editor" type="button" class="admin-button secondary">清空</button>
+            <button id="save-problem" type="submit" class="admin-button primary">保存并发布题目</button>
+          </div>
+        </form>
       </section>
 
       <section id="panel-submissions" class="admin-panel">
@@ -119,6 +152,6 @@
   </div>
 
   <div id="admin-toast" class="admin-toast" role="status"></div>
-  <script src="js/admin.js?v=20260919-1"></script>
+  <script src="js/admin.js?v=20260919-2"></script>
 </body>
 </html>

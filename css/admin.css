@@ -162,6 +162,28 @@
 .table-link { color: var(--admin-blue); text-decoration: none; }
 .table-link:hover { text-decoration: underline; }
 
+.problem-editor { margin-top: 20px; }
+.problem-editor[hidden] { display: none; }
+.problem-form { padding: 20px; display: grid; gap: 18px; }
+.form-grid { display: grid; gap: 16px; }
+.form-grid.two-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid.three-columns { grid-template-columns: .65fr 1.6fr .75fr; }
+.form-field { display: grid; gap: 7px; color: var(--admin-muted); font-size: 12px; }
+.form-field > span { color: #cbd5ea; font-weight: 600; }
+.form-field small { color: #66738f; font-size: 10px; }
+.form-field .admin-input { width: 100%; min-width: 0; padding: 9px 11px; resize: vertical; }
+.code-input { font-family: 'Consolas', 'Monaco', monospace !important; }
+.testcase-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 4px; }
+.testcase-heading strong { color: var(--admin-text); font-size: 13px; }
+.testcase-heading p { color: var(--admin-muted); font-size: 10px; }
+.test-case-editor { display: grid; gap: 10px; }
+.test-case-row { padding: 14px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; border: 1px solid var(--admin-border); border-radius: 10px; background: #0e1526; }
+.test-case-row textarea { min-height: 76px; font-family: 'Consolas', 'Monaco', monospace; }
+.remove-test-case { width: 36px; height: 36px; padding: 0; border: 1px solid rgba(255,92,111,.25); border-radius: 8px; background: rgba(255,92,111,.08); color: #ff7b8b; cursor: pointer; }
+.remove-test-case:hover { background: rgba(255,92,111,.16); }
+.problem-form-actions { padding: 15px 20px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--admin-border); }
+#problem-save-status { margin-right: auto; color: var(--admin-muted); font-size: 11px; }
+
 .activity-list { padding: 16px 18px 20px; display: grid; gap: 16px; }
 .activity-row-header { display: flex; justify-content: space-between; margin-bottom: 6px; color: #cbd5ea; font-size: 11px; }
 .activity-row-header span:last-child { color: var(--admin-muted); }
@@ -209,4 +231,8 @@ input.admin-input { min-width: 240px; }
   .metric-grid { grid-template-columns: 1fr; }
   .quick-links { grid-template-columns: 1fr; }
   .filter-count { width: 100%; margin-left: 0; }
+  .form-grid.two-columns,
+  .form-grid.three-columns,
+  .test-case-row { grid-template-columns: 1fr; }
+  .remove-test-case { width: 100%; }
 }

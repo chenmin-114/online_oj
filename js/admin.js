@@ -38,6 +38,18 @@ class OJAdmin {
     document.getElementById('admin-ranking-scope').addEventListener('change', event => {
       this.renderLeaderboard(event.target.value);
     });
+    document.getElementById('show-problem-editor').addEventListener('click', () => this.showProblemEditor());
+    document.getElementById('close-problem-editor').addEventListener('click', () => this.hideProblemEditor());
+    document.getElementById('reset-problem-editor').addEventListener('click', () => this.resetProblemEditor());
+    document.getElementById('add-test-case').addEventListener('click', () => this.addTestCase());
+    document.getElementById('problem-editor').addEventListener('submit', event => this.saveProblem(event));
+    document.getElementById('problem-id').addEventListener('input', event => {
+      const fileInput = document.getElementById('problem-file');
+      if (!fileInput.value || /^p\d+\.json$/i.test(fileInput.value)) {
+        const id = event.target.value.trim().toLowerCase();
+        fileInput.value = id ? `${id}.json` : '';
+      }
+    });
   }
 
   openPanel(name) {
@@ -183,6 +195,116 @@ class OJAdmin {
         <td><a class="table-link" target="_blank" rel="noopener" href="https://github.com/${this.config.repo}/edit/main/problems/${encodeURIComponent(problem.file)}">编辑 ↗</a></td>
       </tr>
     `).join('') : '<tr><td colspan="6" class="empty-cell">暂无题目</td></tr>';
+  }
+
+  showProblemEditor() {
+    const editor = document.getElementById('problem-editor');
+    editor.hidden = false;
+    if (!document.querySelector('.test-case-row')) this.addTestCase();
+    editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => document.getElementById('problem-id').focus(), 250);
+  }
+
+  hideProblemEditor() {
+    document.getElementById('problem-editor').hidden = true;
+  }
+
+  resetProblemEditor() {
+    document.getElementById('problem-editor').reset();
+    document.getElementById('test-case-editor').innerHTML = '';
+    document.getElementById('problem-save-status').textContent = '';
+    this.addTestCase();
+  }
+
+  addTestCase(input = '', expectedOutput = '') {
+    const container = document.getElementById('test-case-editor');
+    const number = container.children.length + 1;
+    const row = document.createElement('div');
+    row.className = 'test-case-row';
+    row.innerHTML = `
+      <label class="form-field"><span>测试点 ${number} 输入</span><textarea class="admin-input test-input" rows="3"></textarea></label>
+      <label class="form-field"><span>期望输出</span><textarea class="admin-input test-output" rows="3"></textarea></label>
+      <button type="button" class="remove-test-case" title="删除测试点">×</button>
+    `;
+    row.querySelector('.test-input').value = input;
+    row.querySelector('.test-output').value = expectedOutput;
+    row.querySelector('.remove-test-case').addEventListener('click', () => {
+      if (container.children.length === 1) {
+        row.querySelector('.test-input').value = '';
+        row.querySelector('.test-output').value = '';
+        return;
+      }
+      row.remove();
+      this.renumberTestCases();
+    });
+    container.appendChild(row);
+  }
+
+  renumberTestCases() {
+    document.querySelectorAll('.test-case-row').forEach((row, index) => {
+      row.querySelector('.form-field span').textContent = `测试点 ${index + 1} 输入`;
+    });
+  }
+
+  async saveProblem(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+
+    const testCases = Array.from(document.querySelectorAll('.test-case-row')).map(row => ({
+      input: row.querySelector('.test-input').value,
+      expectedOutput: row.querySelector('.test-output').value,
+    }));
+    const problem = {
+      id: document.getElementById('problem-id').value,
+      title: document.getElementById('problem-title').value,
+      difficulty: document.getElementById('problem-difficulty').value,
+      description: document.getElementById('problem-description').value,
+      inputFormat: document.getElementById('problem-input-format').value,
+      outputFormat: document.getElementById('problem-output-format').value,
+      constraints: document.getElementById('problem-constraints').value,
+      sampleInput: document.getElementById('problem-sample-input').value,
+      sampleOutput: document.getElementById('problem-sample-output').value,
+      testCases,
+      hints: document.getElementById('problem-hints').value.split('\n').map(item => item.trim()).filter(Boolean),
+    };
+
+    const saveButton = document.getElementById('save-problem');
+    const status = document.getElementById('problem-save-status');
+    saveButton.disabled = true;
+    saveButton.textContent = '正在发布...';
+    status.textContent = '正在写入 GitHub 仓库';
+
+    try {
+      const response = await fetch(this.config.workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'create_problem',
+          file: document.getElementById('problem-file').value,
+          problem,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `发布失败 (${response.status})`);
+
+      this.problems.push(result.problem);
+      this.problems.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+      this.renderMetrics();
+      this.renderProblems();
+      this.populateFilters();
+      this.populateRankingSelector();
+      this.toast(`${result.problem.id} 已发布，前台将在 GitHub Pages 更新后显示`);
+      this.resetProblemEditor();
+      this.hideProblemEditor();
+    } catch (error) {
+      status.textContent = error instanceof TypeError
+        ? '无法连接 Worker，请检查网络后重试'
+        : error.message;
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = '保存并发布题目';
+    }
   }
 
   populateFilters() {

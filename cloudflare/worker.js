@@ -53,6 +53,8 @@ export default {
         });
       } else if (body.type === 'execute') {
         return await handleExecute(body, env);
+      } else if (body.type === 'create_problem') {
+        return await handleCreateProblem(body, env);
       } else if (body.type === 'submit' || typeof body.passed === 'boolean') {
         return await handleSubmit(body, env);
       }
@@ -149,6 +151,176 @@ async function parseJsonResponse(response) {
   } catch {
     return { error: text.slice(0, 500) };
   }
+}
+
+/**
+ * 从管理页面新增题目。只允许创建，不允许覆盖或删除现有题目。
+ */
+async function handleCreateProblem(body, env) {
+  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
+    return jsonResponse({ error: 'GitHub 存储尚未配置' }, 503);
+  }
+
+  const validation = validateProblem(body.problem, body.file);
+  if (validation.error) return jsonResponse({ error: validation.error }, 400);
+
+  const { problem, file } = validation;
+  const indexPath = 'problems/index.json';
+  const problemPath = `problems/${file}`;
+  const headers = githubHeaders(env.GITHUB_TOKEN);
+  const indexUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${indexPath}`;
+
+  const indexRes = await fetch(indexUrl, { headers });
+  if (!indexRes.ok) {
+    return githubErrorResponse(indexRes, '读取题目索引失败');
+  }
+
+  const indexFile = await indexRes.json();
+  let index;
+  try {
+    index = JSON.parse(decodeBase64Utf8(indexFile.content));
+  } catch {
+    return jsonResponse({ error: '题目索引格式不正确' }, 500);
+  }
+
+  if (!Array.isArray(index)) {
+    return jsonResponse({ error: '题目索引必须是数组' }, 500);
+  }
+  if (index.some(item => item.id === problem.id || item.file === file)) {
+    return jsonResponse({ error: '题号或文件名已经存在，请更换后重试' }, 409);
+  }
+
+  const problemUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${problemPath}`;
+  const existingProblem = await fetch(problemUrl, { headers });
+  if (existingProblem.ok) {
+    return jsonResponse({ error: '题目文件已经存在，不能覆盖' }, 409);
+  }
+  if (existingProblem.status !== 404) {
+    return githubErrorResponse(existingProblem, '检查题目文件失败');
+  }
+
+  const createProblemRes = await fetch(problemUrl, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({
+      message: `📝 Add problem ${problem.id} - ${problem.title}`,
+      content: encodeBase64Utf8(JSON.stringify(problem, null, 2)),
+    }),
+  });
+  if (!createProblemRes.ok) {
+    return githubErrorResponse(createProblemRes, '创建题目文件失败');
+  }
+
+  index.push({
+    id: problem.id,
+    title: problem.title,
+    difficulty: problem.difficulty,
+    file,
+    acceptRate: '0%',
+    submitCount: 0,
+  });
+  index.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+
+  const updateIndexRes = await fetch(indexUrl, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({
+      message: `🗂️ Register problem ${problem.id}`,
+      content: encodeBase64Utf8(JSON.stringify(index, null, 2)),
+      sha: indexFile.sha,
+    }),
+  });
+  if (!updateIndexRes.ok) {
+    return githubErrorResponse(updateIndexRes, '题目文件已创建，但更新索引失败，请在 GitHub 检查');
+  }
+
+  return jsonResponse({
+    success: true,
+    problem: index.find(item => item.id === problem.id),
+  }, 201);
+}
+
+function validateProblem(input, requestedFile) {
+  if (!input || typeof input !== 'object') return { error: '缺少题目内容' };
+
+  const requiredFields = ['id', 'title', 'description', 'inputFormat', 'outputFormat'];
+  for (const field of requiredFields) {
+    if (typeof input[field] !== 'string' || !input[field].trim()) {
+      return { error: `请填写 ${field}` };
+    }
+  }
+
+  const id = input.id.trim().toUpperCase();
+  if (!/^P\d{3,6}$/.test(id)) {
+    return { error: '题号格式应为 P006 这样的 P 加数字' };
+  }
+
+  const difficulty = ['easy', 'medium', 'hard'].includes(input.difficulty)
+    ? input.difficulty
+    : 'easy';
+  const file = String(requestedFile || `${id.toLowerCase()}.json`).trim().toLowerCase();
+  if (!/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/.test(file)) {
+    return { error: '文件名格式应为 p006-example.json' };
+  }
+
+  if (!Array.isArray(input.testCases) || input.testCases.length === 0 || input.testCases.length > 50) {
+    return { error: '测试点数量必须在 1 到 50 之间' };
+  }
+  const testCases = [];
+  for (const [index, testCase] of input.testCases.entries()) {
+    if (!testCase || typeof testCase.input !== 'string' || typeof testCase.expectedOutput !== 'string') {
+      return { error: `测试点 ${index + 1} 格式不正确` };
+    }
+    testCases.push({ input: testCase.input, expectedOutput: testCase.expectedOutput });
+  }
+
+  const problem = {
+    id,
+    title: input.title.trim().slice(0, 100),
+    difficulty,
+    description: input.description.trim().slice(0, 20000),
+    inputFormat: input.inputFormat.trim().slice(0, 10000),
+    outputFormat: input.outputFormat.trim().slice(0, 10000),
+    constraints: String(input.constraints || '').trim().slice(0, 10000),
+    sampleInput: String(input.sampleInput || ''),
+    sampleOutput: String(input.sampleOutput || ''),
+    testCases,
+    hints: Array.isArray(input.hints)
+      ? input.hints.map(item => String(item).trim()).filter(Boolean).slice(0, 20)
+      : [],
+  };
+
+  return { problem, file };
+}
+
+function githubHeaders(token) {
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Accept': 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'User-Agent': 'oj-proxy-worker',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+}
+
+async function githubErrorResponse(response, fallback) {
+  const data = await parseJsonResponse(response);
+  return jsonResponse({
+    error: `${fallback}: ${data.message || data.error || response.status}`,
+  }, response.status >= 400 && response.status < 500 ? response.status : 502);
+}
+
+function encodeBase64Utf8(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function decodeBase64Utf8(value) {
+  const binary = atob(value.replace(/\s/g, ''));
+  const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
 }
 
 /**
