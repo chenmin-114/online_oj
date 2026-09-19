@@ -5,6 +5,16 @@
     "passed": true,
     "passedTests": 5,
     "totalTests": 5,
+    "totalTime": 11,
+    "language": "c",
+    "timestamp": 1789832998807
+  },
+  {
+    "username": "c",
+    "problemId": "P001",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
     "totalTime": 10,
     "language": "c",
     "timestamp": 1789832502505
