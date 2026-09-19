@@ -44,7 +44,14 @@ export default {
       const body = await request.json();
 
       // 路由：根据 type 字段分发
-      if (body.type === 'execute') {
+      if (body.type === 'health') {
+        return jsonResponse({
+          ok: true,
+          executionProvider: 'Judge0 CE',
+          repository: env.GITHUB_REPO || null,
+          githubConfigured: Boolean(env.GITHUB_TOKEN && env.GITHUB_REPO),
+        });
+      } else if (body.type === 'execute') {
         return await handleExecute(body, env);
       } else if (body.type === 'submit' || typeof body.passed === 'boolean') {
         return await handleSubmit(body, env);
