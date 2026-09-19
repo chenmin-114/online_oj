@@ -17,6 +17,17 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
+// 兼容仍在浏览器缓存中的旧版 JDoodle 前端字段。
+const LEGACY_LANGUAGE_IDS = {
+  c: 103,
+  cpp17: 105,
+  python3: 92,
+  java: 91,
+  nodejs: 93,
+  go: 106,
+  rust: 108,
+};
+
 export default {
   async fetch(request, env) {
     // CORS 预检
@@ -35,9 +46,11 @@ export default {
       // 路由：根据 type 字段分发
       if (body.type === 'execute') {
         return await handleExecute(body, env);
-      } else {
+      } else if (body.type === 'submit' || typeof body.passed === 'boolean') {
         return await handleSubmit(body, env);
       }
+
+      return jsonResponse({ error: 'Unknown request type' }, 400);
 
     } catch (err) {
       return jsonResponse({ error: err.message }, 500);
@@ -49,7 +62,10 @@ export default {
  * 处理代码执行请求（代理 Judge0 CE API）
  */
 async function handleExecute(body, env) {
-  const { script, languageId, stdin } = body;
+  const { script, stdin } = body;
+  const languageId = Number.isInteger(body.languageId)
+    ? body.languageId
+    : LEGACY_LANGUAGE_IDS[body.language];
 
   if (!script || !Number.isInteger(languageId)) {
     return jsonResponse({ error: 'Missing script or invalid languageId' }, 400);
@@ -138,6 +154,13 @@ async function handleSubmit(body, env) {
     return jsonResponse({ error: 'Invalid payload' }, 400);
   }
 
+  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
+    return jsonResponse({
+      error: 'GitHub 提交存储尚未配置',
+      code: 'GITHUB_NOT_CONFIGURED',
+    }, 503);
+  }
+
   const safeUsername = username.replace(/[^a-zA-Z0-9_-]/g, '_');
   const safeProblemId = problemId.replace(/[^a-zA-Z0-9_-]/g, '_');
   const path = `submissions/${safeProblemId}/${safeUsername}_${timestamp}.json`;
@@ -174,7 +197,16 @@ async function handleSubmit(body, env) {
 
   if (!githubRes.ok) {
     const err = await githubRes.text();
-    return jsonResponse({ error: 'GitHub API error', details: err }, githubRes.status);
+    let details = err;
+    try {
+      details = JSON.parse(err).message || err;
+    } catch {
+      // 保留 GitHub 返回的非 JSON 错误文本。
+    }
+    return jsonResponse({
+      error: `GitHub 保存失败: ${details}`,
+      code: 'GITHUB_REQUEST_FAILED',
+    }, githubRes.status);
   }
 
   const result = await githubRes.json();

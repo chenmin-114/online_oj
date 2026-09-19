@@ -21,6 +21,7 @@ class GitHubStore {
   async submit(problemId, username, result, code) {
     const timestamp = Date.now();
     const payload = {
+      type: 'submit',
       username,
       problemId,
       passed: result.passed,
