@@ -3,6 +3,10 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    # 提交记录由 ranking.yml 重新生成 dist/ 后自行部署；若这里也被提交推送触发，
+    # 它会用尚未更新的 dist/ 部署一次，可能覆盖掉 ranking.yml 的新部署。
+    paths-ignore:
+      - 'submissions/**'
 
 permissions:
   contents: read

@@ -9,12 +9,21 @@ on:
 permissions:
   contents: write
 
+# 与 deploy.yml 共用同一个并发组，避免两个 workflow 同时向 Pages 部署。
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   generate-ranking:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # 取分支最新提交：本 workflow 会串行排队，若检出触发事件那次提交，
+          # 生成后的 push 可能因落后于远端而失败。
+          ref: ${{ github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -35,3 +44,34 @@ jobs:
           git add dist/ranking.json dist/ranking-v2.json dist/submissions.json
           git diff --staged --quiet || git commit -m "🏆 Update ranking - $(date +'%Y-%m-%d %H:%M:%S')"
           git push
+
+  # 默认 GITHUB_TOKEN 推送产生的事件不会触发 deploy.yml，所以这里必须自己部署一次，
+  # 否则线上 dist/ 会一直停留在提交那一刻的旧快照。
+  deploy:
+    needs: generate-ranking
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 取上一步刚推送的 dist/ 提交
+          ref: ${{ github.ref_name }}
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
