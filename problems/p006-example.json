@@ -1,0 +1,30 @@
+{
+  "id": "P006",
+  "title": "c+d（test）",
+  "difficulty": "easy",
+  "description": "给定两个整数 c 和 d，请计算它们的和并输出。",
+  "inputFormat": "一行，包含两个整数 c 和 d，用空格分隔。",
+  "outputFormat": "一行，一个整数，表示 c + d 的结果。",
+  "constraints": "- 0 ≤ a, b ≤ 10^9\n- 保证结果在 32 位有符号整数范围内",
+  "sampleInput": "1 2",
+  "sampleOutput": "3",
+  "testCases": [
+    {
+      "input": "2 3",
+      "expectedOutput": "5"
+    },
+    {
+      "input": "7 2",
+      "expectedOutput": "9"
+    },
+    {
+      "input": "5 7",
+      "expectedOutput": "12"
+    },
+    {
+      "input": "4444 1111",
+      "expectedOutput": "5555"
+    }
+  ],
+  "hints": []
+}
