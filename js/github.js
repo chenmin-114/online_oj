@@ -49,11 +49,16 @@ class GitHubStore {
   }
 
   async _submitViaWorker(payload) {
-    const response = await fetch(this.workerUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let response;
+    try {
+      response = await fetch(this.workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      throw new Error('无法连接提交服务；判题结果有效，但本次记录未保存到排行榜');
+    }
 
     if (!response.ok) {
       const errText = await response.text();

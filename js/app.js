@@ -233,7 +233,14 @@ class App {
       this._renderJudgeResult(result);
 
       // 提交到存储
-      await this.github.submit(this.currentProblem.id, this.username, result, code);
+      try {
+        await this.github.submit(this.currentProblem.id, this.username, result, code);
+      } catch (storageError) {
+        resultEl.insertAdjacentHTML(
+          'beforeend',
+          `<div class="warning">⚠️ ${this._escapeHtml(storageError.message)}</div>`
+        );
+      }
     } catch (err) {
       resultEl.innerHTML = `<span class="error">❌ 判题失败: ${this._escapeHtml(err.message)}</span>`;
     }
