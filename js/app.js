@@ -137,6 +137,10 @@ class App {
       this.loadRanking();
     });
 
+    document.querySelector('[data-view="submissions"]').addEventListener('click', () => {
+      this.loadSubmissions();
+    });
+
     // 修改用户名
     document.getElementById('change-username-btn').addEventListener('click', () => {
       this._promptUsername();
@@ -304,6 +308,54 @@ class App {
       `;
     } catch (err) {
       container.innerHTML = `<p class="error">排名加载失败: ${this._escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  async loadSubmissions() {
+    const container = document.getElementById('submission-list');
+
+    if (!this.username) {
+      container.innerHTML = '<p class="info">请先设置用户名以查看提交记录</p>';
+      return;
+    }
+
+    container.innerHTML = '<p class="info">⏳ 正在加载提交记录...</p>';
+
+    try {
+      const submissions = await this.github.getSubmissions(this.username);
+      if (submissions.length === 0) {
+        container.innerHTML = '<p class="info">暂无提交记录</p>';
+        return;
+      }
+
+      container.innerHTML = `
+        <table class="ranking">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>题目</th>
+              <th>语言</th>
+              <th>结果</th>
+              <th>测试点</th>
+              <th>耗时</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${submissions.map(item => `
+              <tr>
+                <td>${new Date(item.timestamp).toLocaleString()}</td>
+                <td>${this._escapeHtml(item.problemId)}</td>
+                <td>${this._escapeHtml(item.language)}</td>
+                <td class="${item.passed ? 'success' : 'error'}">${item.passed ? 'Accepted' : 'Wrong Answer'}</td>
+                <td>${item.passedTests}/${item.totalTests}</td>
+                <td>${item.totalTime}ms</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (err) {
+      container.innerHTML = `<p class="error">提交记录加载失败: ${this._escapeHtml(err.message)}</p>`;
     }
   }
 

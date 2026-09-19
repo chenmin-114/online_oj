@@ -120,48 +120,30 @@ class GitHubStore {
   }
 
   /**
-   * 获取用户的提交历史
+   * 获取用户的提交历史（由 GitHub Actions 生成，不包含源代码）
    */
   async getSubmissions(username) {
-    if (!this.token || !this.repo) return [];
+    const url = window.OJ_CONFIG.SUBMISSIONS_URL ||
+      (this.repo ? `https://raw.githubusercontent.com/${this.repo}/main/dist/submissions.json` : '');
+    if (!url) return [];
 
-    try {
-      const url = `https://api.github.com/repos/${this.repo}/contents/submissions`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Accept': 'application/vnd.github.v3+json',
-        },
-      });
+    const separator = url.includes('?') ? '&' : '?';
+    const response = await fetch(`${url}${separator}t=${Date.now()}`, {
+      cache: 'no-store',
+    });
 
-      if (!response.ok) return [];
-
-      const dirs = await response.json();
-      const submissions = [];
-
-      for (const dir of dirs) {
-        if (dir.type !== 'dir') continue;
-        const filesRes = await fetch(dir.url, {
-          headers: {
-            'Authorization': `Bearer ${this.token}`,
-            'Accept': 'application/vnd.github.v3+json',
-          },
-        });
-        if (!filesRes.ok) continue;
-        const files = await filesRes.json();
-
-        for (const file of files) {
-          if (!file.name.startsWith(username + '_') || !file.name.endsWith('.json')) continue;
-          const fileRes = await fetch(file.download_url);
-          if (!fileRes.ok) continue;
-          const data = await fileRes.json();
-          submissions.push(data);
-        }
-      }
-
-      return submissions.sort((a, b) => b.timestamp - a.timestamp);
-    } catch {
-      return [];
+    if (!response.ok) {
+      throw new Error(`无法读取提交记录 (${response.status})`);
     }
+
+    const submissions = await response.json();
+    if (!Array.isArray(submissions)) {
+      throw new Error('提交记录格式不正确');
+    }
+
+    const safeUsername = username.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return submissions
+      .filter(item => item.username === safeUsername)
+      .sort((a, b) => b.timestamp - a.timestamp);
   }
 }

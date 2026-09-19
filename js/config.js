@@ -24,4 +24,5 @@ window.OJ_CONFIG = {
 
   // 排名数据路径（由 GitHub Actions 生成）
   RANKING_URL: 'dist/ranking.json',
+  SUBMISSIONS_URL: 'dist/submissions.json',
 };

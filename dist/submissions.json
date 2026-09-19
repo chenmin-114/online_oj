@@ -1,0 +1,42 @@
+[
+  {
+    "username": "a",
+    "problemId": "P001",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789825365500
+  },
+  {
+    "username": "a",
+    "problemId": "P001",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789825267372
+  },
+  {
+    "username": "a",
+    "problemId": "P001",
+    "passed": false,
+    "passedTests": 1,
+    "totalTests": 5,
+    "totalTime": 3000,
+    "language": "c",
+    "timestamp": 1789824535017
+  },
+  {
+    "username": "a",
+    "problemId": "P001",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 15026,
+    "language": "c",
+    "timestamp": 1789824356949
+  }
+]
