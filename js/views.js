@@ -5,7 +5,7 @@
 class ViewManager {
   constructor() {
     this.currentView = 'problems';
-    this.views = ['problems', 'solve', 'ranking', 'submissions'];
+    this.views = ['problems', 'solve', 'submissions'];
   }
 
   show(viewName) {

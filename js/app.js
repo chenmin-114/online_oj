@@ -28,9 +28,6 @@ class App {
     // 绑定事件
     this._bindEvents();
 
-    // 加载排名
-    await this.loadRanking();
-
     // 检查用户名
     if (!this.username) {
       this._promptUsername();
@@ -133,11 +130,6 @@ class App {
 
     // 提交代码
     document.getElementById('submit-btn').addEventListener('click', () => this.submitCode());
-
-    // 每次打开排行榜都重新获取，避免继续显示浏览器缓存中的旧数据
-    document.querySelector('[data-view="ranking"]').addEventListener('click', () => {
-      this.loadRanking();
-    });
 
     document.querySelector('[data-view="submissions"]').addEventListener('click', () => {
       this.loadSubmissions();
@@ -278,90 +270,6 @@ class App {
         ` : ''}
       </div>
     `).join('');
-  }
-
-  async loadRanking() {
-    const container = document.getElementById('ranking-table');
-    container.innerHTML = '<p class="info">⏳ 正在加载排名...</p>';
-
-    try {
-      const ranking = await this.github.getRanking();
-      const hasAnyRanking = ranking.overall.length > 0 ||
-        Object.values(ranking.problems).some(items => items.length > 0);
-
-      if (!hasAnyRanking) {
-        container.innerHTML = '<p class="info">暂无排名数据，等待 GitHub Actions 生成</p>';
-        return;
-      }
-
-      container.innerHTML = `
-        <div class="ranking-selector">
-          <label for="ranking-scope">选择排行榜</label>
-          <select id="ranking-scope" class="select">
-            <option value="">请选择排行榜</option>
-            <option value="overall">总榜</option>
-            ${this.problemList.map(problem => `
-              <option value="${this._escapeHtml(problem.id)}">${this._escapeHtml(problem.id)} · ${this._escapeHtml(problem.title)}</option>
-            `).join('')}
-          </select>
-        </div>
-        <div id="ranking-content"><p class="info">请先选择总榜或一道题目</p></div>
-      `;
-
-      document.getElementById('ranking-scope').addEventListener('change', event => {
-        this._renderRanking(ranking, event.target.value);
-      });
-    } catch (err) {
-      container.innerHTML = `<p class="error">排名加载失败: ${this._escapeHtml(err.message)}</p>`;
-    }
-  }
-
-  _renderRanking(ranking, scope) {
-    const container = document.getElementById('ranking-content');
-    if (!scope) {
-      container.innerHTML = '<p class="info">请先选择总榜或一道题目</p>';
-      return;
-    }
-
-    if (scope === 'overall') {
-      const items = ranking.overall.slice(0, 10);
-      container.innerHTML = `
-        <table class="ranking">
-          <thead><tr><th>排名</th><th>用户名</th><th>解题数</th><th>总耗时</th><th>最后提交</th></tr></thead>
-          <tbody>${items.map((item, index) => `
-            <tr>
-              <td>${index + 1}</td>
-              <td>${this._escapeHtml(item.username)}</td>
-              <td>${item.solvedCount}</td>
-              <td>${item.totalTime}ms</td>
-              <td>${new Date(item.lastSubmit).toLocaleString()}</td>
-            </tr>
-          `).join('')}</tbody>
-        </table>
-      `;
-      return;
-    }
-
-    const items = (ranking.problems[scope] || []).slice(0, 10);
-    if (items.length === 0) {
-      container.innerHTML = '<p class="info">这道题还没有通过记录</p>';
-      return;
-    }
-
-    container.innerHTML = `
-      <table class="ranking">
-        <thead><tr><th>排名</th><th>用户名</th><th>判题耗时</th><th>通过前尝试</th><th>通过时间</th></tr></thead>
-        <tbody>${items.map((item, index) => `
-          <tr>
-            <td>${index + 1}</td>
-            <td>${this._escapeHtml(item.username)}</td>
-            <td>${item.totalTime}ms</td>
-            <td>${item.attempts}</td>
-            <td>${new Date(item.acceptedAt).toLocaleString()}</td>
-          </tr>
-        `).join('')}</tbody>
-      </table>
-    `;
   }
 
   async loadSubmissions() {
