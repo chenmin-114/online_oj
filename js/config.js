@@ -23,6 +23,7 @@ window.OJ_CONFIG = {
   EDITOR_FONT_SIZE: 14,
 
   // 排名数据路径（由 GitHub Actions 生成）
-  RANKING_URL: 'dist/ranking.json',
+  // ranking.json 保留为旧版数组格式，避免已缓存的旧页面在部署切换时崩溃。
+  RANKING_URL: 'dist/ranking-v2.json',
   SUBMISSIONS_URL: 'dist/submissions.json',
 };
