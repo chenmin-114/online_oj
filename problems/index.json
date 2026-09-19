@@ -38,5 +38,13 @@
     "file": "p005-binary-search.json",
     "acceptRate": "45%",
     "submitCount": 203
+  },
+  {
+    "id": "P006",
+    "title": "c+d（test）",
+    "difficulty": "easy",
+    "file": "p006-example.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
