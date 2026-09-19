@@ -34,23 +34,20 @@ body {
 }
 
 /* ========== 团队标识 ========== */
-.team-banner {
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-color);
-  padding: 10px 20px;
-  text-align: center;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: 4px;
-  color: var(--text-primary);
+.team-name {
+  padding-left: 12px;
+  border-left: 1px solid var(--border-color);
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 /* ========== 头部导航 ========== */
 .header {
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
-  /* 顶部留白交给 .team-banner，避免横幅上方多出一条底色 */
-  padding: 0 0 12px;
+  padding: 12px 0;
   position: sticky;
   top: 0;
   z-index: 100;
