@@ -35,40 +35,57 @@ function loadSubmissions() {
 }
 
 /**
- * 计算排名
- * 排序规则：
- * 1. 解题数降序
- * 2. 总耗时升序（仅计算首次 AC 的题目）
- * 3. 最后提交时间升序（越早越好）
+ * 计算总榜和单题排行榜。
+ * 总榜：解题数降序、首次 AC 总耗时升序、最后提交时间升序。
+ * 单题榜：首次 AC 判题耗时升序、AC 时间升序。
  */
 function calculateRanking(submissions) {
-  const userStats = {};
+  const userStats = new Map();
+  const problemStats = new Map();
+
+  // 文件遍历顺序不等于提交顺序；先排序才能准确找出首次 AC。
+  submissions.sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
 
   for (const sub of submissions) {
     const { username, problemId, passed, totalTime, timestamp } = sub;
+    if (!username || !problemId || !Number.isFinite(Number(timestamp))) continue;
 
-    if (!userStats[username]) {
-      userStats[username] = {
-        solved: new Map(), // problemId -> first AC time
+    if (!userStats.has(username)) {
+      userStats.set(username, {
+        solved: new Map(),
         totalAttempts: 0,
         totalTime: 0,
         lastSubmit: 0,
-      };
+      });
     }
 
-    const stats = userStats[username];
+    const stats = userStats.get(username);
     stats.totalAttempts++;
-    stats.lastSubmit = Math.max(stats.lastSubmit, timestamp);
+    stats.lastSubmit = Math.max(stats.lastSubmit, Number(timestamp));
 
-    // 记录首次 AC
     if (passed && !stats.solved.has(problemId)) {
-      stats.solved.set(problemId, timestamp);
-      stats.totalTime += totalTime;
+      const executionTime = Number(totalTime) || 0;
+      stats.solved.set(problemId, { timestamp: Number(timestamp), executionTime });
+      stats.totalTime += executionTime;
+    }
+
+    if (!problemStats.has(problemId)) problemStats.set(problemId, new Map());
+    const users = problemStats.get(problemId);
+    if (!users.has(username)) {
+      users.set(username, { attempts: 0, acceptedAt: null, totalTime: null });
+    }
+
+    const problemUser = users.get(username);
+    if (problemUser.acceptedAt === null) {
+      problemUser.attempts++;
+      if (passed) {
+        problemUser.acceptedAt = Number(timestamp);
+        problemUser.totalTime = Number(totalTime) || 0;
+      }
     }
   }
 
-  // 转换为数组并排序
-  return Object.entries(userStats)
+  const overall = Array.from(userStats.entries())
     .map(([username, stats]) => ({
       username,
       solvedCount: stats.solved.size,
@@ -84,6 +101,19 @@ function calculateRanking(submissions) {
       }
       return a.lastSubmit - b.lastSubmit;
     });
+
+  const problems = {};
+  for (const [problemId, users] of problemStats.entries()) {
+    problems[problemId] = Array.from(users.entries())
+      .filter(([, stats]) => stats.acceptedAt !== null)
+      .map(([username, stats]) => ({ username, ...stats }))
+      .sort((a, b) => {
+        if (a.totalTime !== b.totalTime) return a.totalTime - b.totalTime;
+        return a.acceptedAt - b.acceptedAt;
+      });
+  }
+
+  return { overall, problems };
 }
 
 // 主流程

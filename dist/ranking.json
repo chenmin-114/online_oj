@@ -1,20 +1,44 @@
-[
-  {
-    "username": "2",
-    "solvedCount": 1,
-    "totalTime": 10,
-    "lastSubmit": 1789825545199
-  },
-  {
-    "username": "55",
-    "solvedCount": 1,
-    "totalTime": 10,
-    "lastSubmit": 1789825824160
-  },
-  {
-    "username": "a",
-    "solvedCount": 1,
-    "totalTime": 15026,
-    "lastSubmit": 1789825365500
+{
+  "overall": [
+    {
+      "username": "2",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789825545199
+    },
+    {
+      "username": "55",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789825824160
+    },
+    {
+      "username": "a",
+      "solvedCount": 1,
+      "totalTime": 15026,
+      "lastSubmit": 1789825365500
+    }
+  ],
+  "problems": {
+    "P001": [
+      {
+        "username": "2",
+        "attempts": 1,
+        "acceptedAt": 1789825461172,
+        "totalTime": 10
+      },
+      {
+        "username": "55",
+        "attempts": 1,
+        "acceptedAt": 1789825724628,
+        "totalTime": 10
+      },
+      {
+        "username": "a",
+        "attempts": 1,
+        "acceptedAt": 1789824356949,
+        "totalTime": 15026
+      }
+    ]
   }
-]
+}

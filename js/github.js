@@ -100,7 +100,7 @@ class GitHubStore {
     const url = window.OJ_CONFIG.RANKING_URL ||
       (this.repo ? `https://raw.githubusercontent.com/${this.repo}/main/dist/ranking.json` : '');
 
-    if (!url) return [];
+    if (!url) return { overall: [], problems: {} };
 
     const separator = url.includes('?') ? '&' : '?';
     const response = await fetch(`${url}${separator}t=${Date.now()}`, {
@@ -112,7 +112,14 @@ class GitHubStore {
     }
 
     const ranking = await response.json();
-    if (!Array.isArray(ranking)) {
+
+    // 兼容 Actions 尚未更新完成时的旧版总榜数组。
+    if (Array.isArray(ranking)) {
+      return { overall: ranking, problems: {} };
+    }
+
+    if (!ranking || !Array.isArray(ranking.overall) ||
+        typeof ranking.problems !== 'object' || ranking.problems === null) {
       throw new Error('排名数据格式不正确');
     }
 
