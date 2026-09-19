@@ -324,10 +324,11 @@ class App {
     }
 
     if (scope === 'overall') {
+      const items = ranking.overall.slice(0, 10);
       container.innerHTML = `
         <table class="ranking">
           <thead><tr><th>排名</th><th>用户名</th><th>解题数</th><th>总耗时</th><th>最后提交</th></tr></thead>
-          <tbody>${ranking.overall.map((item, index) => `
+          <tbody>${items.map((item, index) => `
             <tr>
               <td>${index + 1}</td>
               <td>${this._escapeHtml(item.username)}</td>
@@ -341,7 +342,7 @@ class App {
       return;
     }
 
-    const items = ranking.problems[scope] || [];
+    const items = (ranking.problems[scope] || []).slice(0, 10);
     if (items.length === 0) {
       container.innerHTML = '<p class="info">这道题还没有通过记录</p>';
       return;
