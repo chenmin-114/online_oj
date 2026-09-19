@@ -1,15 +1,14 @@
 /**
  * 支持的编程语言定义
- * language/version 必须与 Piston API 的 runtimes 匹配
- * 查看可用语言: GET https://emkc.org/api/v2/piston/runtimes
+ * JDoodle API: https://api.jdoodle.com/v1/execute
+ * 语言标识参考: https://www.jdoodle.com/compiler-api/docs
  */
 window.LANGUAGES = [
   {
     id: 'c',
     name: 'C',
-    version: '10.2.0',
-    pistonLang: 'c',
-    pistonVersion: '10.2.0',
+    jdoodleLang: 'c',
+    versionIndex: '5',  // GCC 11.2.0
     monacoLang: 'c',
     template: `#include <stdio.h>
 
@@ -23,9 +22,8 @@ int main() {
   {
     id: 'cpp',
     name: 'C++',
-    version: '10.2.0',
-    pistonLang: 'c++',
-    pistonVersion: '10.2.0',
+    jdoodleLang: 'cpp17',
+    versionIndex: '0',  // GCC 11.2.0
     monacoLang: 'cpp',
     template: `#include <iostream>
 using namespace std;
@@ -40,9 +38,8 @@ int main() {
   {
     id: 'python',
     name: 'Python 3',
-    version: '3.10.0',
-    pistonLang: 'python',
-    pistonVersion: '3.10.0',
+    jdoodleLang: 'python3',
+    versionIndex: '4',  // 3.11.2
     monacoLang: 'python',
     template: `# 在此编写你的代码
 `,
@@ -50,9 +47,8 @@ int main() {
   {
     id: 'java',
     name: 'Java',
-    version: '15.0.2',
-    pistonLang: 'java',
-    pistonVersion: '15.0.2',
+    jdoodleLang: 'java',
+    versionIndex: '4',  // JDK 17.0.6
     monacoLang: 'java',
     template: `import java.util.Scanner;
 
@@ -68,9 +64,8 @@ public class Main {
   {
     id: 'javascript',
     name: 'JavaScript',
-    version: '18.15.0',
-    pistonLang: 'javascript',
-    pistonVersion: '18.15.0',
+    jdoodleLang: 'nodejs',
+    versionIndex: '4',  // 18.15.0
     monacoLang: 'javascript',
     template: `const readline = require('readline');
 const rl = readline.createInterface({ input: process.stdin });
@@ -87,9 +82,8 @@ rl.on('line', (line) => lines.push(line))
   {
     id: 'go',
     name: 'Go',
-    version: '1.16.2',
-    pistonLang: 'go',
-    pistonVersion: '1.16.2',
+    jdoodleLang: 'go',
+    versionIndex: '4',  // 1.20.1
     monacoLang: 'go',
     template: `package main
 
@@ -104,9 +98,8 @@ func main() {
   {
     id: 'rust',
     name: 'Rust',
-    version: '1.68.2',
-    pistonLang: 'rust',
-    pistonVersion: '1.68.2',
+    jdoodleLang: 'rust',
+    versionIndex: '1',  // 1.66.1
     monacoLang: 'rust',
     template: `use std::io;
 

@@ -25,8 +25,8 @@ class Judge {
       const tc = testCases[i];
       try {
         const execResult = await this.runner.execute(
-          lang.pistonLang,
-          lang.pistonVersion,
+          lang.jdoodleLang,
+          lang.versionIndex,
           code,
           tc.input
         );

@@ -3,14 +3,15 @@
  * 部署时根据实际情况修改以下配置项
  */
 window.OJ_CONFIG = {
-  // Piston 代码执行引擎（开源免费，无需 API Key）
-  // 自部署: https://github.com/engineer-man/piston
-  PISTON_API: 'https://emkc.org/api/v2/piston',
-
-  // Cloudflare Worker 代理地址（用于安全提交）
-  // 部署后替换为你自己的 Worker URL，例如：
-  // WORKER_URL: 'https://oj-proxy.yourname.workers.dev',
+  // Cloudflare Worker 代理地址（用于安全提交和代码执行）
+  // 部署后替换为你自己的 Worker URL
   WORKER_URL: 'https://oj-proxy.1930566173.workers.dev',
+
+  // JDoodle API 凭据（在 Worker 中使用，安全存储）
+  // 注册获取: https://www.jdoodle.com/compiler-api
+  // 每日额度取决于 JDoodle Compiler API 套餐，以控制台显示为准
+  JDOODLE_CLIENT_ID: '',     // ← 注册后填入
+  JDOODLE_CLIENT_SECRET: '',  // ← 注册后填入
 
   // GitHub 配置（仅开发测试时使用，生产环境应通过 Worker 代理）
   GITHUB_TOKEN: '',
