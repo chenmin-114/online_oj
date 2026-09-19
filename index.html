@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Online OJ - 零后端在线评测平台</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <header class="header">
+    <div class="container">
+      <h1 class="logo">⚡ Online OJ</h1>
+      <nav class="nav">
+        <a href="#" class="nav-link active" data-view="problems">题目</a>
+        <a href="#" class="nav-link" data-view="ranking">排名</a>
+        <a href="#" class="nav-link" data-view="submissions">提交</a>
+      </nav>
+      <div class="user-info">
+        <span id="username-display">未登录</span>
+        <button id="change-username-btn" class="btn-small">修改</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 题目列表视图 -->
+    <section id="view-problems" class="view">
+      <h2>题目列表</h2>
+      <div id="problem-list" class="problem-list"></div>
+    </section>
+
+    <!-- 解题视图 -->
+    <section id="view-solve" class="view" style="display: none;">
+      <div class="solve-layout">
+        <!-- 左侧：题目描述 -->
+        <div class="problem-panel">
+          <h2 id="problem-title"></h2>
+          <div class="problem-content">
+            <h3>题目描述</h3>
+            <div id="problem-description"></div>
+            
+            <h3>输入格式</h3>
+            <div id="problem-input-format"></div>
+            
+            <h3>输出格式</h3>
+            <div id="problem-output-format"></div>
+            
+            <h3>数据范围</h3>
+            <div id="problem-constraints"></div>
+            
+            <h3>样例</h3>
+            <div class="sample">
+              <div>
+                <strong>输入:</strong>
+                <pre id="sample-input"></pre>
+              </div>
+              <div>
+                <strong>输出:</strong>
+                <pre id="sample-output"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：代码编辑器 -->
+        <div class="editor-panel">
+          <div class="toolbar">
+            <select id="language-select" class="select">
+              <option value="c">C</option>
+              <option value="cpp">C++</option>
+              <option value="python">Python 3</option>
+              <option value="java">Java</option>
+              <option value="javascript">JavaScript</option>
+              <option value="go">Go</option>
+              <option value="rust">Rust</option>
+            </select>
+            <button id="run-btn" class="btn btn-secondary">▶ 运行</button>
+            <button id="submit-btn" class="btn btn-primary">🏁 提交</button>
+          </div>
+
+          <div id="editor-container" class="editor"></div>
+
+          <div class="io-panel">
+            <div class="io-section">
+              <label>
+                自定义输入
+                <button id="fill-sample-btn" class="btn-small">填充样例</button>
+              </label>
+              <textarea id="custom-input" class="io-textarea" placeholder="在此输入测试数据..."></textarea>
+            </div>
+            <div class="io-section">
+              <label>输出结果</label>
+              <pre id="output" class="io-output"></pre>
+            </div>
+          </div>
+
+          <div class="result-panel">
+            <div id="judge-result"></div>
+            <div id="judge-detail" class="judge-detail"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 排名视图 -->
+    <section id="view-ranking" class="view" style="display: none;">
+      <h2>🏆 排行榜</h2>
+      <div id="ranking-table"></div>
+    </section>
+
+    <!-- 提交历史视图 -->
+    <section id="view-submissions" class="view" style="display: none;">
+      <h2>提交历史</h2>
+      <p class="info">提交历史功能需要配置 GitHub Token 或 Cloudflare Worker</p>
+    </section>
+  </main>
+
+  <!-- 脚本加载（顺序很重要） -->
+  <script src="js/config.js"></script>
+  <script src="js/languages.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/runner.js"></script>
+  <script src="js/judge.js"></script>
+  <script src="js/github.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

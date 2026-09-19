@@ -1,0 +1,42 @@
+[
+  {
+    "id": "P001",
+    "title": "A+B Problem",
+    "difficulty": "easy",
+    "file": "p001-aplusb.json",
+    "acceptRate": "85%",
+    "submitCount": 120
+  },
+  {
+    "id": "P002",
+    "title": "最大值",
+    "difficulty": "easy",
+    "file": "p002-max.json",
+    "acceptRate": "72%",
+    "submitCount": 89
+  },
+  {
+    "id": "P003",
+    "title": "斐波那契数列",
+    "difficulty": "medium",
+    "file": "p003-fibonacci.json",
+    "acceptRate": "58%",
+    "submitCount": 156
+  },
+  {
+    "id": "P004",
+    "title": "回文判断",
+    "difficulty": "easy",
+    "file": "p004-palindrome.json",
+    "acceptRate": "79%",
+    "submitCount": 94
+  },
+  {
+    "id": "P005",
+    "title": "二分查找",
+    "difficulty": "medium",
+    "file": "p005-binary-search.json",
+    "acceptRate": "45%",
+    "submitCount": 203
+  }
+]

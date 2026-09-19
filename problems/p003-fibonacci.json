@@ -1,0 +1,38 @@
+{
+  "id": "P003",
+  "title": "斐波那契数列",
+  "difficulty": "medium",
+  "description": "斐波那契数列定义如下：\n- F(0) = 0\n- F(1) = 1\n- F(n) = F(n-1) + F(n-2) (n ≥ 2)\n\n给定一个整数 `n`，请计算 F(n) 并对 `10^9 + 7` 取模。",
+  "inputFormat": "一行，一个整数 `n`。",
+  "outputFormat": "一行，一个整数，表示 F(n) mod (10^9 + 7)。",
+  "constraints": "- `0 ≤ n ≤ 10^9`",
+  "sampleInput": "10",
+  "sampleOutput": "55",
+  "testCases": [
+    {
+      "input": "0",
+      "expectedOutput": "0"
+    },
+    {
+      "input": "1",
+      "expectedOutput": "1"
+    },
+    {
+      "input": "10",
+      "expectedOutput": "55"
+    },
+    {
+      "input": "20",
+      "expectedOutput": "6765"
+    },
+    {
+      "input": "45",
+      "expectedOutput": "134626906"
+    }
+  ],
+  "hints": [
+    "直接递归会超时，考虑动态规划或矩阵快速幂",
+    "注意取模运算，防止溢出",
+    "n 很大时，矩阵快速幂是 O(log n) 的解法"
+  ]
+}

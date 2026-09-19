@@ -1,0 +1,37 @@
+{
+  "id": "P002",
+  "title": "最大值",
+  "difficulty": "easy",
+  "description": "给定 `n` 个整数，请找出其中的最大值并输出。",
+  "inputFormat": "第一行一个整数 `n`，表示数字个数。\n第二行 `n` 个整数，用空格分隔。",
+  "outputFormat": "一行，一个整数，表示最大值。",
+  "constraints": "- `1 ≤ n ≤ 1000`\n- `-10^9 ≤ a_i ≤ 10^9`",
+  "sampleInput": "5\n3 1 4 1 5",
+  "sampleOutput": "5",
+  "testCases": [
+    {
+      "input": "5\n3 1 4 1 5",
+      "expectedOutput": "5"
+    },
+    {
+      "input": "1\n42",
+      "expectedOutput": "42"
+    },
+    {
+      "input": "3\n-1 -2 -3",
+      "expectedOutput": "-1"
+    },
+    {
+      "input": "6\n1 2 3 3 2 1",
+      "expectedOutput": "3"
+    },
+    {
+      "input": "4\n0 0 0 0",
+      "expectedOutput": "0"
+    }
+  ],
+  "hints": [
+    "可以用循环遍历，也可以用内置函数",
+    "注意负数的情况"
+  ]
+}
