@@ -13,6 +13,12 @@
       "lastSubmit": 1789830528116
     },
     {
+      "username": "d",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789830728925
+    },
+    {
       "username": "a",
       "solvedCount": 1,
       "totalTime": 15026,
@@ -31,6 +37,12 @@
         "username": "55",
         "attempts": 1,
         "acceptedAt": 1789825724628,
+        "totalTime": 10
+      },
+      {
+        "username": "d",
+        "attempts": 1,
+        "acceptedAt": 1789830728925,
         "totalTime": 10
       },
       {
