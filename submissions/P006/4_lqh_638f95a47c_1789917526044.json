@@ -1,0 +1,11 @@
+{
+  "username": "自动化4班lqh",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbih2b2lkKSB7IAogICAgaW50IHRvdGFsX3NlYzsKICAgIHNjYW5mKCIlZCIsICZ0b3RhbF9zZWMpOwogCiAgICBpbnQgaG91ciA9IHRvdGFsX3NlYyAvIDM2MDA7CiAgICBpbnQgbWludXRlID0gKHRvdGFsX3NlYyAlIDM2MDApIC8gNjA7CiAgICBpbnQgc2Vjb25kID0gdG90YWxfc2VjICUgNjA7CiAKICAgIHByaW50ZigiJTAyZDolMDJkOiUwMmRcbiIsIGhvdXIsIG1pbnV0ZSwgc2Vjb25kKTsKIAogICAgLy8g5Zyo5q2k57yW5YaZ5L2g55qE5Luj56CBCiAgICAKICAgIHJldHVybiAwOwp9Cg==",
+  "timestamp": 1789917526044
+}
