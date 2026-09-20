@@ -1,5 +1,15 @@
 [
   {
+    "username": "机械电子工程邓维广",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789914278634
+  },
+  {
     "username": "物联网2班【陆沛洋】",
     "problemId": "P006",
     "passed": true,

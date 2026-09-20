@@ -205,6 +205,12 @@
       "lastSubmit": 1789914198685
     },
     {
+      "username": "机械电子工程邓维广",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789914278634
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -522,6 +528,12 @@
         "username": "物联网2班【陆沛洋】",
         "attempts": 1,
         "acceptedAt": 1789914198685,
+        "totalTime": 10
+      },
+      {
+        "username": "机械电子工程邓维广",
+        "attempts": 1,
+        "acceptedAt": 1789914278634,
         "totalTime": 10
       },
       {
