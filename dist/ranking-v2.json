@@ -85,6 +85,12 @@
       "lastSubmit": 1789915954967
     },
     {
+      "username": "26集成-颜楚航",
+      "solvedCount": 2,
+      "totalTime": 20,
+      "lastSubmit": 1789917430672
+    },
+    {
       "username": "电信类 谭卓彬",
       "solvedCount": 2,
       "totalTime": 21,
@@ -299,12 +305,6 @@
       "solvedCount": 1,
       "totalTime": 10,
       "lastSubmit": 1789916013637
-    },
-    {
-      "username": "26集成-颜楚航",
-      "solvedCount": 1,
-      "totalTime": 10,
-      "lastSubmit": 1789916315149
     },
     {
       "username": "zhhh",
@@ -541,6 +541,12 @@
         "username": "26电子信息赵天楷",
         "attempts": 1,
         "acceptedAt": 1789916160866,
+        "totalTime": 10
+      },
+      {
+        "username": "26集成-颜楚航",
+        "attempts": 1,
+        "acceptedAt": 1789917430672,
         "totalTime": 10
       },
       {
