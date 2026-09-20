@@ -1,5 +1,15 @@
 [
   {
+    "username": "26电子信息赵天楷",
+    "problemId": "P003",
+    "passed": false,
+    "passedTests": 4,
+    "totalTests": 5,
+    "totalTime": 11,
+    "language": "c",
+    "timestamp": 1789917279767
+  },
+  {
     "username": "纪楷基",
     "problemId": "P003",
     "passed": true,
