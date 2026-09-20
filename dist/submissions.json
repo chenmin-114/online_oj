@@ -3,6 +3,16 @@
     "username": "_______",
     "problemId": "P006",
     "passed": false,
+    "passedTests": 4,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789908309863
+  },
+  {
+    "username": "_______",
+    "problemId": "P006",
+    "passed": false,
     "passedTests": 0,
     "totalTests": 5,
     "totalTime": 2,
