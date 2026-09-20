@@ -1,0 +1,11 @@
+{
+  "username": "zgt",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IGhvdXIgPSAwOwogICAgaW50IG1pbnV0ZSA9IDA7CiAgICBpbnQgc2Vjb25kID0gMDsKICAgIGludCBpbnB1dCA9IDA7CiAgICBzY2FuZigiJWQiLCZpbnB1dCk7CiAgICBob3VyID0gaW5wdXQvMzYwMDsKICAgIG1pbnV0ZSA9IGlucHV0JTM2MDAvNjA7CiAgICBzZWNvbmQgPSBpbnB1dCU2MDsKICAgIHByaW50ZigiJTAyZDolMDJkOiUwMmQiLGhvdXIsbWludXRlLHNlY29uZCk7CgogICAgCiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789911923328
+}
