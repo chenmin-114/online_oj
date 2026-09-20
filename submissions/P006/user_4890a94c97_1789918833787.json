@@ -1,0 +1,11 @@
+{
+  "username": "电子信息  姚锦灿",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IHRvdGFsPTA7CiAgICBzY2FuZigiJWQiLCZ0b3RhbCk7CiAgICBpbnQgSEg9dG90YWwvMzYwMDsKICAgIGludCBNTT0odG90YWwlMzYwMCkvNjA7CiAgICBpbnQgU1M9dG90YWwlNjA7CiAgICBwcmludGYoIiUwMmQ6JTAyZDolMDJkIixISCxNTSxTUyk7CiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789918833787
+}
