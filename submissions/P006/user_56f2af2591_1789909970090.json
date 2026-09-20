@@ -1,0 +1,11 @@
+{
+  "username": "罗应逍",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpCiB7CiAgICAvLyDlnKjmraTnvJblhpnkvaDnmoTku6PnoIEKICAgIAoJaW50IHRvdGFsczsKCWludCBoOwoJaW50IG07CglpbnQgczsKCXNjYW5mKCIlZCIsICZ0b3RhbHMpOwoKCWggPSB0b3RhbHMgLyAzNjAwOwoJbSA9ICh0b3RhbHMgLyA2MCkgJSA2MDsKCXMgPSB0b3RhbHMgJSA2MDsKCglwcmludGYoIiUwMmQ6JTAyZDolMDJkIiwgaCwgbSwgcyk7CgkJCglyZXR1cm4gMDsKfQogICAgCg==",
+  "timestamp": 1789909970090
+}
