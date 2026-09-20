@@ -93,7 +93,12 @@ class App {
 
   async loadProblem(file) {
     try {
-      const response = await fetch(`problems/${file}`);
+      const workerUrl = window.OJ_CONFIG.WORKER_URL;
+      const problemUrl = workerUrl
+        ? `${workerUrl}/?file=problem&name=${encodeURIComponent(file)}&t=${Date.now()}`
+        : `problems/${file}?t=${Date.now()}`;
+      const response = await fetch(problemUrl, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       this.currentProblem = await response.json();
       this._renderProblem();
       this.views.show('solve');
