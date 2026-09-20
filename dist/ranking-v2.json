@@ -235,6 +235,12 @@
       "lastSubmit": 1789914610826
     },
     {
+      "username": "袁国齐",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789914656551
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -576,6 +582,12 @@
         "username": "机械电子工程3班巫俊辉",
         "attempts": 1,
         "acceptedAt": 1789914610826,
+        "totalTime": 10
+      },
+      {
+        "username": "袁国齐",
+        "attempts": 1,
+        "acceptedAt": 1789914656551,
         "totalTime": 10
       },
       {
