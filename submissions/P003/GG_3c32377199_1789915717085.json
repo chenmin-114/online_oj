@@ -1,0 +1,11 @@
+{
+  "username": "GG绷",
+  "problemId": "P003",
+  "passed": false,
+  "passedTests": 0,
+  "totalTests": 5,
+  "totalTime": 2,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CiNpbmNsdWRlIDxzdGRsaWIuaD4KI2luY2x1ZGUgPHN0cmluZy5oPgojaW5jbHVkZSA8bWF0aC5oPgojaW5jbHVkZSA8c3RkYm9vbC5oPgojaW5jbHVkZSA8c3RkaW8uaD4KaW50IG47CmludCBhLGI7CmludCBtYWluKCkgewogICAgLy8g5Zyo5q2k57yW5YaZ5L2g55qE5Luj56CBCiAgICBhPTA7Yj0xOwogICAgaW50IHRlbXA7CiAgICBzY2FuZigiJWQiLCZuKTsKICAgIGlmKG49PTApIHByaW50ZigiMCIpOwogICAgZWxzZSBpZihuPT0xKSBwcmludGYoIjEiKTsKICAgIGVsc2UgaWYobj4xKXsKICAgICAgICBmb3IoaW50IGk9MjtpPD1uO2krKyl7CiAgICAgICAgICAgIHRlbXA9YjsKICAgICAgICAgICAgYis9YTsKICAgICAgICAgICAgYT10ZW1wOwogICAgICAgIH0KICAgIH0KICAgIHByaW50ZigiJWQiLGIpOwogICAgLy9zeXN0ZW0oInBhdXNlIik7CiAgICByZXR1cm4gMDsKfQoKICAgIAo=",
+  "timestamp": 1789915717085
+}
