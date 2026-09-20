@@ -2,6 +2,16 @@
   {
     "username": "自动化肖子榕",
     "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789914448147
+  },
+  {
+    "username": "自动化肖子榕",
+    "problemId": "P006",
     "passed": false,
     "passedTests": 0,
     "totalTests": 5,
