@@ -133,6 +133,12 @@
       "lastSubmit": 1789913956747
     },
     {
+      "username": "Ryoine",
+      "solvedCount": 1,
+      "totalTime": 1,
+      "lastSubmit": 1789921185
+    },
+    {
       "username": "hack_test",
       "solvedCount": 1,
       "totalTime": 1,
@@ -507,6 +513,12 @@
   ],
   "problems": {
     "P001": [
+      {
+        "username": "Ryoine",
+        "attempts": 1,
+        "acceptedAt": 1789921185,
+        "totalTime": 1
+      },
       {
         "username": "hack_test",
         "attempts": 1,
