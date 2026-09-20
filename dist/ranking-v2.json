@@ -7,6 +7,12 @@
       "lastSubmit": 1789917499790
     },
     {
+      "username": "智能感知龙炜镔",
+      "solvedCount": 5,
+      "totalTime": 51,
+      "lastSubmit": 1789918184568
+    },
+    {
       "username": "龚鸿斌",
       "solvedCount": 4,
       "totalTime": 40,
@@ -17,12 +23,6 @@
       "solvedCount": 4,
       "totalTime": 41,
       "lastSubmit": 1789917221912
-    },
-    {
-      "username": "智能感知龙炜镔",
-      "solvedCount": 4,
-      "totalTime": 41,
-      "lastSubmit": 1789917328360
     },
     {
       "username": "26智能制造贾智棋",
@@ -118,7 +118,7 @@
       "username": "26电子信息赵天楷",
       "solvedCount": 2,
       "totalTime": 23,
-      "lastSubmit": 1789917927774
+      "lastSubmit": 1789918181113
     },
     {
       "username": "自动化2班林师鸿",
@@ -743,6 +743,12 @@
         "username": "26测绘余子骞",
         "attempts": 2,
         "acceptedAt": 1789917934180,
+        "totalTime": 10
+      },
+      {
+        "username": "智能感知龙炜镔",
+        "attempts": 3,
+        "acceptedAt": 1789918184568,
         "totalTime": 10
       },
       {

@@ -20,8 +20,8 @@
     "title": "斐波那契数列",
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
-    "acceptRate": "15%",
-    "submitCount": 46
+    "acceptRate": "17%",
+    "submitCount": 48
   },
   {
     "id": "P004",
