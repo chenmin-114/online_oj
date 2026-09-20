@@ -13,6 +13,12 @@
       "lastSubmit": 1789908037678
     },
     {
+      "username": "纪楷基",
+      "solvedCount": 2,
+      "totalTime": 21,
+      "lastSubmit": 1789912100937
+    },
+    {
       "username": "26智能制造贾智棋",
       "solvedCount": 2,
       "totalTime": 23,
@@ -103,12 +109,6 @@
       "lastSubmit": 1789910108773
     },
     {
-      "username": "纪楷基",
-      "solvedCount": 1,
-      "totalTime": 10,
-      "lastSubmit": 1789911405410
-    },
-    {
       "username": "鸡电占紫轩",
       "solvedCount": 1,
       "totalTime": 10,
@@ -125,6 +125,12 @@
       "solvedCount": 1,
       "totalTime": 10,
       "lastSubmit": 1789911923328
+    },
+    {
+      "username": "朱铮卫",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789912095695
     },
     {
       "username": "机制5班胡斐桦",
@@ -250,6 +256,12 @@
         "attempts": 1,
         "acceptedAt": 1789908037678,
         "totalTime": 10
+      },
+      {
+        "username": "纪楷基",
+        "attempts": 1,
+        "acceptedAt": 1789912100937,
+        "totalTime": 11
       }
     ],
     "P003": [],
@@ -300,6 +312,12 @@
         "username": "zgt",
         "attempts": 1,
         "acceptedAt": 1789911923328,
+        "totalTime": 10
+      },
+      {
+        "username": "朱铮卫",
+        "attempts": 1,
+        "acceptedAt": 1789912095695,
         "totalTime": 10
       },
       {
