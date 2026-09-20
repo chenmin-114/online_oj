@@ -1,0 +1,11 @@
+{
+  "username": "自动化阳湘兰",
+  "problemId": "P002",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIGludCBuOwogICAgc2NhbmYoIiVkIiwmbik7CiAgICBpbnQgYXJyWzEwMDFdPXswfTsKICAgIGludCBqID0gMDsKICAgIGZvcihqPTA7ajxuO2orKykKICAgICB7CiAgICAgc2NhbmYoIiVkIiwmYXJyW2pdKTsKICAgICB9CiAgICBpbnQgbWF4ID0gYXJyWzBdOwogICAgZm9yKGo9MDtqPG47aisrKQogICAgewogICAgICAgIGlmKG1heDxhcnJbal0pCiAgICAgICAgewogICAgICAgICAgICBtYXggPSBhcnJbal07CiAgICAgICAgfQogICAgfQogICAgCiAgICBwcmludGYoIiVkIixtYXgpOwoKICAgIAogICAgCiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789915901155
+}
