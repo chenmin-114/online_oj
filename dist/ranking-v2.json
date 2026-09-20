@@ -85,6 +85,18 @@
       "lastSubmit": 1789909970090
     },
     {
+      "username": "机械电子 罗应逍",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789910100468
+    },
+    {
+      "username": "咕咕嘎嘎",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789910108773
+    },
+    {
       "username": "Y_sy_a",
       "solvedCount": 1,
       "totalTime": 15,
@@ -101,12 +113,6 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789831427759
-    },
-    {
-      "username": "机械电子 罗应逍",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789910041542
     }
   ],
   "problems": {
@@ -216,6 +222,18 @@
         "username": "罗应逍",
         "attempts": 1,
         "acceptedAt": 1789909970090,
+        "totalTime": 10
+      },
+      {
+        "username": "机械电子 罗应逍",
+        "attempts": 2,
+        "acceptedAt": 1789910100468,
+        "totalTime": 10
+      },
+      {
+        "username": "咕咕嘎嘎",
+        "attempts": 1,
+        "acceptedAt": 1789910108773,
         "totalTime": 10
       },
       {
