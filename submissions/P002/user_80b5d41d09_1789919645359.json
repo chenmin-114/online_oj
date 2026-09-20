@@ -1,0 +1,11 @@
+{
+  "username": "机械电子工程邓维广",
+  "problemId": "P002",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IG47CiAgIAoKICAgIHNjYW5mKCIlZFxuIiwgJm4pOwogICAgaW50IGFycltuXTsKICAgIGZvciAoaW50IGkgPSAwO2kgPCBuO2krKykKICAgIHsKICAgICAgICBzY2FuZigiJWQiLCAmYXJyW2ldKTsKICAgICAgICBwcmludGYoIiIpOwogICAgfQogICAgaW50IG1heCA9IGFyclswXTsKICAgIGZvciAoaW50IGkgPSAxO2kgPCBuO2krKykKICAgIHsKICAgICAgICBpZiAobWF4IDwgYXJyW2ldKQogICAgICAgIHsKICAgICAgICAgICAgbWF4ID0gYXJyW2ldOwogICAgICAgIH0KICAgICAgIAogICAgfQogICAgcHJpbnRmKCIlZCIsIG1heCk7CiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789919645359
+}
