@@ -2,9 +2,9 @@
   "overall": [
     {
       "username": "GG绷",
-      "solvedCount": 5,
-      "totalTime": 65,
-      "lastSubmit": 1789917039355
+      "solvedCount": 6,
+      "totalTime": 75,
+      "lastSubmit": 1789917499790
     },
     {
       "username": "龚鸿斌",
@@ -91,6 +91,12 @@
       "lastSubmit": 1789917430672
     },
     {
+      "username": "26生物医学工程翁少涵",
+      "solvedCount": 2,
+      "totalTime": 20,
+      "lastSubmit": 1789917473737
+    },
+    {
       "username": "电信类 谭卓彬",
       "solvedCount": 2,
       "totalTime": 21,
@@ -106,7 +112,7 @@
       "username": "26电子信息赵天楷",
       "solvedCount": 2,
       "totalTime": 23,
-      "lastSubmit": 1789917279767
+      "lastSubmit": 1789917510135
     },
     {
       "username": "2",
@@ -319,12 +325,6 @@
       "lastSubmit": 1789916818785
     },
     {
-      "username": "26生物医学工程翁少涵",
-      "solvedCount": 1,
-      "totalTime": 10,
-      "lastSubmit": 1789917066697
-    },
-    {
       "username": "26智感1班吕婷",
       "solvedCount": 1,
       "totalTime": 10,
@@ -335,6 +335,12 @@
       "solvedCount": 1,
       "totalTime": 10,
       "lastSubmit": 1789917150193
+    },
+    {
+      "username": "电子信息类郑鑫",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789917496877
     },
     {
       "username": "机制5班胡斐桦",
@@ -553,6 +559,12 @@
         "username": "26集成-颜楚航",
         "attempts": 1,
         "acceptedAt": 1789917430672,
+        "totalTime": 10
+      },
+      {
+        "username": "26生物医学工程翁少涵",
+        "attempts": 1,
+        "acceptedAt": 1789917467538,
         "totalTime": 10
       },
       {
@@ -910,6 +922,12 @@
         "totalTime": 10
       },
       {
+        "username": "电子信息类郑鑫",
+        "attempts": 1,
+        "acceptedAt": 1789917496877,
+        "totalTime": 10
+      },
+      {
         "username": "机制5班胡斐桦",
         "attempts": 2,
         "acceptedAt": 1789911710988,
@@ -995,6 +1013,12 @@
         "username": "26测绘余子骞",
         "attempts": 1,
         "acceptedAt": 1789915954967,
+        "totalTime": 10
+      },
+      {
+        "username": "GG绷",
+        "attempts": 1,
+        "acceptedAt": 1789917499790,
         "totalTime": 10
       }
     ]

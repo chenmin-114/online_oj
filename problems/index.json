@@ -4,8 +4,8 @@
     "title": "A+B Problem",
     "difficulty": "easy",
     "file": "p001-aplusb.json",
-    "acceptRate": "85%",
-    "submitCount": 55
+    "acceptRate": "86%",
+    "submitCount": 57
   },
   {
     "id": "P002",
@@ -20,8 +20,8 @@
     "title": "斐波那契数列",
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
-    "acceptRate": "14%",
-    "submitCount": 37
+    "acceptRate": "13%",
+    "submitCount": 38
   },
   {
     "id": "P004",
@@ -37,15 +37,15 @@
     "difficulty": "medium",
     "file": "p005-binary-search.json",
     "acceptRate": "100%",
-    "submitCount": 1
+    "submitCount": 2
   },
   {
     "id": "P006",
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "67%",
-    "submitCount": 110
+    "acceptRate": "68%",
+    "submitCount": 111
   },
   {
     "id": "P007",
