@@ -93,7 +93,7 @@
     "username": "自动化阳湘兰",
     "solvedCount": 2,
     "totalTime": 20,
-    "lastSubmit": 1789918140117
+    "lastSubmit": 1789918238414
   },
   {
     "username": "电信类 谭卓彬",
@@ -426,6 +426,12 @@
     "lastSubmit": 1789913271931
   },
   {
+    "username": "智能制造郭佳锋",
+    "solvedCount": 1,
+    "totalTime": 16,
+    "lastSubmit": 1789918214463
+  },
+  {
     "username": "a",
     "solvedCount": 1,
     "totalTime": 15026,
@@ -454,11 +460,5 @@
     "solvedCount": 0,
     "totalTime": 0,
     "lastSubmit": 1789915939805
-  },
-  {
-    "username": "智能制造郭佳锋",
-    "solvedCount": 0,
-    "totalTime": 0,
-    "lastSubmit": 1789918035946
   }
 ]
