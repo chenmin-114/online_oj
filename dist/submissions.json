@@ -1,5 +1,25 @@
 [
   {
+    "username": "26级电子信息类黄佳仪",
+    "problemId": "P002",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789915372962
+  },
+  {
+    "username": "智能感知龙炜镔",
+    "problemId": "P002",
+    "passed": false,
+    "passedTests": 2,
+    "totalTests": 5,
+    "totalTime": 6,
+    "language": "c",
+    "timestamp": 1789915361219
+  },
+  {
     "username": "袁国齐",
     "problemId": "P001",
     "passed": true,
