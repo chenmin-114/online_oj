@@ -415,6 +415,12 @@
       "lastSubmit": 1789913271931
     },
     {
+      "username": "自动化2班林师鸿",
+      "solvedCount": 1,
+      "totalTime": 4031,
+      "lastSubmit": 1789917983342
+    },
+    {
       "username": "a",
       "solvedCount": 1,
       "totalTime": 15026,
@@ -732,6 +738,12 @@
         "attempts": 11,
         "acceptedAt": 1789916742647,
         "totalTime": 11
+      },
+      {
+        "username": "自动化2班林师鸿",
+        "attempts": 1,
+        "acceptedAt": 1789917983342,
+        "totalTime": 4031
       }
     ],
     "P006": [
