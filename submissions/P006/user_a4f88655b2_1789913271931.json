@@ -1,0 +1,11 @@
+{
+  "username": "自动化 唐博",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 15,
+  "language": "cpp",
+  "code": "I2luY2x1ZGUgPGlvc3RyZWFtPgp1c2luZyBuYW1lc3BhY2Ugc3RkOwojaW5jbHVkZSA8aW9tYW5pcD4KaW50IG1haW4oKSB7CiAgICAvLyDlnKjmraTnvJblhpnkvaDnmoTku6PnoIEKICAgIGludCB0b3RhbHNlYzsKY2luID4+IHRvdGFsc2VjOwoKaW50IGhvdXIgPSB0b3RhbHNlYyAvIDM2MDA7CmludCBtaW51dGUgPSAodG90YWxzZWMgJSAzNjAwKSAvIDYwOwppbnQgc2Vjb25kID0gdG90YWxzZWMgJSA2MDsKCmNvdXQgPDwgc2V0ZmlsbCgnMCcpIDw8IHNldHcoMikgPDwgaG91ciA8PCAiOiIKICAgIDw8IHNldHcoMikgPDwgbWludXRlIDw8ICI6IgogICAgPDwgc2V0dygyKSA8PCBzZWNvbmQ7CiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789913271931
+}
