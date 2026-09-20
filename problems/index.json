@@ -12,24 +12,24 @@
     "title": "最大值",
     "difficulty": "easy",
     "file": "p002-max.json",
-    "acceptRate": "68%",
-    "submitCount": 22
+    "acceptRate": "70%",
+    "submitCount": 23
   },
   {
     "id": "P003",
     "title": "斐波那契数列",
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
-    "acceptRate": "16%",
-    "submitCount": 56
+    "acceptRate": "18%",
+    "submitCount": 57
   },
   {
     "id": "P004",
     "title": "回文判断",
     "difficulty": "easy",
     "file": "p004-palindrome.json",
-    "acceptRate": "60%",
-    "submitCount": 5
+    "acceptRate": "67%",
+    "submitCount": 6
   },
   {
     "id": "P005",
@@ -37,7 +37,7 @@
     "difficulty": "medium",
     "file": "p005-binary-search.json",
     "acceptRate": "100%",
-    "submitCount": 3
+    "submitCount": 4
   },
   {
     "id": "P006",
@@ -45,14 +45,14 @@
     "difficulty": "easy",
     "file": "p006-example.json",
     "acceptRate": "66%",
-    "submitCount": 138
+    "submitCount": 139
   },
   {
     "id": "P007",
     "title": "[NOIP 2008 提高组] 双栈排序（test)",
     "difficulty": "hard",
     "file": "p007.json",
-    "acceptRate": "0%",
-    "submitCount": 0
+    "acceptRate": "100%",
+    "submitCount": 1
   }
 ]
