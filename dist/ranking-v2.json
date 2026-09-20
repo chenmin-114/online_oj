@@ -13,6 +13,12 @@
       "lastSubmit": 1789908037678
     },
     {
+      "username": "..",
+      "solvedCount": 2,
+      "totalTime": 20,
+      "lastSubmit": 1789912133723
+    },
+    {
       "username": "纪楷基",
       "solvedCount": 2,
       "totalTime": 21,
@@ -113,12 +119,6 @@
       "solvedCount": 1,
       "totalTime": 10,
       "lastSubmit": 1789911713529
-    },
-    {
-      "username": "..",
-      "solvedCount": 1,
-      "totalTime": 10,
-      "lastSubmit": 1789911809493
     },
     {
       "username": "zgt",
@@ -235,6 +235,12 @@
         "username": "26智能制造贾智棋",
         "attempts": 1,
         "acceptedAt": 1789911530366,
+        "totalTime": 10
+      },
+      {
+        "username": "..",
+        "attempts": 1,
+        "acceptedAt": 1789912133723,
         "totalTime": 10
       },
       {
