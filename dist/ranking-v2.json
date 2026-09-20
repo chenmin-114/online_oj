@@ -253,6 +253,12 @@
       "lastSubmit": 1789914723625
     },
     {
+      "username": "26集成-颜楚航",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789915052582
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -648,6 +654,12 @@
         "username": "机械电子工程陈梓桓",
         "attempts": 1,
         "acceptedAt": 1789914723625,
+        "totalTime": 10
+      },
+      {
+        "username": "26集成-颜楚航",
+        "attempts": 1,
+        "acceptedAt": 1789915052582,
         "totalTime": 10
       },
       {
