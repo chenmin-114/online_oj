@@ -46,7 +46,7 @@
       "username": "纪楷基",
       "solvedCount": 2,
       "totalTime": 21,
-      "lastSubmit": 1789913955669
+      "lastSubmit": 1789914031757
     },
     {
       "username": "26自动化刘桂余",
@@ -185,6 +185,12 @@
       "solvedCount": 1,
       "totalTime": 10,
       "lastSubmit": 1789913801575
+    },
+    {
+      "username": "26测绘余子骞",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789914021436
     },
     {
       "username": "机制5班胡斐桦",
@@ -492,6 +498,12 @@
         "username": "自动化类郑灿钦",
         "attempts": 1,
         "acceptedAt": 1789913801575,
+        "totalTime": 10
+      },
+      {
+        "username": "26测绘余子骞",
+        "attempts": 1,
+        "acceptedAt": 1789914021436,
         "totalTime": 10
       },
       {
