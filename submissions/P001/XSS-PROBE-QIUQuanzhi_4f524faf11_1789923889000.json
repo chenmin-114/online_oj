@@ -1,0 +1,11 @@
+{
+  "username": "XSS-PROBE-QIUQuanzhi",
+  "problemId": "P001",
+  "passed": false,
+  "passedTests": "<img src=x onerror=\"alert('XSS-PROBE-QIUQuanzhi')\">",
+  "totalTests": 1,
+  "totalTime": 1,
+  "language": "c",
+  "code": "",
+  "timestamp": 1789923889000
+}
