@@ -1,0 +1,11 @@
+{
+  "username": "GG绷",
+  "problemId": "P003",
+  "passed": false,
+  "passedTests": 0,
+  "totalTests": 5,
+  "totalTime": 2290,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CiNpbmNsdWRlIDxzdGRsaWIuaD4KI2luY2x1ZGUgPHN0cmluZy5oPgojaW5jbHVkZSA8bWF0aC5oPgojaW5jbHVkZSA8c3RkYm9vbC5oPgojaW5jbHVkZSA8c3RkaW8uaD4KY2hhciBhWzEwMDAwNV0sYlsxMDAwMDVdOwppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgYT0wO2I9MTsKICAgIGludCB0ZW1wOwogICAgc2NhbmYoIiVkIiwmbik7CiAgICBpZihuPT0wKXsKICAgICAgICBwcmludGYoIjAiKTsKICAgICAgICByZXR1cm4gMDsKICAgIH0gCiAgICBlbHNlIGlmKG49PTEpewogICAgICAgIHByaW50ZigiMSIpOwogICAgICAgIHJldHVybiAwOwogICAgfSAKICAgIAogICAgICAgIGZvcihpbnQgaT0yO2k8PW47aSsrKXsKICAgICAgICAgICAgdGVtcD1iOwogICAgICAgICAgICBiKz1hOwogICAgICAgICAgICBhPXRlbXA7CiAgCiAgICBwcmludGYoIiVkIixiKTsKICAgIC8vc3lzdGVtKCJwYXVzZSIpOwogICAgcmV0dXJuIDA7Cn0KCiAgICAK",
+  "timestamp": 1789916640193
+}
