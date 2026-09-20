@@ -1,0 +1,11 @@
+{
+  "username": "张广鹏",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 11,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CmludCBtYWluKCkgCnsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IHRvdGFsc2VjLEgsTSxTOwogICAgc2NhbmYoIiVkIiwmdG90YWxzZWMpOwogICAgd2hpbGUodG90YWxzZWM+ODYzOTkpCiAgICB7CiAgICAgICAgdG90YWxzZWM9dG90YWxzZWMtODY0MDA7CiAgICB9CiAgICBIID10b3RhbHNlYy8zNjAwOwogICAgTSA9KHRvdGFsc2VjLTM2MDAgKiBIKSAvIDYwOwogICAgUyA9KHRvdGFsc2VjLTM2MDAgKiBIIC0gNjAgKiBNKTsKICAgIHByaW50ZigiXG4iKTsKICAgIHByaW50ZigiJTAyZDolMDJkOiUwMmQiLCBILCBNLCBTKTsKICAgIHJldHVybiAwOwp9",
+  "timestamp": 1789917908746
+}
