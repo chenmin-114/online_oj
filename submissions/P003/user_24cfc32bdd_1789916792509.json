@@ -1,0 +1,11 @@
+{
+  "username": "龚鸿斌",
+  "problemId": "P003",
+  "passed": false,
+  "passedTests": 4,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CiNpbmNsdWRlIDxtYXRoLmg+CmludCBtYWluKCkgewogICAgaW50IHJldCA9IDA7CiAgICBpbnQgbjsKICAgIGludCBmMT0xOwogICAgaW50IGYwPTA7CiAgICBpbnQgdD0wOwogICAgc2NhbmYoIiVkIiwmbik7CiAgICBpZihuPT0xKQogICAgewogICAgICAgIHQ9MTsKICAgIH0KICAgIGZvcihpbnQgaSA9MjtpPD1uO2krKykKICAgIHsKICAgICAgICB0PSBmMCtmMTsKICAgICAgICBmMD1mMTsKICAgICAgICBmMT10OwogICAgfQogICAgaW50IHg9IHBvdygxMCw5KS03OwogICAgcmV0ID0gdCV4OwogICAgcHJpbnRmKCIlZCIscmV0KTsKCgoKICAgIHJldHVybiAwOwp9Cg==",
+  "timestamp": 1789916792509
+}
