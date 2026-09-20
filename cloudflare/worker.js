@@ -68,6 +68,8 @@ export default {
         return await handleExecute(body, env);
       } else if (body.type === 'create_problem') {
         return await handleCreateProblem(body, env);
+      } else if (body.type === 'update_problem') {
+        return await handleUpdateProblem(body, env);
       } else if (body.type === 'submit' || typeof body.passed === 'boolean') {
         return await handleSubmit(body, env);
       }
@@ -90,7 +92,16 @@ async function handleData(request, env) {
     return jsonResponse({ error: 'GitHub 存储尚未配置' }, 503);
   }
 
-  const path = DATA_FILES[new URL(request.url).searchParams.get('file')];
+  const params = new URL(request.url).searchParams;
+  const fileType = params.get('file');
+  let path = DATA_FILES[fileType];
+  if (fileType === 'problem') {
+    const name = String(params.get('name') || '').toLowerCase();
+    if (!/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/.test(name)) {
+      return jsonResponse({ error: '题目文件名不正确' }, 400);
+    }
+    path = `problems/${name}`;
+  }
   if (!path) {
     return jsonResponse({ error: '不支持的数据文件' }, 400);
   }
@@ -339,6 +350,114 @@ async function handleCreateProblem(body, env) {
   }, 201);
 }
 
+/**
+ * 从管理页面修改题目，并同步题目索引中的标题和难度。
+ */
+async function handleUpdateProblem(body, env) {
+  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
+    return jsonResponse({ error: 'GitHub 存储尚未配置' }, 503);
+  }
+
+  const validation = validateProblem(body.problem, body.file);
+  if (validation.error) return jsonResponse({ error: validation.error }, 400);
+  const { problem, file } = validation;
+  const imageValidation = validateProblemImages(body.images, problem.id);
+  if (imageValidation.error) return jsonResponse({ error: imageValidation.error }, 400);
+  const images = imageValidation.images;
+
+  if (images.length) {
+    const imagesWithoutPlaceholder = [];
+    for (const image of images) {
+      const placeholder = `oj-image:${image.id}`;
+      if (problem.description.includes(placeholder)) {
+        problem.description = problem.description.replaceAll(placeholder, image.path);
+      } else {
+        imagesWithoutPlaceholder.push(image);
+      }
+    }
+    if (imagesWithoutPlaceholder.length) {
+      problem.description += `\n\n${imagesWithoutPlaceholder
+        .map(image => `![${image.alt}](${image.path})`)
+        .join('\n\n')}`;
+    }
+  }
+
+  const headers = githubHeaders(env.GITHUB_TOKEN);
+  const indexPath = 'problems/index.json';
+  const problemPath = `problems/${file}`;
+  const indexUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${indexPath}`;
+  const problemUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${problemPath}`;
+  const [indexRes, problemRes] = await Promise.all([
+    fetch(indexUrl, { headers }),
+    fetch(problemUrl, { headers }),
+  ]);
+  if (!indexRes.ok) return githubErrorResponse(indexRes, '读取题目索引失败');
+  if (!problemRes.ok) return githubErrorResponse(problemRes, '读取题目文件失败');
+
+  const indexFile = await indexRes.json();
+  const problemFile = await problemRes.json();
+  let index;
+  try {
+    index = JSON.parse(decodeBase64Utf8(indexFile.content));
+  } catch {
+    return jsonResponse({ error: '题目索引格式不正确' }, 500);
+  }
+  if (!Array.isArray(index)) return jsonResponse({ error: '题目索引必须是数组' }, 500);
+
+  const indexItem = index.find(item => item.file === file);
+  if (!indexItem) return jsonResponse({ error: '题目不在题目列表中' }, 404);
+  if (indexItem.id !== problem.id) {
+    return jsonResponse({ error: '编辑题目时不能修改题号' }, 400);
+  }
+
+  for (const image of images) {
+    const imageUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${image.path}`;
+    const existingImage = await fetch(imageUrl, { headers });
+    if (existingImage.ok) return jsonResponse({ error: `图片文件已经存在：${image.path}` }, 409);
+    if (existingImage.status !== 404) return githubErrorResponse(existingImage, '检查图片文件失败');
+  }
+  for (const image of images) {
+    const imageUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${image.path}`;
+    const createImageRes = await fetch(imageUrl, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        message: `🖼️ Add image for ${problem.id}`,
+        content: image.content,
+      }),
+    });
+    if (!createImageRes.ok) return githubErrorResponse(createImageRes, `上传图片 ${image.alt} 失败`);
+  }
+
+  const updateProblemRes = await fetch(problemUrl, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({
+      message: `✏️ Update problem ${problem.id} - ${problem.title}`,
+      content: encodeBase64Utf8(JSON.stringify(problem, null, 2)),
+      sha: problemFile.sha,
+    }),
+  });
+  if (!updateProblemRes.ok) return githubErrorResponse(updateProblemRes, '更新题目文件失败');
+
+  indexItem.title = problem.title;
+  indexItem.difficulty = problem.difficulty;
+  const updateIndexRes = await fetch(indexUrl, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({
+      message: `🗂️ Sync problem ${problem.id} metadata`,
+      content: encodeBase64Utf8(JSON.stringify(index, null, 2)),
+      sha: indexFile.sha,
+    }),
+  });
+  if (!updateIndexRes.ok) {
+    return githubErrorResponse(updateIndexRes, '题目内容已更新，但同步题目列表失败，请重试');
+  }
+
+  return jsonResponse({ success: true, problem: indexItem });
+}
+
 function validateProblem(input, requestedFile) {
   if (!input || typeof input !== 'object') return { error: '缺少题目内容' };
 
@@ -441,7 +560,7 @@ function validateProblemImages(input, problemId) {
       id,
       alt,
       content,
-      path: `assets/problems/${baseName}/${baseName}-${index + 1}.${extension}`,
+      path: `assets/problems/${baseName}/${baseName}-${id.slice(0, 8)}.${extension}`,
     });
   }
 

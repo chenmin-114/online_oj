@@ -161,6 +161,7 @@
 .difficulty-pill.hard { color: #ff7b8b; background: rgba(255,92,111,.1); }
 .table-link { color: var(--admin-blue); text-decoration: none; }
 .table-link:hover { text-decoration: underline; }
+.table-link-button { padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
 
 .problem-editor { margin-top: 20px; }
 .problem-editor[hidden] { display: none; }

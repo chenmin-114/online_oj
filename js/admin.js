@@ -15,6 +15,7 @@ class OJAdmin {
     this.ranking = { overall: [], problems: {} };
     this.filteredSubmissions = [];
     this.problemImages = [];
+    this.editingProblem = null;
   }
 
   async init() {
@@ -41,9 +42,12 @@ class OJAdmin {
     document.getElementById('admin-ranking-scope').addEventListener('change', event => {
       this.renderLeaderboard(event.target.value);
     });
-    document.getElementById('show-problem-editor').addEventListener('click', () => this.showProblemEditor());
+    document.getElementById('show-problem-editor').addEventListener('click', () => this.startNewProblem());
     document.getElementById('close-problem-editor').addEventListener('click', () => this.hideProblemEditor());
-    document.getElementById('reset-problem-editor').addEventListener('click', () => this.resetProblemEditor());
+    document.getElementById('reset-problem-editor').addEventListener('click', () => {
+      if (this.editingProblem) this.editProblem(this.editingProblem.file);
+      else this.resetProblemEditor();
+    });
     document.getElementById('add-test-case').addEventListener('click', () => this.addTestCase());
     document.getElementById('import-problem-markdown').addEventListener('click', () => this.importProblemMarkdown());
     document.getElementById('problem-images').addEventListener('change', event => {
@@ -51,6 +55,10 @@ class OJAdmin {
       event.target.value = '';
     });
     document.getElementById('problem-editor').addEventListener('submit', event => this.saveProblem(event));
+    document.getElementById('problem-admin-list').addEventListener('click', event => {
+      const button = event.target.closest('[data-edit-problem]');
+      if (button) this.editProblem(button.dataset.editProblem);
+    });
     document.getElementById('problem-id').addEventListener('input', event => {
       const fileInput = document.getElementById('problem-file');
       if (!fileInput.value || /^p\d+\.json$/i.test(fileInput.value)) {
@@ -200,7 +208,7 @@ class OJAdmin {
         <td><span class="difficulty-pill ${this.escape(problem.difficulty)}">${this.difficultyText(problem.difficulty)}</span></td>
         <td>${counts[problem.id] || 0}</td>
         <td>${accepted[problem.id] || 0}</td>
-        <td><a class="table-link" target="_blank" rel="noopener" href="https://github.com/${this.config.repo}/edit/main/problems/${encodeURIComponent(problem.file)}">编辑 ↗</a></td>
+        <td><button type="button" class="table-link table-link-button" data-edit-problem="${this.escape(problem.file)}">可视化编辑</button></td>
       </tr>
     `).join('') : '<tr><td colspan="6" class="empty-cell">暂无题目</td></tr>';
   }
@@ -224,6 +232,56 @@ class OJAdmin {
     document.getElementById('problem-import-status').textContent = '自动识别题号、标题、描述、输入输出格式、样例和说明；发布前请补充隐藏测试点';
     this.clearProblemImages();
     this.addTestCase();
+  }
+
+  startNewProblem() {
+    this.editingProblem = null;
+    this.resetProblemEditor();
+    this.setProblemEditorMode(false);
+    this.showProblemEditor();
+  }
+
+  setProblemEditorMode(isEditing) {
+    document.getElementById('problem-editor-title').textContent = isEditing ? '编辑题目' : '新增题目';
+    document.getElementById('problem-editor-subtitle').textContent = isEditing
+      ? '保存时会同时更新题目详情和题目列表'
+      : '填写后会自动创建题目文件并加入题目列表';
+    document.getElementById('problem-id').readOnly = isEditing;
+    document.getElementById('problem-file').readOnly = isEditing;
+    document.getElementById('reset-problem-editor').textContent = isEditing ? '恢复原内容' : '清空';
+    document.getElementById('save-problem').textContent = isEditing ? '保存修改' : '保存并发布题目';
+  }
+
+  async editProblem(file) {
+    try {
+      this.toast('正在读取题目内容...');
+      const problem = await this.fetchJson(`${this.config.workerUrl}/?file=problem&name=${encodeURIComponent(file)}`);
+      this.resetProblemEditor();
+      this.editingProblem = { file, id: problem.id };
+      this.setProblemEditorMode(true);
+
+      document.getElementById('problem-id').value = problem.id || '';
+      document.getElementById('problem-title').value = problem.title || '';
+      document.getElementById('problem-difficulty').value = problem.difficulty || 'easy';
+      document.getElementById('problem-file').value = file;
+      document.getElementById('problem-description').value = problem.description || '';
+      document.getElementById('problem-input-format').value = problem.inputFormat || '';
+      document.getElementById('problem-output-format').value = problem.outputFormat || '';
+      document.getElementById('problem-constraints').value = problem.constraints || '';
+      document.getElementById('problem-sample-input').value = problem.sampleInput || '';
+      document.getElementById('problem-sample-output').value = problem.sampleOutput || '';
+      document.getElementById('problem-hints').value = Array.isArray(problem.hints) ? problem.hints.join('\n') : '';
+
+      const testCaseEditor = document.getElementById('test-case-editor');
+      testCaseEditor.innerHTML = '';
+      const testCases = Array.isArray(problem.testCases) && problem.testCases.length
+        ? problem.testCases
+        : [{ input: '', expectedOutput: '' }];
+      testCases.forEach(testCase => this.addTestCase(testCase.input, testCase.expectedOutput));
+      this.showProblemEditor();
+    } catch (error) {
+      this.toast(`读取题目失败：${error.message}`);
+    }
   }
 
   importProblemMarkdown() {
@@ -482,8 +540,9 @@ class OJAdmin {
 
     const saveButton = document.getElementById('save-problem');
     const status = document.getElementById('problem-save-status');
+    const isEditing = Boolean(this.editingProblem);
     saveButton.disabled = true;
-    saveButton.textContent = '正在发布...';
+    saveButton.textContent = isEditing ? '正在保存...' : '正在发布...';
     status.textContent = this.problemImages.length ? '正在处理题目图片' : '正在写入 GitHub 仓库';
 
     try {
@@ -498,7 +557,7 @@ class OJAdmin {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'create_problem',
+          type: isEditing ? 'update_problem' : 'create_problem',
           file: document.getElementById('problem-file').value,
           problem,
           images,
@@ -507,13 +566,22 @@ class OJAdmin {
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || `发布失败 (${response.status})`);
 
-      this.problems.push(result.problem);
+      if (isEditing) {
+        const index = this.problems.findIndex(item => item.id === result.problem.id);
+        if (index !== -1) this.problems[index] = result.problem;
+      } else {
+        this.problems.push(result.problem);
+      }
       this.problems.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
       this.renderMetrics();
       this.renderProblems();
       this.populateFilters();
       this.populateRankingSelector();
-      this.toast(`${result.problem.id} 已发布，前台将在 GitHub Pages 更新后显示`);
+      this.toast(isEditing
+        ? `${result.problem.id} 已更新，题目列表也已同步`
+        : `${result.problem.id} 已发布，前台将在 GitHub Pages 更新后显示`);
+      this.editingProblem = null;
+      this.setProblemEditorMode(false);
       this.resetProblemEditor();
       this.hideProblemEditor();
     } catch (error) {
@@ -522,7 +590,7 @@ class OJAdmin {
         : error.message;
     } finally {
       saveButton.disabled = false;
-      saveButton.textContent = '保存并发布题目';
+      saveButton.textContent = this.editingProblem ? '保存修改' : '保存并发布题目';
     }
   }
 
