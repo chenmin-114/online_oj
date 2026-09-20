@@ -3,8 +3,9 @@
  * 功能：
  * 1. 代理 Judge0 CE 执行代码（type: 'execute'）
  * 2. 代理 GitHub API 提交结果（默认行为）
- * 3. 保护 GitHub API 凭据，不暴露在前端
- * 
+ * 3. 读取题目、排行榜与提交记录数据（GET ?file=）
+ * 4. 保护 GitHub API 凭据，不暴露在前端
+ *
  * 需要配置的环境变量/Secrets：
  * - GITHUB_TOKEN (Secret)
  * - GITHUB_REPO (Plaintext)
@@ -13,8 +14,15 @@
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// 允许读取的数据文件白名单：查询参数不能直接拼进 GitHub 路径
+const DATA_FILES = {
+  'problems': 'problems/index.json',
+  'ranking-v2': 'dist/ranking-v2.json',
+  'submissions': 'dist/submissions.json',
 };
 
 // 兼容仍在浏览器缓存中的旧版 JDoodle 前端字段。
@@ -35,7 +43,12 @@ export default {
       return new Response(null, { headers: CORS_HEADERS });
     }
 
-    // 只接受 POST
+    // 数据读取：绕开 GitHub Pages CDN 的 max-age=600 缓存
+    if (request.method === 'GET') {
+      return await handleData(request, env);
+    }
+
+    // 其余接口只接受 POST
     if (request.method !== 'POST') {
       return new Response('Method Not Allowed', { status: 405 });
     }
@@ -66,6 +79,44 @@ export default {
     }
   },
 };
+
+/**
+ * 读取仓库数据文件（题目 / 排行榜 / 提交记录）。
+ * 走 GitHub Contents API 而不是 raw.githubusercontent：raw 自身也带 CDN 缓存，
+ * 会把旧数据再返回一次；API 响应不缓存，且带 Token 不受匿名限额影响。
+ */
+async function handleData(request, env) {
+  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
+    return jsonResponse({ error: 'GitHub 存储尚未配置' }, 503);
+  }
+
+  const path = DATA_FILES[new URL(request.url).searchParams.get('file')];
+  if (!path) {
+    return jsonResponse({ error: '不支持的数据文件' }, 400);
+  }
+
+  const githubRes = await fetch(
+    `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${path}`,
+    {
+      headers: {
+        ...githubHeaders(env.GITHUB_TOKEN),
+        // 直接取原始内容：文件超过 1MB 时 base64 形式的接口会返回空 content
+        'Accept': 'application/vnd.github.raw',
+      },
+    }
+  );
+  if (!githubRes.ok) {
+    return githubErrorResponse(githubRes, '读取数据文件失败');
+  }
+
+  return new Response(await githubRes.text(), {
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      ...CORS_HEADERS,
+    },
+  });
+}
 
 /**
  * 处理代码执行请求（代理 Judge0 CE API）

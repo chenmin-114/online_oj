@@ -28,6 +28,7 @@ window.OJ_CONFIG = {
   // Cache-Control: no-store。不读同源 dist/*.json，因为 GitHub Pages 的 CDN
   // 会忽略查询参数并把响应缓存 10 分钟，导致提交记录长时间不刷新。
   // dist/ranking.json（旧版数组格式）仍保留在仓库中，供已缓存的旧页面使用。
+  PROBLEMS_URL: WORKER_URL ? `${WORKER_URL}/?file=problems` : '',
   RANKING_URL: WORKER_URL ? `${WORKER_URL}/?file=ranking-v2` : '',
   SUBMISSIONS_URL: WORKER_URL ? `${WORKER_URL}/?file=submissions` : '',
 };

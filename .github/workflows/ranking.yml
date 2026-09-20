@@ -36,12 +36,13 @@ jobs:
           node scripts/rank-generator.js > dist/ranking-v2.json
           node scripts/ranking-legacy-generator.js dist/ranking-v2.json > dist/ranking.json
           node scripts/submission-generator.js > dist/submissions.json
+          node scripts/problem-stats-generator.js
 
       - name: Commit ranking update
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add dist/ranking.json dist/ranking-v2.json dist/submissions.json
+          git add dist/ranking.json dist/ranking-v2.json dist/submissions.json problems/index.json
           git diff --staged --quiet || git commit -m "🏆 Update ranking - $(date +'%Y-%m-%d %H:%M:%S')"
           git push
 

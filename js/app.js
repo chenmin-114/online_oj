@@ -38,7 +38,19 @@ class App {
 
   async loadProblemList() {
     try {
-      const response = await fetch('problems/index.json');
+      const configuredUrl = window.OJ_CONFIG.PROBLEMS_URL;
+      let response;
+
+      try {
+        response = await fetch(configuredUrl || 'problems/index.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      } catch (workerError) {
+        if (!configuredUrl) throw workerError;
+        // 自定义接口暂时不可达时，仍允许从 GitHub Pages 加载题目列表。
+        response = await fetch(`problems/index.json?t=${Date.now()}`, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      }
+
       const problems = await response.json();
       this.problemList = problems;
       this._renderProblemList(problems);

@@ -4,7 +4,7 @@ class OJAdmin {
     this.config = {
       workerUrl,
       repo: 'chenmin-114/online_oj',
-      problemsUrl: 'problems/index.json',
+      problemsUrl: `${workerUrl}/?file=problems`,
       // 数据经 Worker 直读，绕开 GitHub Pages CDN 的 10 分钟缓存
       submissionsUrl: `${workerUrl}/?file=submissions`,
       rankingUrl: `${workerUrl}/?file=ranking-v2`,
