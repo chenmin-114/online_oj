@@ -149,10 +149,22 @@ class App {
 
     // 每次返回题目列表都重新读取统计，显示最新提交数和通过率。
     const problemsLink = document.querySelector('[data-view="problems"]');
-    problemsLink.addEventListener('click', () => {
-      document.getElementById('problem-list').innerHTML =
-        '<p class="info">⏳ 正在刷新题目...</p>';
-      this.loadProblemList();
+    problemsLink.addEventListener('click', async () => {
+      const problemList = document.getElementById('problem-list');
+      let refreshStatus = document.getElementById('problem-refresh-status');
+      if (!refreshStatus) {
+        refreshStatus = document.createElement('p');
+        refreshStatus.id = 'problem-refresh-status';
+        refreshStatus.className = 'info';
+        refreshStatus.textContent = '⏳ 正在刷新题目...';
+        problemList.before(refreshStatus);
+      }
+
+      try {
+        await this.loadProblemList();
+      } finally {
+        refreshStatus.remove();
+      }
     });
 
     // 修改用户名
