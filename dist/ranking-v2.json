@@ -151,6 +151,12 @@
       "lastSubmit": 1789912469250
     },
     {
+      "username": "26电气丰川祥子",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789912970658
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -384,6 +390,12 @@
         "username": "龚鸿斌",
         "attempts": 1,
         "acceptedAt": 1789912663326,
+        "totalTime": 10
+      },
+      {
+        "username": "26电气丰川祥子",
+        "attempts": 1,
+        "acceptedAt": 1789912970658,
         "totalTime": 10
       },
       {
