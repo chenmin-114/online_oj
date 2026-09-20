@@ -379,6 +379,12 @@
       "lastSubmit": 1789918833787
     },
     {
+      "username": "aaa",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789919782070
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -473,12 +479,6 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789915939805
-    },
-    {
-      "username": "aaa",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789919431039
     }
   ],
   "problems": {
@@ -1075,6 +1075,12 @@
         "username": "电子信息  姚锦灿",
         "attempts": 2,
         "acceptedAt": 1789918585643,
+        "totalTime": 10
+      },
+      {
+        "username": "aaa",
+        "attempts": 2,
+        "acceptedAt": 1789919782070,
         "totalTime": 10
       },
       {
