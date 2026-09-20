@@ -90,7 +90,7 @@
             <label class="form-field"><span>题目描述 *</span><textarea id="problem-description" class="admin-input" required rows="7" placeholder="使用 Markdown 编写题目描述"></textarea><small>支持标题、列表、表格、链接、代码块和 LaTeX 公式，例如：**重点**、```cpp、$x^2$</small></label>
             <div class="problem-image-uploader">
               <div class="problem-image-upload-heading">
-                <div><strong>题目图片（可选）</strong><p>图片会显示在题目描述下方，最多 5 张；单张不超过 3 MB</p></div>
+                <div><strong>题目图片（可选）</strong><p>先在题目描述中放置光标，选择图片后会插入到光标位置；最多 5 张</p></div>
                 <label class="admin-button secondary image-select-button">＋ 选择图片<input id="problem-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple></label>
               </div>
               <div id="problem-image-preview" class="problem-image-preview" hidden></div>
@@ -161,6 +161,6 @@
   </div>
 
   <div id="admin-toast" class="admin-toast" role="status"></div>
-  <script src="js/admin.js?v=20260920-6"></script>
+  <script src="js/admin.js?v=20260920-7"></script>
 </body>
 </html>

@@ -220,8 +220,21 @@ async function handleCreateProblem(body, env) {
   if (imageValidation.error) return jsonResponse({ error: imageValidation.error }, 400);
   const images = imageValidation.images;
   if (images.length) {
-    const imageMarkdown = images.map(image => `![${image.alt}](${image.path})`).join('\n\n');
-    problem.description = `${problem.description}\n\n${imageMarkdown}`;
+    const imagesWithoutPlaceholder = [];
+    for (const image of images) {
+      const placeholder = `oj-image:${image.id}`;
+      if (problem.description.includes(placeholder)) {
+        problem.description = problem.description.replaceAll(placeholder, image.path);
+      } else {
+        imagesWithoutPlaceholder.push(image);
+      }
+    }
+    if (imagesWithoutPlaceholder.length) {
+      const imageMarkdown = imagesWithoutPlaceholder
+        .map(image => `![${image.alt}](${image.path})`)
+        .join('\n\n');
+      problem.description = `${problem.description}\n\n${imageMarkdown}`;
+    }
   }
   const indexPath = 'problems/index.json';
   const problemPath = `problems/${file}`;
@@ -395,9 +408,11 @@ function validateProblemImages(input, problemId) {
   let totalBytes = 0;
 
   for (const [index, image] of input.entries()) {
+    const id = typeof image?.id === 'string' ? image.id.trim() : '';
     const extension = extensions[image?.type];
     const content = typeof image?.content === 'string' ? image.content.replace(/\s/g, '') : '';
-    if (!extension || !content || !/^[A-Za-z0-9+/]+={0,2}$/.test(content)) {
+    if (!/^[a-zA-Z0-9-]{8,64}$/.test(id)
+        || !extension || !content || !/^[A-Za-z0-9+/]+={0,2}$/.test(content)) {
       return { error: `第 ${index + 1} 张图片格式不正确` };
     }
 
@@ -423,6 +438,7 @@ function validateProblemImages(input, problemId) {
       .slice(0, 100) || `题目图片 ${index + 1}`;
     const baseName = problemId.toLowerCase();
     images.push({
+      id,
       alt,
       content,
       path: `assets/problems/${baseName}/${baseName}-${index + 1}.${extension}`,

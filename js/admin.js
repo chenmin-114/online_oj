@@ -242,8 +242,10 @@ class OJAdmin {
         this.toast('每道题最多上传 5 张图片');
         break;
       }
+      const id = window.crypto?.randomUUID?.()
+        || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       accepted.push({
-        id: `${Date.now()}-${Math.random()}`,
+        id,
         file,
         previewUrl: URL.createObjectURL(file),
       });
@@ -258,7 +260,32 @@ class OJAdmin {
     }
 
     this.problemImages.push(...accepted);
+    this.insertProblemImageMarkdown(accepted);
     this.renderProblemImages();
+  }
+
+  insertProblemImageMarkdown(images) {
+    if (!images.length) return;
+    const textarea = document.getElementById('problem-description');
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? start;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    const markdown = images.map(item => {
+      const alt = item.file.name
+        .replace(/\.[^.]+$/, '')
+        .replace(/[\[\]\\]/g, '')
+        .trim() || '题目图片';
+      return `![${alt}](oj-image:${item.id})`;
+    }).join('\n\n');
+    const prefix = before && !before.endsWith('\n') ? '\n\n' : '';
+    const suffix = after && !after.startsWith('\n') ? '\n\n' : '';
+    const inserted = `${prefix}${markdown}${suffix}`;
+
+    textarea.value = `${before}${inserted}${after}`;
+    const cursor = before.length + inserted.length;
+    textarea.focus();
+    textarea.setSelectionRange(cursor, cursor);
   }
 
   renderProblemImages() {
@@ -279,6 +306,11 @@ class OJAdmin {
   removeProblemImage(id) {
     const index = this.problemImages.findIndex(item => item.id === id);
     if (index === -1) return;
+    const description = document.getElementById('problem-description');
+    const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    description.value = description.value
+      .replace(new RegExp(`!\\[[^\\]\\r\\n]*\\]\\(oj-image:${escapedId}\\)`, 'g'), '')
+      .replace(/\n{3,}/g, '\n\n');
     URL.revokeObjectURL(this.problemImages[index].previewUrl);
     this.problemImages.splice(index, 1);
     this.renderProblemImages();
@@ -366,6 +398,7 @@ class OJAdmin {
 
     try {
       const images = await Promise.all(this.problemImages.map(async item => ({
+        id: item.id,
         name: item.file.name,
         type: item.file.type,
         content: await this.readImageAsBase64(item.file),
