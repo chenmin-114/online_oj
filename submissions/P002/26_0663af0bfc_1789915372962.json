@@ -1,0 +1,11 @@
+{
+  "username": "26级电子信息类黄佳仪",
+  "problemId": "P002",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIGludCBuOwogICAgc2NhbmYoIiVkIiwmbik7CiAgICBpbnQgbWF4LCBudW07CiAgICBzY2FuZigiJWQiLCZtYXgpOwogICAgZm9yKGludCBpPTA7aTxuO2krKykKICAgIHsKICAgICAgICBzY2FuZigiJWQiLCZudW0pOwogICAgICAgIGlmKG51bSA+PSBtYXgpCiAgICAgICAgewogICAgICAgICAgICBtYXg9bnVtOwogICAgICAgIH0KICAgICAgICAKICAgIH0KICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgcHJpbnRmKCIlZCIsbWF4KTsKICAgIHJldHVybiAwOwp9Cg==",
+  "timestamp": 1789915372962
+}
