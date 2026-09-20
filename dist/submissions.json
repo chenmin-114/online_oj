@@ -2,6 +2,16 @@
   {
     "username": "生物医学工程黎舜坤",
     "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789919896461
+  },
+  {
+    "username": "生物医学工程黎舜坤",
+    "problemId": "P006",
     "passed": false,
     "passedTests": 0,
     "totalTests": 5,

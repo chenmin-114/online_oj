@@ -385,6 +385,12 @@
       "lastSubmit": 1789919782070
     },
     {
+      "username": "生物医学工程黎舜坤",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789919896461
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -479,12 +485,6 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789915939805
-    },
-    {
-      "username": "生物医学工程黎舜坤",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789919866650
     }
   ],
   "problems": {
@@ -1087,6 +1087,12 @@
         "username": "aaa",
         "attempts": 2,
         "acceptedAt": 1789919782070,
+        "totalTime": 10
+      },
+      {
+        "username": "生物医学工程黎舜坤",
+        "attempts": 3,
+        "acceptedAt": 1789919896461,
         "totalTime": 10
       },
       {
