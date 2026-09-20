@@ -1,0 +1,11 @@
+{
+  "username": "26集成-颜楚航",
+  "problemId": "P003",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CmludCBtYWluKCkgewogICAgbG9uZyBsb25nIGE9MDsKICAgIGxvbmcgbG9uZyBiPTE7CiAgICBsb25nIGxvbmcgYz1hK2I7CiAgICBsb25nIGxvbmcgZD0wOwogICAgaW50IG49MDsKICAgIGludCBpPTA7CiAgICBzY2FuZigiJWQiLCZuKTsKICAgIGZvcihpPTA7aTxuO2krKykKICAgICAgICB7CiAgICAgICAgICAgIGEgPSBjOwogICAgICAgICAgICBjPShhK2IpJTEwMDAwMDAwMDc7CiAgICAgICAgICAgIGQ9YTsKICAgICAgICAgICAgYT1iOwogICAgICAgICAgICBiPWQ7CiAgICAgICAgfQogICAgcHJpbnRmKCIlbGxkIixhKSA7CiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789921785901
+}
