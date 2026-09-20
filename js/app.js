@@ -122,6 +122,8 @@ class App {
   _formatMarkdown(text) {
     // 简单的 Markdown 转换（生产环境可用 marked.js）
     return text
+      .replace(/!\[([^\]]*)\]\((assets\/problems\/[a-zA-Z0-9/_-]+\.(?:png|jpe?g|webp|gif))\)/gi,
+        (_, alt, src) => `<img class="problem-image" src="${src}" alt="${this._escapeHtml(alt)}" loading="lazy">`)
       .replace(/\n/g, '<br>')
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')

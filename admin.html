@@ -6,8 +6,8 @@
   <title>机创 OJ 管理后台</title>
   <link rel="icon" type="image/png" href="assets/logo-circle.png?v=20260920-2">
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
-  <link rel="stylesheet" href="css/style.css?v=20260920-6">
-  <link rel="stylesheet" href="css/admin.css?v=20260920-8">
+  <link rel="stylesheet" href="css/style.css?v=20260920-7">
+  <link rel="stylesheet" href="css/admin.css?v=20260920-9">
 </head>
 <body class="admin-body">
   <header class="admin-header">
@@ -88,6 +88,13 @@
             </div>
             <label class="form-field"><span>文件名 *</span><input id="problem-file" class="admin-input" required placeholder="p006-multiply.json"><small>只使用小写字母、数字和短横线</small></label>
             <label class="form-field"><span>题目描述 *</span><textarea id="problem-description" class="admin-input" required rows="4" placeholder="描述需要完成的任务，可使用简单 Markdown"></textarea></label>
+            <div class="problem-image-uploader">
+              <div class="problem-image-upload-heading">
+                <div><strong>题目图片（可选）</strong><p>图片会显示在题目描述下方，最多 5 张；单张不超过 3 MB</p></div>
+                <label class="admin-button secondary image-select-button">＋ 选择图片<input id="problem-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple></label>
+              </div>
+              <div id="problem-image-preview" class="problem-image-preview" hidden></div>
+            </div>
             <div class="form-grid two-columns">
               <label class="form-field"><span>输入格式 *</span><textarea id="problem-input-format" class="admin-input" required rows="3"></textarea></label>
               <label class="form-field"><span>输出格式 *</span><textarea id="problem-output-format" class="admin-input" required rows="3"></textarea></label>
@@ -154,6 +161,6 @@
   </div>
 
   <div id="admin-toast" class="admin-toast" role="status"></div>
-  <script src="js/admin.js?v=20260920-5"></script>
+  <script src="js/admin.js?v=20260920-6"></script>
 </body>
 </html>

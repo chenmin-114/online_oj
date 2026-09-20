@@ -14,6 +14,7 @@ class OJAdmin {
     this.submissions = [];
     this.ranking = { overall: [], problems: {} };
     this.filteredSubmissions = [];
+    this.problemImages = [];
   }
 
   async init() {
@@ -44,6 +45,10 @@ class OJAdmin {
     document.getElementById('close-problem-editor').addEventListener('click', () => this.hideProblemEditor());
     document.getElementById('reset-problem-editor').addEventListener('click', () => this.resetProblemEditor());
     document.getElementById('add-test-case').addEventListener('click', () => this.addTestCase());
+    document.getElementById('problem-images').addEventListener('change', event => {
+      this.addProblemImages(event.target.files);
+      event.target.value = '';
+    });
     document.getElementById('problem-editor').addEventListener('submit', event => this.saveProblem(event));
     document.getElementById('problem-id').addEventListener('input', event => {
       const fileInput = document.getElementById('problem-file');
@@ -215,7 +220,89 @@ class OJAdmin {
     document.getElementById('problem-editor').reset();
     document.getElementById('test-case-editor').innerHTML = '';
     document.getElementById('problem-save-status').textContent = '';
+    this.clearProblemImages();
     this.addTestCase();
+  }
+
+  addProblemImages(fileList) {
+    const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+    const files = Array.from(fileList || []);
+    const accepted = [];
+
+    for (const file of files) {
+      if (!allowedTypes.has(file.type)) {
+        this.toast(`${file.name} 不是支持的图片格式`);
+        continue;
+      }
+      if (file.size > 3 * 1024 * 1024) {
+        this.toast(`${file.name} 超过 3 MB，无法上传`);
+        continue;
+      }
+      if (this.problemImages.length + accepted.length >= 5) {
+        this.toast('每道题最多上传 5 张图片');
+        break;
+      }
+      accepted.push({
+        id: `${Date.now()}-${Math.random()}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
+    }
+
+    const totalSize = [...this.problemImages, ...accepted]
+      .reduce((sum, item) => sum + item.file.size, 0);
+    if (totalSize > 10 * 1024 * 1024) {
+      accepted.forEach(item => URL.revokeObjectURL(item.previewUrl));
+      this.toast('题目图片总大小不能超过 10 MB');
+      return;
+    }
+
+    this.problemImages.push(...accepted);
+    this.renderProblemImages();
+  }
+
+  renderProblemImages() {
+    const container = document.getElementById('problem-image-preview');
+    container.hidden = this.problemImages.length === 0;
+    container.innerHTML = this.problemImages.map(item => `
+      <div class="problem-image-item" data-image-id="${item.id}">
+        <img src="${item.previewUrl}" alt="">
+        <div><strong>${this.escape(item.file.name)}</strong><span>${this.formatFileSize(item.file.size)}</span></div>
+        <button type="button" title="移除图片">×</button>
+      </div>
+    `).join('');
+    container.querySelectorAll('.problem-image-item button').forEach(button => {
+      button.addEventListener('click', () => this.removeProblemImage(button.closest('.problem-image-item').dataset.imageId));
+    });
+  }
+
+  removeProblemImage(id) {
+    const index = this.problemImages.findIndex(item => item.id === id);
+    if (index === -1) return;
+    URL.revokeObjectURL(this.problemImages[index].previewUrl);
+    this.problemImages.splice(index, 1);
+    this.renderProblemImages();
+  }
+
+  clearProblemImages() {
+    this.problemImages.forEach(item => URL.revokeObjectURL(item.previewUrl));
+    this.problemImages = [];
+    this.renderProblemImages();
+  }
+
+  formatFileSize(size) {
+    return size < 1024 * 1024
+      ? `${Math.max(1, Math.round(size / 1024))} KB`
+      : `${(size / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  readImageAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(new Error(`读取图片 ${file.name} 失败`));
+      reader.readAsDataURL(file);
+    });
   }
 
   addTestCase(input = '', expectedOutput = '') {
@@ -275,9 +362,15 @@ class OJAdmin {
     const status = document.getElementById('problem-save-status');
     saveButton.disabled = true;
     saveButton.textContent = '正在发布...';
-    status.textContent = '正在写入 GitHub 仓库';
+    status.textContent = this.problemImages.length ? '正在处理题目图片' : '正在写入 GitHub 仓库';
 
     try {
+      const images = await Promise.all(this.problemImages.map(async item => ({
+        name: item.file.name,
+        type: item.file.type,
+        content: await this.readImageAsBase64(item.file),
+      })));
+      if (images.length) status.textContent = '正在上传图片并发布题目';
       const response = await fetch(this.config.workerUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -285,6 +378,7 @@ class OJAdmin {
           type: 'create_problem',
           file: document.getElementById('problem-file').value,
           problem,
+          images,
         }),
       });
       const result = await response.json().catch(() => ({}));

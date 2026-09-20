@@ -216,6 +216,13 @@ async function handleCreateProblem(body, env) {
   if (validation.error) return jsonResponse({ error: validation.error }, 400);
 
   const { problem, file } = validation;
+  const imageValidation = validateProblemImages(body.images, problem.id);
+  if (imageValidation.error) return jsonResponse({ error: imageValidation.error }, 400);
+  const images = imageValidation.images;
+  if (images.length) {
+    const imageMarkdown = images.map(image => `![${image.alt}](${image.path})`).join('\n\n');
+    problem.description = `${problem.description}\n\n${imageMarkdown}`;
+  }
   const indexPath = 'problems/index.json';
   const problemPath = `problems/${file}`;
   const headers = githubHeaders(env.GITHUB_TOKEN);
@@ -248,6 +255,34 @@ async function handleCreateProblem(body, env) {
   }
   if (existingProblem.status !== 404) {
     return githubErrorResponse(existingProblem, '检查题目文件失败');
+  }
+
+  // 先确认目标图片路径均未被占用，避免覆盖仓库中已有文件。
+  for (const image of images) {
+    const imageUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${image.path}`;
+    const existingImage = await fetch(imageUrl, { headers });
+    if (existingImage.ok) {
+      return jsonResponse({ error: `图片文件已经存在：${image.path}` }, 409);
+    }
+    if (existingImage.status !== 404) {
+      return githubErrorResponse(existingImage, '检查图片文件失败');
+    }
+  }
+
+  // 图片保存在仓库内，学生访问题目时不依赖外部图床。
+  for (const image of images) {
+    const imageUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${image.path}`;
+    const createImageRes = await fetch(imageUrl, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        message: `🖼️ Add image for ${problem.id}`,
+        content: image.content,
+      }),
+    });
+    if (!createImageRes.ok) {
+      return githubErrorResponse(createImageRes, `上传图片 ${image.alt} 失败`);
+    }
   }
 
   const createProblemRes = await fetch(problemUrl, {
@@ -342,6 +377,59 @@ function validateProblem(input, requestedFile) {
   };
 
   return { problem, file };
+}
+
+function validateProblemImages(input, problemId) {
+  if (input === undefined || input === null) return { images: [] };
+  if (!Array.isArray(input) || input.length > 5) {
+    return { error: '每道题最多上传 5 张图片' };
+  }
+
+  const extensions = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  };
+  const images = [];
+  let totalBytes = 0;
+
+  for (const [index, image] of input.entries()) {
+    const extension = extensions[image?.type];
+    const content = typeof image?.content === 'string' ? image.content.replace(/\s/g, '') : '';
+    if (!extension || !content || !/^[A-Za-z0-9+/]+={0,2}$/.test(content)) {
+      return { error: `第 ${index + 1} 张图片格式不正确` };
+    }
+
+    let byteLength;
+    try {
+      byteLength = atob(content).length;
+    } catch {
+      return { error: `第 ${index + 1} 张图片内容损坏` };
+    }
+    if (byteLength > 3 * 1024 * 1024) {
+      return { error: `第 ${index + 1} 张图片超过 3 MB` };
+    }
+    totalBytes += byteLength;
+    if (totalBytes > 10 * 1024 * 1024) {
+      return { error: '题目图片总大小不能超过 10 MB' };
+    }
+
+    const originalName = String(image.name || `图片 ${index + 1}`);
+    const alt = originalName
+      .replace(/\.[^.]+$/, '')
+      .replace(/[\[\]\\]/g, '')
+      .trim()
+      .slice(0, 100) || `题目图片 ${index + 1}`;
+    const baseName = problemId.toLowerCase();
+    images.push({
+      alt,
+      content,
+      path: `assets/problems/${baseName}/${baseName}-${index + 1}.${extension}`,
+    });
+  }
+
+  return { images };
 }
 
 function githubHeaders(token) {

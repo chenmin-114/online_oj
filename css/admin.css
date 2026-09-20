@@ -173,6 +173,21 @@
 .form-field small { color: #66738f; font-size: 10px; }
 .form-field .admin-input { width: 100%; min-width: 0; padding: 9px 11px; resize: vertical; }
 .code-input { font-family: 'Consolas', 'Monaco', monospace !important; }
+.problem-image-uploader { padding: 14px; border: 1px dashed #354565; border-radius: 10px; background: rgba(91,140,255,.035); }
+.problem-image-upload-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.problem-image-upload-heading strong { color: var(--admin-text); font-size: 13px; }
+.problem-image-upload-heading p { margin-top: 3px; color: var(--admin-muted); font-size: 10px; }
+.image-select-button { position: relative; flex: 0 0 auto; overflow: hidden; }
+.image-select-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.problem-image-preview { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.problem-image-preview[hidden] { display: none; }
+.problem-image-item { position: relative; min-width: 0; padding: 8px; display: grid; grid-template-columns: 54px minmax(0, 1fr) 28px; align-items: center; gap: 9px; border: 1px solid var(--admin-border); border-radius: 9px; background: #0e1526; }
+.problem-image-item img { width: 54px; height: 54px; border-radius: 6px; object-fit: cover; background: #080d18; }
+.problem-image-item div { min-width: 0; display: grid; gap: 3px; }
+.problem-image-item strong { overflow: hidden; color: #cbd5ea; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.problem-image-item span { color: var(--admin-muted); font-size: 10px; }
+.problem-image-item button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: rgba(255,92,111,.08); color: #ff7b8b; cursor: pointer; }
+.problem-image-item button:hover { background: rgba(255,92,111,.18); }
 .testcase-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 4px; }
 .testcase-heading strong { color: var(--admin-text); font-size: 13px; }
 .testcase-heading p { color: var(--admin-muted); font-size: 10px; }
@@ -235,4 +250,5 @@ input.admin-input { min-width: 240px; }
   .form-grid.three-columns,
   .test-case-row { grid-template-columns: 1fr; }
   .remove-test-case { width: 100%; }
+  .problem-image-upload-heading { align-items: flex-start; flex-direction: column; }
 }

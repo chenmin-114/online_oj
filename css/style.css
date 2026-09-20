@@ -266,6 +266,16 @@ body {
   overflow-x: auto;
 }
 
+.problem-content .problem-image {
+  display: block;
+  max-width: 100%;
+  max-height: 520px;
+  margin: 14px auto;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  object-fit: contain;
+}
+
 .sample {
   display: grid;
   grid-template-columns: 1fr 1fr;
