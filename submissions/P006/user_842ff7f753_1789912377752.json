@@ -1,0 +1,11 @@
+{
+  "username": "电信类 谭卓彬",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IG47CiAgICBzY2FuZigiJWQiLCZuKTsKCiAgICBpZihuID4gODYzOTl8fG4gPCAwKQogICAgewogICAgICAgIHJldHVybiAwOwogICAgfQogICAgCiAgICBpbnQgaCA9IDA7CiAgICBpbnQgbWluID0gMDsKICAgIGludCBzID0gMDsKICAgIGggPSBuIC8gMzYwMDsKICAgIG1pbiA9IG4gLyA2MCAtIGggKiA2MDsKICAgIHMgPSBuICUgNjA7IAogICAgcHJpbnRmKCIlMDJkOiUwMmQ6JTAyZCIsaCxtaW4scyk7CgogICAgcmV0dXJuIDA7Cn0K",
+  "timestamp": 1789912377752
+}
