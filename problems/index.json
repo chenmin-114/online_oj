@@ -5,7 +5,7 @@
     "difficulty": "easy",
     "file": "p001-aplusb.json",
     "acceptRate": "87%",
-    "submitCount": 46
+    "submitCount": 47
   },
   {
     "id": "P002",
@@ -21,7 +21,7 @@
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
     "acceptRate": "0%",
-    "submitCount": 13
+    "submitCount": 14
   },
   {
     "id": "P004",
