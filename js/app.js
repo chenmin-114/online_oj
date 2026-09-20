@@ -117,8 +117,7 @@ class App {
       this._enhanceMarkdown(container);
     });
     
-    document.getElementById('sample-input').textContent = p.sampleInput || '';
-    document.getElementById('sample-output').textContent = p.sampleOutput || '';
+    this._renderSamples(p);
 
     // 重置编辑器
     const lang = getLanguageById(window.OJ_CONFIG.DEFAULT_LANGUAGE);
@@ -143,6 +142,23 @@ class App {
     } catch {
       return `<p>${this._escapeHtml(source).replace(/\n/g, '<br>')}</p>`;
     }
+  }
+
+  _renderSamples(problem) {
+    const samples = Array.isArray(problem.samples) && problem.samples.length
+      ? problem.samples
+      : ((problem.sampleInput || problem.sampleOutput)
+        ? [{ input: problem.sampleInput || '', output: problem.sampleOutput || '' }]
+        : []);
+    const container = document.getElementById('problem-samples');
+    container.innerHTML = samples.length ? samples.map((sample, index) => `
+      <div class="sample-group">
+        <div class="sample">
+          <div><strong>输入 #${index + 1}</strong><pre data-sample-input>${this._escapeHtml(sample.input || '')}</pre></div>
+          <div><strong>输出 #${index + 1}</strong><pre>${this._escapeHtml(sample.output || '')}</pre></div>
+        </div>
+      </div>
+    `).join('') : '<p>暂无样例</p>';
   }
 
   _enhanceMarkdown(container) {
@@ -221,7 +237,7 @@ class App {
 
     // 填充示例输入
     document.getElementById('fill-sample-btn').addEventListener('click', () => {
-      const sample = document.getElementById('sample-input').textContent;
+      const sample = document.querySelector('[data-sample-input]')?.textContent || '';
       document.getElementById('custom-input').value = sample;
     });
   }

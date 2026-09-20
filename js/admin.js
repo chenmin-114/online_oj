@@ -48,6 +48,7 @@ class OJAdmin {
       if (this.editingProblem) this.editProblem(this.editingProblem.file);
       else this.resetProblemEditor();
     });
+    document.getElementById('add-sample').addEventListener('click', () => this.addSample());
     document.getElementById('add-test-case').addEventListener('click', () => this.addTestCase());
     document.getElementById('import-problem-markdown').addEventListener('click', () => this.importProblemMarkdown());
     document.getElementById('problem-images').addEventListener('change', event => {
@@ -227,10 +228,12 @@ class OJAdmin {
 
   resetProblemEditor() {
     document.getElementById('problem-editor').reset();
+    document.getElementById('sample-editor').innerHTML = '';
     document.getElementById('test-case-editor').innerHTML = '';
     document.getElementById('problem-save-status').textContent = '';
     document.getElementById('problem-import-status').textContent = '自动识别题号、标题、描述、输入输出格式、样例和说明；发布前请补充隐藏测试点';
     this.clearProblemImages();
+    this.addSample();
     this.addTestCase();
   }
 
@@ -268,9 +271,14 @@ class OJAdmin {
       document.getElementById('problem-input-format').value = problem.inputFormat || '';
       document.getElementById('problem-output-format').value = problem.outputFormat || '';
       document.getElementById('problem-constraints').value = problem.constraints || '';
-      document.getElementById('problem-sample-input').value = problem.sampleInput || '';
-      document.getElementById('problem-sample-output').value = problem.sampleOutput || '';
       document.getElementById('problem-hints').value = Array.isArray(problem.hints) ? problem.hints.join('\n') : '';
+
+      const sampleEditor = document.getElementById('sample-editor');
+      sampleEditor.innerHTML = '';
+      const samples = Array.isArray(problem.samples) && problem.samples.length
+        ? problem.samples
+        : [{ input: problem.sampleInput || '', output: problem.sampleOutput || '' }];
+      samples.forEach(sample => this.addSample(sample.input, sample.output));
 
       const testCaseEditor = document.getElementById('test-case-editor');
       testCaseEditor.innerHTML = '';
@@ -323,8 +331,9 @@ class OJAdmin {
     if (notes) document.getElementById('problem-constraints').value = notes;
 
     if (samples.length) {
-      document.getElementById('problem-sample-input').value = samples[0].input;
-      document.getElementById('problem-sample-output').value = samples[0].output;
+      const sampleEditor = document.getElementById('sample-editor');
+      sampleEditor.innerHTML = '';
+      samples.forEach(sample => this.addSample(sample.input, sample.output));
       const testCaseEditor = document.getElementById('test-case-editor');
       testCaseEditor.innerHTML = '';
       samples.forEach(sample => this.addTestCase(sample.input, sample.output));
@@ -485,6 +494,37 @@ class OJAdmin {
     });
   }
 
+  addSample(input = '', output = '') {
+    const container = document.getElementById('sample-editor');
+    const number = container.children.length + 1;
+    const row = document.createElement('div');
+    row.className = 'sample-case-row';
+    row.innerHTML = `
+      <label class="form-field"><span>输入 #${number}</span><textarea class="admin-input sample-input" rows="3"></textarea></label>
+      <label class="form-field"><span>输出 #${number}</span><textarea class="admin-input sample-output" rows="3"></textarea></label>
+      <button type="button" class="remove-test-case" title="删除样例">×</button>
+    `;
+    row.querySelector('.sample-input').value = input;
+    row.querySelector('.sample-output').value = output;
+    row.querySelector('.remove-test-case').addEventListener('click', () => {
+      if (container.children.length === 1) {
+        row.querySelector('.sample-input').value = '';
+        row.querySelector('.sample-output').value = '';
+        return;
+      }
+      row.remove();
+      this.renumberSamples();
+    });
+    container.appendChild(row);
+  }
+
+  renumberSamples() {
+    document.querySelectorAll('.sample-case-row').forEach((row, index) => {
+      row.querySelector('.sample-input').closest('.form-field').querySelector('span').textContent = `输入 #${index + 1}`;
+      row.querySelector('.sample-output').closest('.form-field').querySelector('span').textContent = `输出 #${index + 1}`;
+    });
+  }
+
   addTestCase(input = '', expectedOutput = '') {
     const container = document.getElementById('test-case-editor');
     const number = container.children.length + 1;
@@ -524,6 +564,10 @@ class OJAdmin {
       input: row.querySelector('.test-input').value,
       expectedOutput: row.querySelector('.test-output').value,
     }));
+    const samples = Array.from(document.querySelectorAll('.sample-case-row')).map(row => ({
+      input: row.querySelector('.sample-input').value,
+      output: row.querySelector('.sample-output').value,
+    })).filter(sample => sample.input || sample.output);
     const problem = {
       id: document.getElementById('problem-id').value,
       title: document.getElementById('problem-title').value,
@@ -532,8 +576,9 @@ class OJAdmin {
       inputFormat: document.getElementById('problem-input-format').value,
       outputFormat: document.getElementById('problem-output-format').value,
       constraints: document.getElementById('problem-constraints').value,
-      sampleInput: document.getElementById('problem-sample-input').value,
-      sampleOutput: document.getElementById('problem-sample-output').value,
+      sampleInput: samples[0]?.input || '',
+      sampleOutput: samples[0]?.output || '',
+      samples,
       testCases,
       hints: document.getElementById('problem-hints').value.split('\n').map(item => item.trim()).filter(Boolean),
     };

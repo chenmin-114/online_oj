@@ -202,8 +202,11 @@
 .testcase-heading strong { color: var(--admin-text); font-size: 13px; }
 .testcase-heading p { color: var(--admin-muted); font-size: 10px; }
 .test-case-editor { display: grid; gap: 10px; }
+.sample-case-editor { display: grid; gap: 10px; }
 .test-case-row { padding: 14px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; border: 1px solid var(--admin-border); border-radius: 10px; background: #0e1526; }
+.sample-case-row { padding: 14px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; border: 1px solid var(--admin-border); border-radius: 10px; background: #0e1526; }
 .test-case-row textarea { min-height: 76px; font-family: 'Consolas', 'Monaco', monospace; }
+.sample-case-row textarea { min-height: 76px; font-family: 'Consolas', 'Monaco', monospace; }
 .remove-test-case { width: 36px; height: 36px; padding: 0; border: 1px solid rgba(255,92,111,.25); border-radius: 8px; background: rgba(255,92,111,.08); color: #ff7b8b; cursor: pointer; }
 .remove-test-case:hover { background: rgba(255,92,111,.16); }
 .problem-form-actions { padding: 15px 20px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--admin-border); }
@@ -258,7 +261,8 @@ input.admin-input { min-width: 240px; }
   .filter-count { width: 100%; margin-left: 0; }
   .form-grid.two-columns,
   .form-grid.three-columns,
-  .test-case-row { grid-template-columns: 1fr; }
+  .test-case-row,
+  .sample-case-row { grid-template-columns: 1fr; }
   .remove-test-case { width: 100%; }
   .problem-image-upload-heading { align-items: flex-start; flex-direction: column; }
   .problem-importer summary,

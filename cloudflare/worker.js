@@ -492,6 +492,24 @@ function validateProblem(input, requestedFile) {
     testCases.push({ input: testCase.input, expectedOutput: testCase.expectedOutput });
   }
 
+  let samples = [];
+  if (input.samples !== undefined) {
+    if (!Array.isArray(input.samples) || input.samples.length > 20) {
+      return { error: '样例数量不能超过 20 组' };
+    }
+    for (const [index, sample] of input.samples.entries()) {
+      if (!sample || typeof sample.input !== 'string' || typeof sample.output !== 'string') {
+        return { error: `样例 ${index + 1} 格式不正确` };
+      }
+      if (sample.input || sample.output) samples.push({ input: sample.input, output: sample.output });
+    }
+  } else if (input.sampleInput || input.sampleOutput) {
+    samples = [{
+      input: String(input.sampleInput || ''),
+      output: String(input.sampleOutput || ''),
+    }];
+  }
+
   const problem = {
     id,
     title: input.title.trim().slice(0, 100),
@@ -500,8 +518,10 @@ function validateProblem(input, requestedFile) {
     inputFormat: input.inputFormat.trim().slice(0, 10000),
     outputFormat: input.outputFormat.trim().slice(0, 10000),
     constraints: String(input.constraints || '').trim().slice(0, 10000),
-    sampleInput: String(input.sampleInput || ''),
-    sampleOutput: String(input.sampleOutput || ''),
+    // 保留首组旧字段，兼容已经缓存的旧版学生页面。
+    sampleInput: samples[0]?.input || '',
+    sampleOutput: samples[0]?.output || '',
+    samples,
     testCases,
     hints: Array.isArray(input.hints)
       ? input.hints.map(item => String(item).trim()).filter(Boolean).slice(0, 20)

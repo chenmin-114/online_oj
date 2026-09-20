@@ -7,7 +7,7 @@
   <link rel="icon" type="image/png" href="assets/logo-circle.png?v=20260920-2">
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260920-11">
+  <link rel="stylesheet" href="css/admin.css?v=20260920-12">
 </head>
 <body class="admin-body">
   <header class="admin-header">
@@ -110,10 +110,8 @@
               <label class="form-field"><span>输出格式 *</span><textarea id="problem-output-format" class="admin-input" required rows="3"></textarea></label>
             </div>
             <label class="form-field"><span>数据范围</span><textarea id="problem-constraints" class="admin-input" rows="3"></textarea></label>
-            <div class="form-grid two-columns">
-              <label class="form-field"><span>样例输入</span><textarea id="problem-sample-input" class="admin-input code-input" rows="3"></textarea></label>
-              <label class="form-field"><span>样例输出</span><textarea id="problem-sample-output" class="admin-input code-input" rows="3"></textarea></label>
-            </div>
+            <div class="testcase-heading"><div><strong>输入输出样例</strong><p>学生可以看到全部样例</p></div><button id="add-sample" type="button" class="admin-button secondary">＋ 添加样例</button></div>
+            <div id="sample-editor" class="sample-case-editor"></div>
             <div class="testcase-heading"><div><strong>测试点 *</strong><p>每个测试点都会独立运行一次</p></div><button id="add-test-case" type="button" class="admin-button secondary">＋ 添加测试点</button></div>
             <div id="test-case-editor" class="test-case-editor"></div>
             <label class="form-field"><span>提示</span><textarea id="problem-hints" class="admin-input" rows="3" placeholder="每行一条提示"></textarea></label>
@@ -171,6 +169,6 @@
   </div>
 
   <div id="admin-toast" class="admin-toast" role="status"></div>
-  <script src="js/admin.js?v=20260920-9"></script>
+  <script src="js/admin.js?v=20260920-10"></script>
 </body>
 </html>

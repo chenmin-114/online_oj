@@ -321,11 +321,11 @@ body {
   object-fit: contain;
 }
 
+.problem-samples { display: grid; gap: 14px; }
 .sample {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  margin-top: 8px;
 }
 
 .editor-panel {
@@ -510,5 +510,9 @@ body {
 
   .problem-panel {
     max-height: 400px;
+  }
+
+  .sample {
+    grid-template-columns: 1fr;
   }
 }
