@@ -1,0 +1,11 @@
+{
+  "username": "机械电子 罗应逍",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIAp7CiAgICBpbnQgdG90YWxzOwogICAgaW50IGg7CiAgICBpbnQgbTsKICAgIGludCBzOwogICAgc2NhbmYoIiVkIiwgJnRvdGFscyk7CgogICAgaCA9IHRvdGFscyAvIDM2MDA7CiAgICBtID0gKHRvdGFscyAvIDYwKSAlIDYwOwogICAgcyA9IHRvdGFscyAlIDYwOwoKICAgIHByaW50ZigiJTAyZDolMDJkOiUwMmQiLCBoLCBtLCBzKTsKICAgCiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789910100468
+}
