@@ -5,31 +5,31 @@
     "difficulty": "easy",
     "file": "p001-aplusb.json",
     "acceptRate": "86%",
-    "submitCount": 65
+    "submitCount": 66
   },
   {
     "id": "P002",
     "title": "最大值",
     "difficulty": "easy",
     "file": "p002-max.json",
-    "acceptRate": "70%",
-    "submitCount": 23
+    "acceptRate": "71%",
+    "submitCount": 24
   },
   {
     "id": "P003",
     "title": "斐波那契数列",
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
-    "acceptRate": "18%",
-    "submitCount": 57
+    "acceptRate": "20%",
+    "submitCount": 59
   },
   {
     "id": "P004",
     "title": "回文判断",
     "difficulty": "easy",
     "file": "p004-palindrome.json",
-    "acceptRate": "67%",
-    "submitCount": 6
+    "acceptRate": "71%",
+    "submitCount": 7
   },
   {
     "id": "P005",
@@ -37,7 +37,7 @@
     "difficulty": "medium",
     "file": "p005-binary-search.json",
     "acceptRate": "100%",
-    "submitCount": 4
+    "submitCount": 5
   },
   {
     "id": "P006",
@@ -45,7 +45,7 @@
     "difficulty": "easy",
     "file": "p006-example.json",
     "acceptRate": "66%",
-    "submitCount": 139
+    "submitCount": 140
   },
   {
     "id": "P007",
@@ -53,6 +53,6 @@
     "difficulty": "hard",
     "file": "p007.json",
     "acceptRate": "100%",
-    "submitCount": 1
+    "submitCount": 2
   }
 ]

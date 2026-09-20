@@ -7,6 +7,12 @@
       "lastSubmit": 1789921417103
     },
     {
+      "username": "QiuQuanzhi",
+      "solvedCount": 7,
+      "totalTime": 7,
+      "lastSubmit": 1789921700000
+    },
+    {
       "username": "GG绷",
       "solvedCount": 6,
       "totalTime": 75,
@@ -61,6 +67,12 @@
       "lastSubmit": 1789919645359
     },
     {
+      "username": "26集成-颜楚航",
+      "solvedCount": 3,
+      "totalTime": 30,
+      "lastSubmit": 1789921785901
+    },
+    {
       "username": "26级电子信息类黄佳仪",
       "solvedCount": 3,
       "totalTime": 31,
@@ -107,12 +119,6 @@
       "solvedCount": 2,
       "totalTime": 20,
       "lastSubmit": 1789915468604
-    },
-    {
-      "username": "26集成-颜楚航",
-      "solvedCount": 2,
-      "totalTime": 20,
-      "lastSubmit": 1789917430672
     },
     {
       "username": "26生物医学工程翁少涵",
@@ -532,6 +538,12 @@
         "totalTime": 1
       },
       {
+        "username": "QiuQuanzhi",
+        "attempts": 1,
+        "acceptedAt": 1789921700000,
+        "totalTime": 1
+      },
+      {
         "username": "2",
         "attempts": 1,
         "acceptedAt": 1789825461172,
@@ -732,6 +744,12 @@
         "totalTime": 1
       },
       {
+        "username": "QiuQuanzhi",
+        "attempts": 1,
+        "acceptedAt": 1789921700000,
+        "totalTime": 1
+      },
+      {
         "username": "hello",
         "attempts": 1,
         "acceptedAt": 1789881544841,
@@ -830,6 +848,12 @@
         "totalTime": 1
       },
       {
+        "username": "QiuQuanzhi",
+        "attempts": 1,
+        "acceptedAt": 1789921700000,
+        "totalTime": 1
+      },
+      {
         "username": "26智能制造贾智棋",
         "attempts": 4,
         "acceptedAt": 1789916819036,
@@ -866,6 +890,12 @@
         "totalTime": 10
       },
       {
+        "username": "26集成-颜楚航",
+        "attempts": 1,
+        "acceptedAt": 1789921785901,
+        "totalTime": 10
+      },
+      {
         "username": "GG绷",
         "attempts": 11,
         "acceptedAt": 1789916742647,
@@ -883,6 +913,12 @@
         "username": "Ryoine",
         "attempts": 1,
         "acceptedAt": 1789921417103,
+        "totalTime": 1
+      },
+      {
+        "username": "QiuQuanzhi",
+        "attempts": 1,
+        "acceptedAt": 1789921700000,
         "totalTime": 1
       },
       {
@@ -1266,6 +1302,12 @@
         "totalTime": 1
       },
       {
+        "username": "QiuQuanzhi",
+        "attempts": 1,
+        "acceptedAt": 1789921700000,
+        "totalTime": 1
+      },
+      {
         "username": "智能感知龙炜镔",
         "attempts": 2,
         "acceptedAt": 1789914831949,
@@ -1283,6 +1325,12 @@
         "username": "Ryoine",
         "attempts": 1,
         "acceptedAt": 1789921417103,
+        "totalTime": 1
+      },
+      {
+        "username": "QiuQuanzhi",
+        "attempts": 1,
+        "acceptedAt": 1789921700000,
         "totalTime": 1
       },
       {
@@ -1309,6 +1357,12 @@
         "username": "Ryoine",
         "attempts": 1,
         "acceptedAt": 1789921417103,
+        "totalTime": 1
+      },
+      {
+        "username": "QiuQuanzhi",
+        "attempts": 1,
+        "acceptedAt": 1789921700000,
         "totalTime": 1
       }
     ],
