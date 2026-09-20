@@ -1,0 +1,11 @@
+{
+  "username": "A_DouFu",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IHMsaCxtOwogICAgc2NhbmYoIiVkIiwmcyk7CgogICAgbSA9IChzIC8gNjApICUgNjA7CgogICAgaCA9IHMgLyAzNjAwOwoKICAgIHMgPSBzICUgNjA7CgogICAgcHJpbnRmKCIlMDJkOiUwMmQ6JTAyZCIsaCxtLHMpOwoKCiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789917150193
+}
