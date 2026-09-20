@@ -1,0 +1,11 @@
+{
+  "username": "mj",
+  "problemId": "P006",
+  "passed": false,
+  "passedTests": 4,
+  "totalTests": 5,
+  "totalTime": 11,
+  "language": "c",
+  "code": "I2luY2x1ZGU8c3RkaW8uaD4Kdm9pZCBjb3VudChpbnQgKmEsaW50ICpiKQp7Cgl3aGlsZSgqYT42MCkKCXsKCQkoKmEpLT02MDsKCQkoKmIpKys7Cgl9IAp9CnZvaWQgcHJpbnRfdGltZShpbnQgaG91cixpbnQgbWludXRlLGludCBzZWNvbmQpCnsKCWlmKGhvdXI8PTEwKSBwcmludGYoIjAlZDoiLGhvdXIpOwoJZWxzZSBwcmludGYoIiVkOiIsaG91cik7CglpZihtaW51dGU8PTEwKSBwcmludGYoIjAlZDoiLG1pbnV0ZSk7CgllbHNlIHByaW50ZigiJWQ6IixtaW51dGUpOwoJaWYoc2Vjb25kPD0xMCkgcHJpbnRmKCIwJWQiLHNlY29uZCk7CgllbHNlIHByaW50ZigiJWQiLHNlY29uZCk7Cn0KaW50IG1haW4oKQp7CglpbnQgaG91cixtaW51dGUsc2Vjb25kOwoJaG91cj0wOwoJbWludXRlPTA7CglzY2FuZigiJWQiLCZzZWNvbmQpOwoJY291bnQoJnNlY29uZCwmbWludXRlKTsKCWNvdW50KCZtaW51dGUsJmhvdXIpOwoJcHJpbnRfdGltZShob3VyLG1pbnV0ZSxzZWNvbmQpOwoJcmV0dXJuIDA7Cn0K",
+  "timestamp": 1789912435735
+}
