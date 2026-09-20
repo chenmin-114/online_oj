@@ -1,0 +1,11 @@
+{
+  "username": "机械电子工程陈梓桓",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IHQgPSAwOwogICAgc2NhbmYoIiVkIiwgJnQpOwogICAgaW50IGggPSB0IC8gMzYwMDsKICAgIGludCByID0gdCAlIDM2MDA7CiAgICBpbnQgbSA9IHIgLyA2MDsKICAgIGludCBzID0gciAlIDYwOwogICAgcHJpbnRmKCIlMDJkOiUwMmQ6JTAyZCIsIGgsbSxzKTsKCiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789914723625
+}
