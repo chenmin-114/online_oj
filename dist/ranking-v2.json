@@ -295,6 +295,12 @@
       "lastSubmit": 1789915906449
     },
     {
+      "username": "26智感李文伟",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789916013637
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -475,6 +481,12 @@
         "username": "26级电子信息类黄佳仪",
         "attempts": 1,
         "acceptedAt": 1789915613911,
+        "totalTime": 10
+      },
+      {
+        "username": "26智感李文伟",
+        "attempts": 1,
+        "acceptedAt": 1789916013637,
         "totalTime": 10
       },
       {
