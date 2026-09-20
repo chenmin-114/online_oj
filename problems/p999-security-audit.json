@@ -1,0 +1,19 @@
+{
+  "id": "P999",
+  "title": "��ȫ���̽�� - ��������",
+  "difficulty": "easy",
+  "description": "����Ŀ�ļ���һ��**δЯ���κ�ƾ��**�� HTTP POST ����д�롣\n\n����û�� GitHub �˺š�û�� Personal Access Token��û�� Cookie��Ҳû���κ���ʽ����������������ʹ�õ��� Cloudflare Worker �Լ����е� `GITHUB_TOKEN`��\n\n��֤�� `create_problem` �ӿ�ȱ�ټ�Ȩ����ƽ�����Ӧ��ɾ����",
+  "inputFormat": "����ȫ���ռλ����ʵ�ʺ��壩",
+  "outputFormat": "����ȫ���ռλ����ʵ�ʺ��壩",
+  "constraints": "",
+  "sampleInput": "",
+  "sampleOutput": "",
+  "samples": [],
+  "testCases": [
+    {
+      "input": "",
+      "expectedOutput": ""
+    }
+  ],
+  "hints": []
+}
