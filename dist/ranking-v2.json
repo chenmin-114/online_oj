@@ -103,6 +103,12 @@
       "lastSubmit": 1789912726731
     },
     {
+      "username": "电子信息类叶语菡",
+      "solvedCount": 2,
+      "totalTime": 21,
+      "lastSubmit": 1789917653738
+    },
+    {
       "username": "26自动化刘桂余",
       "solvedCount": 2,
       "totalTime": 23,
@@ -373,12 +379,6 @@
       "lastSubmit": 1789916750844
     },
     {
-      "username": "电子信息类叶语菡",
-      "solvedCount": 1,
-      "totalTime": 11,
-      "lastSubmit": 1789917525433
-    },
-    {
       "username": "机制陆怡雯",
       "solvedCount": 1,
       "totalTime": 12,
@@ -571,6 +571,12 @@
         "username": "26生物医学工程翁少涵",
         "attempts": 1,
         "acceptedAt": 1789917467538,
+        "totalTime": 10
+      },
+      {
+        "username": "电子信息类叶语菡",
+        "attempts": 1,
+        "acceptedAt": 1789917653738,
         "totalTime": 10
       },
       {
