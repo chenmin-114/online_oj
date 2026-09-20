@@ -1,5 +1,11 @@
 [
   {
+    "username": "GG绷",
+    "solvedCount": 5,
+    "totalTime": 65,
+    "lastSubmit": 1789917039355
+  },
+  {
     "username": "龚鸿斌",
     "solvedCount": 4,
     "totalTime": 40,
@@ -18,12 +24,6 @@
     "lastSubmit": 1789916819036
   },
   {
-    "username": "GG绷",
-    "solvedCount": 4,
-    "totalTime": 55,
-    "lastSubmit": 1789916838166
-  },
-  {
     "username": "26电信吕诺言",
     "solvedCount": 3,
     "totalTime": 30,
@@ -39,7 +39,7 @@
     "username": "纪楷基",
     "solvedCount": 3,
     "totalTime": 31,
-    "lastSubmit": 1789917001547
+    "lastSubmit": 1789917028584
   },
   {
     "username": "hello",
@@ -316,6 +316,12 @@
     "solvedCount": 1,
     "totalTime": 10,
     "lastSubmit": 1789916818785
+  },
+  {
+    "username": "26生物医学工程翁少涵",
+    "solvedCount": 1,
+    "totalTime": 10,
+    "lastSubmit": 1789917066697
   },
   {
     "username": "机制5班胡斐桦",

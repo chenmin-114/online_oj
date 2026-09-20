@@ -21,15 +21,15 @@
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
     "acceptRate": "13%",
-    "submitCount": 31
+    "submitCount": 32
   },
   {
     "id": "P004",
     "title": "回文判断",
     "difficulty": "easy",
     "file": "p004-palindrome.json",
-    "acceptRate": "33%",
-    "submitCount": 3
+    "acceptRate": "60%",
+    "submitCount": 5
   },
   {
     "id": "P005",
@@ -44,8 +44,8 @@
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "66%",
-    "submitCount": 104
+    "acceptRate": "67%",
+    "submitCount": 107
   },
   {
     "id": "P007",
