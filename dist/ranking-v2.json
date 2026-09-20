@@ -79,6 +79,12 @@
       "lastSubmit": 1789909927915
     },
     {
+      "username": "罗应逍",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789909970090
+    },
+    {
       "username": "Y_sy_a",
       "solvedCount": 1,
       "totalTime": 15,
@@ -198,6 +204,12 @@
         "username": "彭于晏",
         "attempts": 1,
         "acceptedAt": 1789909722474,
+        "totalTime": 10
+      },
+      {
+        "username": "罗应逍",
+        "attempts": 1,
+        "acceptedAt": 1789909970090,
         "totalTime": 10
       },
       {
