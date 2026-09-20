@@ -115,6 +115,12 @@
       "lastSubmit": 1789911713529
     },
     {
+      "username": "机制5班胡斐桦",
+      "solvedCount": 1,
+      "totalTime": 11,
+      "lastSubmit": 1789911710988
+    },
+    {
       "username": "Y_sy_a",
       "solvedCount": 1,
       "totalTime": 15,
@@ -131,12 +137,6 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789831427759
-    },
-    {
-      "username": "机制5班胡斐桦",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789911683288
     },
     {
       "username": "..",
@@ -283,6 +283,12 @@
         "attempts": 1,
         "acceptedAt": 1789911676604,
         "totalTime": 10
+      },
+      {
+        "username": "机制5班胡斐桦",
+        "attempts": 2,
+        "acceptedAt": 1789911710988,
+        "totalTime": 11
       },
       {
         "username": "26智能制造贾智棋",

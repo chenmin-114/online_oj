@@ -10,6 +10,16 @@
     "timestamp": 1789911713529
   },
   {
+    "username": "机制5班胡斐桦",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 11,
+    "language": "c",
+    "timestamp": 1789911710988
+  },
+  {
     "username": "..",
     "problemId": "P006",
     "passed": false,
