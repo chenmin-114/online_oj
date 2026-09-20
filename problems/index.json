@@ -46,5 +46,13 @@
     "file": "p006-example.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P007",
+    "title": "[NOIP 2008 提高组] 双栈排序",
+    "difficulty": "hard",
+    "file": "p007.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
