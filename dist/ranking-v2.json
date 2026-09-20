@@ -109,6 +109,12 @@
       "lastSubmit": 1789911405410
     },
     {
+      "username": "鸡电占紫轩",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789911678974
+    },
+    {
       "username": "Y_sy_a",
       "solvedCount": 1,
       "totalTime": 15,
@@ -258,6 +264,12 @@
         "username": "咕咕嘎嘎",
         "attempts": 1,
         "acceptedAt": 1789910108773,
+        "totalTime": 10
+      },
+      {
+        "username": "鸡电占紫轩",
+        "attempts": 1,
+        "acceptedAt": 1789911676604,
         "totalTime": 10
       },
       {
