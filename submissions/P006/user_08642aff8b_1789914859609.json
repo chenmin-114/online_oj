@@ -1,0 +1,11 @@
+{
+  "username": "电子信息类郑思杰",
+  "problemId": "P006",
+  "passed": false,
+  "passedTests": 3,
+  "totalTests": 5,
+  "totalTime": 8,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+Cgp2b2lkIGEoKTsKCmludCBtYWluKCkgewogICAgLy8g5Zyo5q2k57yW5YaZ5L2g55qE5Luj56CBCiAgICBpbnQgdG90YWw7CiAgICBzY2FuZigiJWQiLCZ0b3RhbCk7CiAgICBpbnQgaD0wOwogICAgaW50IG1pbj0wOwogICAgaW50IHM9MDsKCmlmKHRvdGFsPjYwKXsKICAgIGg9KHRvdGFsLzYwKS82MDsKICAgIG1pbj0odG90YWwvNjApJTYwOwogICAgcz0odG90YWwlNjApJTYwOwoKICAgIGEoaCk7CiAgICBhKG1pbik7CiAgICBpZihzPDEwJiZzPjApewogICAgICAgIHByaW50ZigiMCVkIixzKTsKICAgIH1lbHNlIGlmKGg9PTApewogICAgICAgIHByaW50ZigiMDAiKTsKICAgIH0KICAgIH0KZWxzZSBpZih0b3RhbDw9NjAmJnRvdGFsPjApe3M9dG90YWw7CiAgICBwcmludGYoIjAwOjAwOiVkIixzKTsKfQplbHNle3ByaW50ZigiMDA6MDA6MDAiKTt9CiAgICByZXR1cm4gMDsKfQoKdm9pZCBhKGludCBiKQp7CiAgICBpZihiPDEwJiZiPjApewogICAgICAgIHByaW50ZigiMCVkOiIsYik7CiAgICB9ZWxzZSBpZihiPT0wKXsKICAgICAgICBwcmludGYoIjAwOiIpOwogICAgfQp9Cg==",
+  "timestamp": 1789914859609
+}
