@@ -1,11 +1,13 @@
 class OJAdmin {
   constructor() {
+    const workerUrl = 'https://api.jc-oj.online';
     this.config = {
-      workerUrl: 'https://oj-proxy.1930566173.workers.dev',
+      workerUrl,
       repo: 'chenmin-114/online_oj',
       problemsUrl: 'problems/index.json',
-      submissionsUrl: 'dist/submissions.json',
-      rankingUrl: 'dist/ranking-v2.json',
+      // 数据经 Worker 直读，绕开 GitHub Pages CDN 的 10 分钟缓存
+      submissionsUrl: `${workerUrl}/?file=submissions`,
+      rankingUrl: `${workerUrl}/?file=ranking-v2`,
       legacyRankingUrl: 'dist/ranking.json',
     };
     this.problems = [];
