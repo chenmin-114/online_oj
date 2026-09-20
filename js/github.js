@@ -153,9 +153,12 @@ class GitHubStore {
       throw new Error('提交记录格式不正确');
     }
 
-    const safeUsername = username.replace(/[^a-zA-Z0-9_-]/g, '_');
+    // 提交数据保留原始 Unicode 用户名。不能再转成下划线，否则不同中文名
+    // 会被合并到同一个身份，并且无法匹配新版保存的中文名称。
+    const normalizedUsername = String(username).trim().normalize('NFC');
     return submissions
-      .filter(item => item.username === safeUsername)
+      .filter(item => typeof item.username === 'string'
+        && item.username.trim().normalize('NFC') === normalizedUsername)
       .sort((a, b) => b.timestamp - a.timestamp);
   }
 }
