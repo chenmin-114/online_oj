@@ -3,6 +3,36 @@
     "username": "26电子信息赵天楷",
     "problemId": "P003",
     "passed": false,
+    "passedTests": 4,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789918532290
+  },
+  {
+    "username": "机械电子工程陈梓桓",
+    "problemId": "P002",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789918530896
+  },
+  {
+    "username": "电子信息  姚锦灿",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 2,
+    "language": "c",
+    "timestamp": 1789918524938
+  },
+  {
+    "username": "26电子信息赵天楷",
+    "problemId": "P003",
+    "passed": false,
     "passedTests": 2,
     "totalTests": 5,
     "totalTime": 6,

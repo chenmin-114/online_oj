@@ -42,6 +42,12 @@
     "lastSubmit": 1789917934180
   },
   {
+    "username": "机械电子工程陈梓桓",
+    "solvedCount": 3,
+    "totalTime": 30,
+    "lastSubmit": 1789918530896
+  },
+  {
     "username": "26级电子信息类黄佳仪",
     "solvedCount": 3,
     "totalTime": 31,
@@ -64,12 +70,6 @@
     "solvedCount": 2,
     "totalTime": 20,
     "lastSubmit": 1789912133723
-  },
-  {
-    "username": "机械电子工程陈梓桓",
-    "solvedCount": 2,
-    "totalTime": 20,
-    "lastSubmit": 1789915390184
   },
   {
     "username": "袁国齐",
@@ -117,7 +117,7 @@
     "username": "26电子信息赵天楷",
     "solvedCount": 2,
     "totalTime": 23,
-    "lastSubmit": 1789918496944
+    "lastSubmit": 1789918532290
   },
   {
     "username": "自动化2班林师鸿",
@@ -466,5 +466,11 @@
     "solvedCount": 0,
     "totalTime": 0,
     "lastSubmit": 1789918392851
+  },
+  {
+    "username": "电子信息  姚锦灿",
+    "solvedCount": 0,
+    "totalTime": 0,
+    "lastSubmit": 1789918524938
   }
 ]
