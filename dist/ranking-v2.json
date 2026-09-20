@@ -55,6 +55,12 @@
       "lastSubmit": 1789884763898
     },
     {
+      "username": "_______",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789907294077
+    },
+    {
       "username": "a",
       "solvedCount": 1,
       "totalTime": 15026,
@@ -138,6 +144,14 @@
         "totalTime": 10
       }
     ],
-    "P003": []
+    "P003": [],
+    "P006": [
+      {
+        "username": "_______",
+        "attempts": 1,
+        "acceptedAt": 1789907294077,
+        "totalTime": 10
+      }
+    ]
   }
 }
