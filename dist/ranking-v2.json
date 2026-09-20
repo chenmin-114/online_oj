@@ -61,6 +61,12 @@
       "lastSubmit": 1789918561726
     },
     {
+      "username": "自动化2班林师鸿",
+      "solvedCount": 3,
+      "totalTime": 4051,
+      "lastSubmit": 1789918686682
+    },
+    {
       "username": "hello",
       "solvedCount": 2,
       "totalTime": 20,
@@ -119,12 +125,6 @@
       "solvedCount": 2,
       "totalTime": 23,
       "lastSubmit": 1789913956747
-    },
-    {
-      "username": "自动化2班林师鸿",
-      "solvedCount": 2,
-      "totalTime": 4041,
-      "lastSubmit": 1789918109686
     },
     {
       "username": "2",
@@ -717,6 +717,12 @@
         "username": "机械电子工程陈梓桓",
         "attempts": 1,
         "acceptedAt": 1789918530896,
+        "totalTime": 10
+      },
+      {
+        "username": "自动化2班林师鸿",
+        "attempts": 1,
+        "acceptedAt": 1789918686682,
         "totalTime": 10
       },
       {
