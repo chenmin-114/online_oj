@@ -7,6 +7,12 @@
       "lastSubmit": 1789915460906
     },
     {
+      "username": "26智能制造贾智棋",
+      "solvedCount": 4,
+      "totalTime": 43,
+      "lastSubmit": 1789916819036
+    },
+    {
       "username": "GG绷",
       "solvedCount": 4,
       "totalTime": 55,
@@ -22,7 +28,7 @@
       "username": "龚鸿斌",
       "solvedCount": 3,
       "totalTime": 30,
-      "lastSubmit": 1789916792509
+      "lastSubmit": 1789916819588
     },
     {
       "username": "纪楷基",
@@ -35,12 +41,6 @@
       "solvedCount": 3,
       "totalTime": 31,
       "lastSubmit": 1789915769630
-    },
-    {
-      "username": "26智能制造贾智棋",
-      "solvedCount": 3,
-      "totalTime": 33,
-      "lastSubmit": 1789916745830
     },
     {
       "username": "hello",
@@ -95,6 +95,12 @@
       "solvedCount": 2,
       "totalTime": 23,
       "lastSubmit": 1789913956747
+    },
+    {
+      "username": "26电子信息赵天楷",
+      "solvedCount": 2,
+      "totalTime": 23,
+      "lastSubmit": 1789916829873
     },
     {
       "username": "2",
@@ -295,12 +301,6 @@
       "lastSubmit": 1789916013637
     },
     {
-      "username": "26电子信息赵天楷",
-      "solvedCount": 1,
-      "totalTime": 10,
-      "lastSubmit": 1789916160866
-    },
-    {
       "username": "26集成-颜楚航",
       "solvedCount": 1,
       "totalTime": 10,
@@ -311,6 +311,12 @@
       "solvedCount": 1,
       "totalTime": 10,
       "lastSubmit": 1789916719709
+    },
+    {
+      "username": "自动化林巧",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789916818785
     },
     {
       "username": "机制5班胡斐桦",
@@ -388,13 +394,7 @@
       "username": "26智感1班吕婷",
       "solvedCount": 0,
       "totalTime": 0,
-      "lastSubmit": 1789916657086
-    },
-    {
-      "username": "自动化林巧",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789916716170
+      "lastSubmit": 1789916809494
     }
   ],
   "problems": {
@@ -618,6 +618,12 @@
         "totalTime": 11
       },
       {
+        "username": "26电子信息赵天楷",
+        "attempts": 1,
+        "acceptedAt": 1789916829873,
+        "totalTime": 13
+      },
+      {
         "username": "GG绷",
         "attempts": 4,
         "acceptedAt": 1789914942937,
@@ -625,6 +631,12 @@
       }
     ],
     "P003": [
+      {
+        "username": "26智能制造贾智棋",
+        "attempts": 4,
+        "acceptedAt": 1789916819036,
+        "totalTime": 10
+      },
       {
         "username": "GG绷",
         "attempts": 11,
@@ -835,6 +847,12 @@
         "username": "zhhh",
         "attempts": 2,
         "acceptedAt": 1789916719709,
+        "totalTime": 10
+      },
+      {
+        "username": "自动化林巧",
+        "attempts": 3,
+        "acceptedAt": 1789916818785,
         "totalTime": 10
       },
       {

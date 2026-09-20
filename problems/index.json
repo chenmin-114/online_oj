@@ -12,16 +12,16 @@
     "title": "最大值",
     "difficulty": "easy",
     "file": "p002-max.json",
-    "acceptRate": "67%",
-    "submitCount": 15
+    "acceptRate": "69%",
+    "submitCount": 16
   },
   {
     "id": "P003",
     "title": "斐波那契数列",
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
-    "acceptRate": "8%",
-    "submitCount": 26
+    "acceptRate": "11%",
+    "submitCount": 28
   },
   {
     "id": "P004",
@@ -45,7 +45,7 @@
     "difficulty": "easy",
     "file": "p006-example.json",
     "acceptRate": "67%",
-    "submitCount": 101
+    "submitCount": 103
   },
   {
     "id": "P007",
