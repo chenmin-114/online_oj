@@ -1,0 +1,11 @@
+{
+  "username": "电子信息类郑鑫",
+  "problemId": "P003",
+  "passed": false,
+  "passedTests": 4,
+  "totalTests": 5,
+  "totalTime": 5100,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIGludCBuOwogICAgc2NhbmYoIiVkIiwmbik7CiAgICBpbnQgaSxqOwogICAgaW50IGYoaW50IG4pewogICAgICAgIGlmKG4+PTIpewogICAgICAgIGo9ZihuLTEpK2Yobi0yKTsKICAgICAgICB9ZWxzZSBpZihuPT0wKXsKICAgICAgICAgICAgaj0wOwogICAgICAgIH1lbHNlIGlmKG49PTEpewogICAgICAgICAgICBqPTE7CiAgICAgICAgfQoKICAgICAgICByZXR1cm4gajsKICAgIH0KICAgIGZvcihpPTA7aTw9bjtpKyspewogICAgICAgIGYoaSk7ICAgCiAgICAgICAgfQogICAgCiAgICBwcmludGYoIiVkIixqKTsgICAgICAgICAgICAgICAgICAgICAgLy8g5Zyo5q2k57yW5YaZ5L2g55qE5Luj56CBCiAgICAKICAgIHJldHVybiAwOwp9Cg==",
+  "timestamp": 1789918822100
+}
