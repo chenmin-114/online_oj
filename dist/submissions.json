@@ -1,5 +1,35 @@
 [
   {
+    "username": "GG绷",
+    "problemId": "P002",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 15,
+    "language": "cpp",
+    "timestamp": 1789914942937
+  },
+  {
+    "username": "26电子信息类谢塨栩",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 3,
+    "totalTests": 5,
+    "totalTime": 9,
+    "language": "c",
+    "timestamp": 1789914931428
+  },
+  {
+    "username": "信息工程毕道奇",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 2,
+    "language": "c",
+    "timestamp": 1789914923834
+  },
+  {
     "username": "信息工程毕道奇",
     "problemId": "P006",
     "passed": false,
