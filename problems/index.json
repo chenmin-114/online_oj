@@ -5,7 +5,7 @@
     "difficulty": "easy",
     "file": "p001-aplusb.json",
     "acceptRate": "86%",
-    "submitCount": 42
+    "submitCount": 43
   },
   {
     "id": "P002",
@@ -44,8 +44,8 @@
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "67%",
-    "submitCount": 82
+    "acceptRate": "68%",
+    "submitCount": 85
   },
   {
     "id": "P007",

@@ -55,6 +55,12 @@
       "lastSubmit": 1789912133723
     },
     {
+      "username": "袁国齐",
+      "solvedCount": 2,
+      "totalTime": 20,
+      "lastSubmit": 1789915187341
+    },
+    {
       "username": "电信类 谭卓彬",
       "solvedCount": 2,
       "totalTime": 21,
@@ -241,22 +247,22 @@
       "lastSubmit": 1789914610826
     },
     {
-      "username": "袁国齐",
+      "username": "26集成-颜楚航",
       "solvedCount": 1,
       "totalTime": 10,
-      "lastSubmit": 1789914656551
+      "lastSubmit": 1789915052582
+    },
+    {
+      "username": "生医工郑文龙",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789915182254
     },
     {
       "username": "机械电子工程陈梓桓",
       "solvedCount": 1,
       "totalTime": 10,
-      "lastSubmit": 1789914723625
-    },
-    {
-      "username": "26集成-颜楚航",
-      "solvedCount": 1,
-      "totalTime": 10,
-      "lastSubmit": 1789915052582
+      "lastSubmit": 1789915205454
     },
     {
       "username": "机制5班胡斐桦",
@@ -269,6 +275,12 @@
       "solvedCount": 1,
       "totalTime": 11,
       "lastSubmit": 1789913968840
+    },
+    {
+      "username": "26电子信息类谢塨栩",
+      "solvedCount": 1,
+      "totalTime": 11,
+      "lastSubmit": 1789915189831
     },
     {
       "username": "Y_sy_a",
@@ -311,12 +323,6 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789914923834
-    },
-    {
-      "username": "26电子信息类谢塨栩",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789914931428
     }
   ],
   "problems": {
@@ -421,6 +427,12 @@
         "username": "智能感知龙炜镔",
         "attempts": 1,
         "acceptedAt": 1789914974225,
+        "totalTime": 10
+      },
+      {
+        "username": "袁国齐",
+        "attempts": 1,
+        "acceptedAt": 1789915187341,
         "totalTime": 10
       },
       {
@@ -663,6 +675,12 @@
         "totalTime": 10
       },
       {
+        "username": "生医工郑文龙",
+        "attempts": 1,
+        "acceptedAt": 1789915182254,
+        "totalTime": 10
+      },
+      {
         "username": "机制5班胡斐桦",
         "attempts": 2,
         "acceptedAt": 1789911710988,
@@ -678,6 +696,12 @@
         "username": "26级电子信息类黄佳仪",
         "attempts": 4,
         "acceptedAt": 1789913941909,
+        "totalTime": 11
+      },
+      {
+        "username": "26电子信息类谢塨栩",
+        "attempts": 2,
+        "acceptedAt": 1789915189831,
         "totalTime": 11
       },
       {
