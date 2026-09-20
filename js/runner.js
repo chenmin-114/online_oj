@@ -5,6 +5,8 @@
 class CodeRunner {
   constructor(workerUrl) {
     this.workerUrl = workerUrl || window.OJ_CONFIG.WORKER_URL;
+    this.useDirect = false;
+    this.workerProbe = null;
   }
 
   /**
@@ -18,14 +20,23 @@ class CodeRunner {
     const startTime = performance.now();
 
     if (!this.workerUrl) {
-      throw new Error('未配置 Cloudflare Worker URL，无法执行代码');
+      return this._executeDirect(languageId, code, stdin, startTime);
+    }
+
+    // workers.dev 在部分网络中会被错误解析或长时间无响应。首次执行只探测一次；
+    // 如果 3 秒内不可达，本次页面会话后续测试点都直接走 Judge0。
+    if (this.useDirect || !(await this._isWorkerReachable())) {
+      return this._executeDirect(languageId, code, stdin, startTime);
     }
 
     let response;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
       response = await fetch(this.workerUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           type: 'execute',
           script: code,
@@ -37,8 +48,11 @@ class CodeRunner {
       });
     } catch {
       // 部分网络无法访问 workers.dev。Judge0 允许 GitHub Pages 跨域调用，
-      // 因此在网络层失败时直接降级，保证运行和判题仍然可用。
+      // 因此在网络层失败时直接降级，并让后续测试点跳过 Worker。
+      this.useDirect = true;
       return this._executeDirect(languageId, code, stdin, startTime);
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     const elapsed = Math.round(performance.now() - startTime);
@@ -73,8 +87,38 @@ class CodeRunner {
     };
   }
 
+  async _isWorkerReachable() {
+    if (this.useDirect) return false;
+    if (this.workerProbe) return this.workerProbe;
+
+    this.workerProbe = (async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+      try {
+        const response = await fetch(this.workerUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({ type: 'health' }),
+        });
+        if (!response.ok) throw new Error(`Worker HTTP ${response.status}`);
+        return true;
+      } catch {
+        this.useDirect = true;
+        return false;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    })();
+
+    return this.workerProbe;
+  }
+
   async _executeDirect(languageId, code, stdin, startTime) {
     let response;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
       response = await fetch('https://ce.judge0.com/submissions?base64_encoded=false&wait=true', {
         method: 'POST',
@@ -82,14 +126,20 @@ class CodeRunner {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
+        signal: controller.signal,
         body: JSON.stringify({
           source_code: code,
           language_id: languageId,
           stdin,
         }),
       });
-    } catch {
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw new Error('代码执行服务响应超时，请稍后重试');
+      }
       throw new Error('无法连接代码执行服务，请检查网络后重试');
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (!response.ok) {
