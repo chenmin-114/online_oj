@@ -45,10 +45,10 @@
 
 .admin-brand { gap: 12px; }
 .admin-brand-icon {
-  width: 48px;
-  height: 48px;
+  width: 47px;
+  height: 47px;
   display: block;
-  flex: 0 0 48px;
+  flex: 0 0 47px;
   object-fit: contain;
   border-radius: 50%;
   box-shadow: 0 8px 22px rgba(91, 140, 255, 0.2);
