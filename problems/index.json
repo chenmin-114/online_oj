@@ -28,8 +28,8 @@
     "title": "回文判断",
     "difficulty": "easy",
     "file": "p004-palindrome.json",
-    "acceptRate": "50%",
-    "submitCount": 2
+    "acceptRate": "33%",
+    "submitCount": 3
   },
   {
     "id": "P005",
