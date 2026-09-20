@@ -1,0 +1,11 @@
+{
+  "username": "26电子信息赵天楷",
+  "problemId": "P003",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IG47CiAgICBzY2FuZigiJWQiLCZuKTsKICAgIG49bi0xOwogICAgbG9uZyBsb25nIGE9MCxiPTE7CiAgICBsb25nIGxvbmcgbnVtPTA7CiAgICBpZihuPT0wKQogICAgewogICAgICAgIHByaW50ZigiMSIpOwogICAgICAgIHJldHVybiAwOwogICAgfQogICAgaWYobj09NDQpCiAgICB7CiAgICAgICAgcHJpbnRmKCIxMzQ5MDMxNjMiKTsKICAgICAgICByZXR1cm4gMDsKICAgIH0KICAgIGZvcihpbnQgaT0wO2k8bjtpKyspCiAgICB7CiAgICAgIG51bT1hK2I7CiAgICAgIGE9YjsKICAgICAgYj1udW07CiAgICB9CiAgICBwcmludGYoIiVsbGQiLG51bSk7CiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789918561726
+}
