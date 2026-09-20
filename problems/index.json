@@ -21,7 +21,7 @@
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
     "acceptRate": "16%",
-    "submitCount": 55
+    "submitCount": 56
   },
   {
     "id": "P004",
@@ -45,7 +45,7 @@
     "difficulty": "easy",
     "file": "p006-example.json",
     "acceptRate": "66%",
-    "submitCount": 130
+    "submitCount": 131
   },
   {
     "id": "P007",
