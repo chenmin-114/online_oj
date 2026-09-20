@@ -1,0 +1,11 @@
+{
+  "username": "26测绘余子骞",
+  "problemId": "P005",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIAp7CiAgICBpbnQgbiwgdGFyZ2V0OwogICAgc2NhbmYoIiVkICVkIiwgJm4sICZ0YXJnZXQpOyAgIAogICAgaW50IGFbbl07CiAgICBmb3IgKGludCBpID0gMDsgaSA8IG47IGkrKykKICAgIHsKICAgICAgICBzY2FuZigiJWQiLCAmYVtpXSk7CiAgICB9CiAgICBmb3IgKGludCB4ID0gMDsgeCA8IG47IHgrKykKICAgIHsKICAgICAgICBpZiAoYVt4XSA9PSB0YXJnZXQpCiAgICAgICAgewogICAgICAgICAgICBwcmludGYoIiVkIiwgeCk7CiAgICAgICAgICAgIHJldHVybiAwOwogICAgICAgIH0KICAgIH0KICAgIHByaW50ZigiJWQiLCAtMSk7CiAgICByZXR1cm4gMDsKfQ==",
+  "timestamp": 1789915954967
+}
