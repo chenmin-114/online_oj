@@ -669,8 +669,8 @@ class OJAdmin {
         <td>${this.escape(item.problemId)}</td>
         <td>${this.escape(item.language)}</td>
         <td>${this.resultPill(item.passed)}</td>
-        <td>${item.passedTests}/${item.totalTests}</td>
-        <td>${item.totalTime}ms</td>
+        <td>${this.escape(item.passedTests)}/${this.escape(item.totalTests)}</td>
+        <td>${this.escape(item.totalTime)}ms</td>
       </tr>
     `).join('') : '<tr><td colspan="7" class="empty-cell">没有符合条件的提交</td></tr>';
   }
@@ -689,7 +689,7 @@ class OJAdmin {
     if (scope === 'overall') {
       const items = this.ranking.overall || [];
       container.innerHTML = `<table class="admin-table"><thead><tr><th>排名</th><th>用户</th><th>解题数</th><th>总耗时</th><th>最后提交</th></tr></thead><tbody>${
-        items.length ? items.map((item, index) => `<tr><td>#${index + 1}</td><td>${this.escape(item.username)}</td><td>${item.solvedCount}</td><td>${item.totalTime}ms</td><td>${this.formatDate(item.lastSubmit)}</td></tr>`).join('')
+        items.length ? items.map((item, index) => `<tr><td>#${index + 1}</td><td>${this.escape(item.username)}</td><td>${this.escape(item.solvedCount)}</td><td>${this.escape(item.totalTime)}ms</td><td>${this.formatDate(item.lastSubmit)}</td></tr>`).join('')
           : '<tr><td colspan="5" class="empty-cell">暂无总榜数据</td></tr>'
       }</tbody></table>`;
       return;
@@ -697,7 +697,7 @@ class OJAdmin {
 
     const items = this.ranking.problems?.[scope] || [];
     container.innerHTML = `<table class="admin-table"><thead><tr><th>排名</th><th>用户</th><th>判题耗时</th><th>通过前尝试</th><th>通过时间</th></tr></thead><tbody>${
-      items.length ? items.map((item, index) => `<tr><td>#${index + 1}</td><td>${this.escape(item.username)}</td><td>${item.totalTime}ms</td><td>${item.attempts}</td><td>${this.formatDate(item.acceptedAt)}</td></tr>`).join('')
+      items.length ? items.map((item, index) => `<tr><td>#${index + 1}</td><td>${this.escape(item.username)}</td><td>${this.escape(item.totalTime)}ms</td><td>${this.escape(item.attempts)}</td><td>${this.formatDate(item.acceptedAt)}</td></tr>`).join('')
         : '<tr><td colspan="5" class="empty-cell">这道题还没有通过记录</td></tr>'
     }</tbody></table>`;
   }
@@ -759,7 +759,7 @@ class OJAdmin {
   escape(value) {
     const div = document.createElement('div');
     div.textContent = String(value ?? '');
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   toast(message) {
