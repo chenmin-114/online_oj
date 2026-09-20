@@ -379,6 +379,12 @@
       "lastSubmit": 1789916750844
     },
     {
+      "username": "自动化叶振翔",
+      "solvedCount": 1,
+      "totalTime": 11,
+      "lastSubmit": 1789917682498
+    },
+    {
       "username": "机制陆怡雯",
       "solvedCount": 1,
       "totalTime": 12,
@@ -979,6 +985,12 @@
         "username": "电子信息类叶语菡",
         "attempts": 2,
         "acceptedAt": 1789917525433,
+        "totalTime": 11
+      },
+      {
+        "username": "自动化叶振翔",
+        "attempts": 1,
+        "acceptedAt": 1789917682498,
         "totalTime": 11
       },
       {
