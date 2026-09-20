@@ -121,6 +121,12 @@
       "lastSubmit": 1789917927774
     },
     {
+      "username": "自动化2班林师鸿",
+      "solvedCount": 2,
+      "totalTime": 4041,
+      "lastSubmit": 1789918109686
+    },
+    {
       "username": "2",
       "solvedCount": 1,
       "totalTime": 10,
@@ -415,12 +421,6 @@
       "lastSubmit": 1789913271931
     },
     {
-      "username": "自动化2班林师鸿",
-      "solvedCount": 1,
-      "totalTime": 4031,
-      "lastSubmit": 1789917983342
-    },
-    {
       "username": "a",
       "solvedCount": 1,
       "totalTime": 15026,
@@ -607,6 +607,12 @@
         "username": "电子信息类叶语菡",
         "attempts": 1,
         "acceptedAt": 1789917653738,
+        "totalTime": 10
+      },
+      {
+        "username": "自动化2班林师鸿",
+        "attempts": 1,
+        "acceptedAt": 1789918109686,
         "totalTime": 10
       },
       {
