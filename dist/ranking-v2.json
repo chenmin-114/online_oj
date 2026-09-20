@@ -157,6 +157,12 @@
       "lastSubmit": 1789912970658
     },
     {
+      "username": "26电信吕诺言",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789913105840
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -185,12 +191,6 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789831427759
-    },
-    {
-      "username": "26电信吕诺言",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789913044565
     }
   ],
   "problems": {
@@ -402,6 +402,12 @@
         "username": "26电气丰川祥子",
         "attempts": 1,
         "acceptedAt": 1789912970658,
+        "totalTime": 10
+      },
+      {
+        "username": "26电信吕诺言",
+        "attempts": 2,
+        "acceptedAt": 1789913105840,
         "totalTime": 10
       },
       {
