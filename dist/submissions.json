@@ -1,5 +1,25 @@
 [
   {
+    "username": "26自动化何倍霖",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789915906449
+  },
+  {
+    "username": "自动化阳湘兰",
+    "problemId": "P002",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789915901155
+  },
+  {
     "username": "生医工郑可晴",
     "problemId": "P001",
     "passed": false,
