@@ -12,8 +12,8 @@
     "title": "最大值",
     "difficulty": "easy",
     "file": "p002-max.json",
-    "acceptRate": "100%",
-    "submitCount": 5
+    "acceptRate": "75%",
+    "submitCount": 8
   },
   {
     "id": "P003",
@@ -44,8 +44,8 @@
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "72%",
-    "submitCount": 72
+    "acceptRate": "73%",
+    "submitCount": 73
   },
   {
     "id": "P007",
