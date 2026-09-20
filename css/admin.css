@@ -47,11 +47,11 @@
 .admin-brand-icon {
   width: 40px;
   height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #4478ff, #855cff);
-  box-shadow: 0 10px 24px rgba(91, 140, 255, 0.28);
+  display: block;
+  flex: 0 0 40px;
+  object-fit: contain;
+  border-radius: 50%;
+  box-shadow: 0 8px 22px rgba(91, 140, 255, 0.2);
 }
 .admin-brand h1 { font-size: 17px; line-height: 1.1; }
 .admin-brand span { color: var(--admin-muted); font-size: 12px; }

@@ -50,9 +50,23 @@ body {
 }
 
 .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 20px;
   font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
   color: var(--text-primary);
+}
+
+.brand-logo {
+  display: block;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  object-fit: contain;
+  border-radius: 50%;
 }
 
 .nav {
