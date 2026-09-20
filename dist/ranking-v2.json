@@ -1,6 +1,12 @@
 {
   "overall": [
     {
+      "username": "龚鸿斌",
+      "solvedCount": 3,
+      "totalTime": 30,
+      "lastSubmit": 1789913342134
+    },
+    {
       "username": "hello",
       "solvedCount": 2,
       "totalTime": 20,
@@ -17,12 +23,6 @@
       "solvedCount": 2,
       "totalTime": 20,
       "lastSubmit": 1789912133723
-    },
-    {
-      "username": "龚鸿斌",
-      "solvedCount": 2,
-      "totalTime": 20,
-      "lastSubmit": 1789912831491
     },
     {
       "username": "纪楷基",
@@ -321,6 +321,12 @@
         "username": "26_____",
         "attempts": 1,
         "acceptedAt": 1789908037678,
+        "totalTime": 10
+      },
+      {
+        "username": "龚鸿斌",
+        "attempts": 1,
+        "acceptedAt": 1789913342134,
         "totalTime": 10
       },
       {
