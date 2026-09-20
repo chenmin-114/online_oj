@@ -2,6 +2,16 @@
   {
     "username": "mj",
     "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789912469250
+  },
+  {
+    "username": "mj",
+    "problemId": "P006",
     "passed": false,
     "passedTests": 4,
     "totalTests": 5,
