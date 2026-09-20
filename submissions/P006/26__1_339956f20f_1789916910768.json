@@ -1,0 +1,11 @@
+{
+  "username": "26智感1班吕婷",
+  "problemId": "P006",
+  "passed": false,
+  "passedTests": 0,
+  "totalTests": 5,
+  "totalTime": 2220,
+  "language": "c",
+  "code": "aW50IG1haW4oKSB7CiAgICBpbnQgdCA9IDA7CiAgICBzY2FuZigiJWQiLCZ0KTsKCiAgICBpbnQgaCxtLHM7CiAgICBoID0gdC8zNjAwOwogICAgbSA9ICh0IC0gaCozNjAwKS82MDsKICAgIHMgPSB0IC0gaCozNjAwIC0gbSo2MDsKCiAgICBwcmludGYoIiUwMmQ6JTAyZDolMDJkIixoLG0scyk7CiAgICAKICAgIHJldHVybiAwOwp9Cg==",
+  "timestamp": 1789916910768
+}
