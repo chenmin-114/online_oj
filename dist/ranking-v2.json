@@ -67,6 +67,18 @@
       "lastSubmit": 1789908379562
     },
     {
+      "username": "自动化阳湘兰",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789909719721
+    },
+    {
+      "username": "彭于晏",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789909722474
+    },
+    {
       "username": "Y_sy_a",
       "solvedCount": 1,
       "totalTime": 15,
@@ -148,6 +160,12 @@
         "totalTime": 10
       },
       {
+        "username": "自动化阳湘兰",
+        "attempts": 1,
+        "acceptedAt": 1789909716251,
+        "totalTime": 10
+      },
+      {
         "username": "a",
         "attempts": 1,
         "acceptedAt": 1789824356949,
@@ -174,6 +192,12 @@
         "username": "_______",
         "attempts": 1,
         "acceptedAt": 1789907294077,
+        "totalTime": 10
+      },
+      {
+        "username": "彭于晏",
+        "attempts": 1,
+        "acceptedAt": 1789909722474,
         "totalTime": 10
       },
       {
