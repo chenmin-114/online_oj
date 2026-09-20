@@ -5,6 +5,16 @@
     "passed": true,
     "passedTests": 5,
     "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789912326758
+  },
+  {
+    "username": "自动化阳湘兰",
+    "problemId": "P001",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
     "totalTime": 12,
     "language": "c",
     "timestamp": 1789912307755
