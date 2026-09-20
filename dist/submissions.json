@@ -1,5 +1,75 @@
 [
   {
+    "username": "物联网工程黄施睿",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 11,
+    "language": "c",
+    "timestamp": 1789916750844
+  },
+  {
+    "username": "26智能制造贾智棋",
+    "problemId": "P003",
+    "passed": false,
+    "passedTests": 4,
+    "totalTests": 5,
+    "totalTime": 12,
+    "language": "c",
+    "timestamp": 1789916745830
+  },
+  {
+    "username": "GG绷",
+    "problemId": "P003",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 11,
+    "language": "c",
+    "timestamp": 1789916744266
+  },
+  {
+    "username": "GG绷",
+    "problemId": "P003",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 11,
+    "language": "c",
+    "timestamp": 1789916742647
+  },
+  {
+    "username": "zhhh",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789916719709
+  },
+  {
+    "username": "机制陆怡雯",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 12,
+    "language": "c",
+    "timestamp": 1789916717989
+  },
+  {
+    "username": "自动化林巧",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 2,
+    "language": "c",
+    "timestamp": 1789916716170
+  },
+  {
     "username": "zhhh",
     "problemId": "P006",
     "passed": false,
