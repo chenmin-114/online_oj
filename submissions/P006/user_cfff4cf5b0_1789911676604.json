@@ -1,0 +1,11 @@
+{
+  "username": "鸡电占紫轩",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQoJaW50IHRpbWU7CgkKCWlmIChzY2FuZigiJWQiLCAmdGltZSkgIT0gMSkKCXsKCQlyZXR1cm4gMTsKCX0KCglpZiAodGltZSA+IDg2Mzk5KSByZXR1cm4gMTsKCglpbnQgY2xvY2ssIG1pbnV0ZSwgc2Vjb25kOwoJY2xvY2sgPSB0aW1lIC8gMzYwMDsKCW1pbnV0ZSA9IHRpbWUgLyA2MCAlIDYwOwoJc2Vjb25kID0gdGltZSAlIDYwOwoJcHJpbnRmKCIlMDJkOiUwMmQ6JTAyZCIsIGNsb2NrLCBtaW51dGUsIHNlY29uZCk7CiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789911676604
+}
