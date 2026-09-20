@@ -1,0 +1,11 @@
+{
+  "username": "纪楷基",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IHRvdGFsOwogICAgc2NhbmYoIiVkIiwgJnRvdGFsKTsKICAgIGludCBoID0gdG90YWwgLyAzNjAwOwogICAgaW50IGEgPSB0b3RhbCAlIDM2MDA7CiAgICBpbnQgbSA9IGEgLyA2MDsKICAgIGludCBzID0gYSAlIDYwOwogICAgcHJpbnRmKCIlMDJkOiUwMmQ6JTAyZCIsIGgsIG0sIHMpOwogICAgcmV0dXJuIDA7Cn0K",
+  "timestamp": 1789914686224
+}
