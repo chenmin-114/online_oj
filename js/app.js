@@ -64,15 +64,15 @@ class App {
   _renderProblemList(problems) {
     const container = document.getElementById('problem-list');
     container.innerHTML = problems.map(p => `
-      <div class="problem-card" data-id="${p.id}" data-file="${p.file}">
+      <div class="problem-card" data-id="${this._escapeHtml(p.id)}" data-file="${this._escapeHtml(p.file)}">
         <div class="problem-header">
-          <span class="problem-id">${p.id}</span>
-          <span class="problem-title">${p.title}</span>
-          <span class="difficulty ${p.difficulty}">${this._difficultyText(p.difficulty)}</span>
+          <span class="problem-id">${this._escapeHtml(p.id)}</span>
+          <span class="problem-title">${this._escapeHtml(p.title)}</span>
+          <span class="difficulty ${this._escapeHtml(p.difficulty)}">${this._escapeHtml(this._difficultyText(p.difficulty))}</span>
         </div>
         <div class="problem-meta">
-          <span>通过率: ${p.acceptRate || 'N/A'}</span>
-          <span>提交: ${p.submitCount || 0}</span>
+          <span>通过率: ${this._escapeHtml(p.acceptRate || 'N/A')}</span>
+          <span>提交: ${this._escapeHtml(p.submitCount || 0)}</span>
         </div>
       </div>
     `).join('');
@@ -408,8 +408,8 @@ class App {
                 <td>${this._escapeHtml(item.problemId)}</td>
                 <td>${this._escapeHtml(item.language)}</td>
                 <td class="${item.passed ? 'success' : 'error'}">${item.passed ? 'Accepted' : 'Wrong Answer'}</td>
-                <td>${item.passedTests}/${item.totalTests}</td>
-                <td>${item.totalTime}ms</td>
+                <td>${this._escapeHtml(item.passedTests)}/${this._escapeHtml(item.totalTests)}</td>
+                <td>${this._escapeHtml(item.totalTime)}ms</td>
               </tr>
             `).join('')}
           </tbody>
@@ -423,7 +423,7 @@ class App {
   _escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 }
 

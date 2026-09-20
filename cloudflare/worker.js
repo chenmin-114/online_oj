@@ -13,10 +13,24 @@
  */
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
+
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://jc-oj.online',
+  'https://www.jc-oj.online',
+  'http://jc-oj.online',
+  'http://www.jc-oj.online',
+  'http://localhost:8080',
+  'http://127.0.0.1:8080',
+];
+
+const CODE_MAX_LENGTH = 256 * 1024;
+const SCRIPT_MAX_LENGTH = 64 * 1024;
+const STDIN_MAX_LENGTH = 64 * 1024;
+const MAX_TEST_COUNT = 1000;
+const MAX_TOTAL_TIME = 3600000;
 
 // 允许读取的数据文件白名单：查询参数不能直接拼进 GitHub 路径
 const DATA_FILES = {
@@ -38,49 +52,81 @@ const LEGACY_LANGUAGE_IDS = {
 
 export default {
   async fetch(request, env) {
-    // CORS 预检
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS_HEADERS });
-    }
-
-    // 数据读取：绕开 GitHub Pages CDN 的 max-age=600 缓存
-    if (request.method === 'GET') {
-      return await handleData(request, env);
-    }
-
-    // 其余接口只接受 POST
-    if (request.method !== 'POST') {
-      return new Response('Method Not Allowed', { status: 405 });
-    }
-
-    try {
-      const body = await request.json();
-
-      // 路由：根据 type 字段分发
-      if (body.type === 'health') {
-        return jsonResponse({
-          ok: true,
-          executionProvider: 'Judge0 CE',
-          repository: env.GITHUB_REPO || null,
-          githubConfigured: Boolean(env.GITHUB_TOKEN && env.GITHUB_REPO),
-        });
-      } else if (body.type === 'execute') {
-        return await handleExecute(body, env);
-      } else if (body.type === 'create_problem') {
-        return await handleCreateProblem(body, env);
-      } else if (body.type === 'update_problem') {
-        return await handleUpdateProblem(body, env);
-      } else if (body.type === 'submit' || typeof body.passed === 'boolean') {
-        return await handleSubmit(body, env);
-      }
-
-      return jsonResponse({ error: 'Unknown request type' }, 400);
-
-    } catch (err) {
-      return jsonResponse({ error: err.message }, 500);
-    }
+    return applyCors(await handleRequest(request, env), request, env);
   },
 };
+
+async function handleRequest(request, env) {
+  // CORS 预检
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { headers: CORS_HEADERS });
+  }
+
+  // 数据读取：绕开 GitHub Pages CDN 的 max-age=600 缓存
+  if (request.method === 'GET') {
+    return await handleData(request, env);
+  }
+
+  // 其余接口只接受 POST
+  if (request.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+
+  try {
+    const body = await request.json();
+
+    // 路由：根据 type 字段分发
+    if (body.type === 'health') {
+      return jsonResponse({
+        ok: true,
+        executionProvider: 'Judge0 CE',
+        repository: env.GITHUB_REPO || null,
+        githubConfigured: Boolean(env.GITHUB_TOKEN && env.GITHUB_REPO),
+      });
+    } else if (body.type === 'execute') {
+      return await handleExecute(body, env);
+    } else if (body.type === 'create_problem') {
+      return await handleCreateProblem(body, env);
+    } else if (body.type === 'update_problem') {
+      return await handleUpdateProblem(body, env);
+    } else if (body.type === 'submit' || typeof body.passed === 'boolean') {
+      return await handleSubmit(body, env);
+    }
+
+    return jsonResponse({ error: 'Unknown request type' }, 400);
+
+  } catch (err) {
+    return jsonResponse({ error: err.message }, 500);
+  }
+}
+
+function allowedOrigins(env) {
+  const configured = env.ALLOWED_ORIGINS;
+  if (!configured) return DEFAULT_ALLOWED_ORIGINS;
+  return String(configured).split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function applyCors(response, request, env) {
+  const headers = new Headers(response.headers);
+  headers.delete('Access-Control-Allow-Origin');
+  headers.set('Vary', 'Origin');
+  const origin = request.headers.get('Origin');
+  if (origin && allowedOrigins(env).includes(origin)) {
+    headers.set('Access-Control-Allow-Origin', origin);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function countField(value, max) {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && !/^\d+$/.test(value.trim())) return null;
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 && number <= max ? number : null;
+}
 
 /**
  * 读取仓库数据文件（题目 / 排行榜 / 提交记录）。
@@ -145,6 +191,14 @@ async function handleExecute(body, env) {
   const allowedLanguageIds = new Set([103, 105, 92, 91, 93, 106, 108]);
   if (!allowedLanguageIds.has(languageId)) {
     return jsonResponse({ error: 'Unsupported language' }, 400);
+  }
+
+  if (typeof script !== 'string' || script.length > SCRIPT_MAX_LENGTH) {
+    return jsonResponse({ error: 'Source code too large' }, 413);
+  }
+  if (stdin !== undefined && stdin !== null
+      && (typeof stdin !== 'string' || stdin.length > STDIN_MAX_LENGTH)) {
+    return jsonResponse({ error: 'Standard input too large' }, 413);
   }
 
   const judge0BaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
@@ -627,6 +681,20 @@ async function handleSubmit(body, env) {
     return jsonResponse({ error: 'Invalid payload' }, 400);
   }
 
+  const passedTestsCount = countField(passedTests, MAX_TEST_COUNT);
+  const totalTestsCount = countField(totalTests, MAX_TEST_COUNT);
+  const totalTimeValue = countField(totalTime, MAX_TOTAL_TIME);
+  if (passedTestsCount === null || totalTestsCount === null || totalTimeValue === null) {
+    return jsonResponse({ error: 'Invalid numeric field' }, 400);
+  }
+  if (passedTestsCount > totalTestsCount) {
+    return jsonResponse({ error: 'Invalid test counts' }, 400);
+  }
+  const codeValue = typeof code === 'string' ? code : '';
+  if (codeValue.length > CODE_MAX_LENGTH) {
+    return jsonResponse({ error: 'Source code too large' }, 413);
+  }
+
   if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
     return jsonResponse({
       error: 'GitHub 提交存储尚未配置',
@@ -652,11 +720,11 @@ async function handleSubmit(body, env) {
     username: displayUsername,
     problemId: safeProblemId,
     passed,
-    passedTests,
-    totalTests,
-    totalTime,
-    language,
-    code,
+    passedTests: passedTestsCount,
+    totalTests: totalTestsCount,
+    totalTime: totalTimeValue,
+    language: String(language ?? '').slice(0, 32),
+    code: codeValue,
     timestamp: safeTimestamp,
   };
 
