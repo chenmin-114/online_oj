@@ -45,6 +45,7 @@ class OJAdmin {
     document.getElementById('close-problem-editor').addEventListener('click', () => this.hideProblemEditor());
     document.getElementById('reset-problem-editor').addEventListener('click', () => this.resetProblemEditor());
     document.getElementById('add-test-case').addEventListener('click', () => this.addTestCase());
+    document.getElementById('import-problem-markdown').addEventListener('click', () => this.importProblemMarkdown());
     document.getElementById('problem-images').addEventListener('change', event => {
       this.addProblemImages(event.target.files);
       event.target.value = '';
@@ -220,8 +221,97 @@ class OJAdmin {
     document.getElementById('problem-editor').reset();
     document.getElementById('test-case-editor').innerHTML = '';
     document.getElementById('problem-save-status').textContent = '';
+    document.getElementById('problem-import-status').textContent = '自动识别题号、标题、描述、输入输出格式、样例和说明；发布前请补充隐藏测试点';
     this.clearProblemImages();
     this.addTestCase();
+  }
+
+  importProblemMarkdown() {
+    const source = document.getElementById('problem-import-markdown').value
+      .replace(/^\uFEFF/, '')
+      .replace(/\r\n?/g, '\n')
+      .trim();
+    const status = document.getElementById('problem-import-status');
+    if (!source) {
+      status.textContent = '请先粘贴完整题面';
+      return;
+    }
+
+    const titleMatch = source.match(/^#\s+(.+)$/m);
+    const rawTitle = titleMatch?.[1]?.trim() || '';
+    const idMatch = rawTitle.match(/\bP\d{3,6}\b/i);
+    const id = idMatch?.[0]?.toUpperCase() || '';
+    const title = rawTitle.replace(/\bP\d{3,6}\b/i, '').trim();
+    const sections = this.parseMarkdownSections(source);
+    const description = this.findMarkdownSection(sections, ['题目描述', '问题描述', '题意']);
+    const inputFormat = this.findMarkdownSection(sections, ['输入格式', '输入']);
+    const outputFormat = this.findMarkdownSection(sections, ['输出格式', '输出']);
+    const notes = this.findMarkdownSection(sections, ['说明/提示', '说明提示', '说明', '提示', '数据范围']);
+    const samples = this.parseMarkdownSamples(source);
+
+    if (!id && !title && !description) {
+      status.textContent = '没有识别到题目标题或题目描述，请检查 Markdown 格式';
+      return;
+    }
+
+    if (id) {
+      document.getElementById('problem-id').value = id;
+      document.getElementById('problem-file').value = `${id.toLowerCase()}.json`;
+    }
+    if (title) document.getElementById('problem-title').value = title;
+    if (description) document.getElementById('problem-description').value = description;
+    if (inputFormat) document.getElementById('problem-input-format').value = inputFormat;
+    if (outputFormat) document.getElementById('problem-output-format').value = outputFormat;
+    if (notes) document.getElementById('problem-constraints').value = notes;
+
+    if (samples.length) {
+      document.getElementById('problem-sample-input').value = samples[0].input;
+      document.getElementById('problem-sample-output').value = samples[0].output;
+      const testCaseEditor = document.getElementById('test-case-editor');
+      testCaseEditor.innerHTML = '';
+      samples.forEach(sample => this.addTestCase(sample.input, sample.output));
+    }
+
+    const recognized = [id && '题号', title && '标题', description && '描述', inputFormat && '输入格式', outputFormat && '输出格式', samples.length && `${samples.length} 组样例`, notes && '说明']
+      .filter(Boolean);
+    status.textContent = `已识别：${recognized.join('、')}`;
+    document.querySelector('.problem-importer').open = false;
+    this.toast('题面已自动填入，请检查内容并补充隐藏测试点');
+  }
+
+  parseMarkdownSections(source) {
+    const headings = Array.from(source.matchAll(/^##\s+(.+?)\s*$/gm));
+    return headings.map((match, index) => ({
+      title: match[1].trim(),
+      content: source.slice(
+        match.index + match[0].length,
+        headings[index + 1]?.index ?? source.length
+      ).trim(),
+    }));
+  }
+
+  findMarkdownSection(sections, aliases) {
+    const normalizedAliases = aliases.map(alias => alias.replace(/[\s　]/g, '').toLowerCase());
+    const section = sections.find(item => {
+      const title = item.title.replace(/[\s　]/g, '').toLowerCase();
+      return normalizedAliases.some(alias => title === alias || title.startsWith(`${alias}#`));
+    });
+    return section?.content || '';
+  }
+
+  parseMarkdownSamples(source) {
+    const blocks = new Map();
+    const counters = { input: 0, output: 0 };
+    const pattern = /^#{3,6}\s*(输入|输出)(?:\s*#?\s*(\d+))?\s*\n\s*```[^\n]*\n([\s\S]*?)\n```\s*$/gm;
+    let match;
+    while ((match = pattern.exec(source)) !== null) {
+      const type = match[1] === '输入' ? 'input' : 'output';
+      counters[type] += 1;
+      const number = match[2] || String(counters[type]);
+      if (!blocks.has(number)) blocks.set(number, { input: '', output: '' });
+      blocks.get(number)[type] = match[3].replace(/\n$/, '');
+    }
+    return Array.from(blocks.values()).filter(sample => sample.input || sample.output);
   }
 
   addProblemImages(fileList) {

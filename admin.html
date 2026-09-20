@@ -7,7 +7,7 @@
   <link rel="icon" type="image/png" href="assets/logo-circle.png?v=20260920-2">
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260920-9">
+  <link rel="stylesheet" href="css/admin.css?v=20260920-10">
 </head>
 <body class="admin-body">
   <header class="admin-header">
@@ -81,6 +81,16 @@
             <button id="close-problem-editor" type="button" class="text-button">关闭 ×</button>
           </div>
           <div class="problem-form">
+            <details class="problem-importer">
+              <summary><span>⚡ 一键粘贴题目 Markdown</span><small>适配洛谷等平台的常见题面格式</small></summary>
+              <div class="problem-importer-body">
+                <textarea id="problem-import-markdown" class="admin-input code-input" rows="10" placeholder="把完整题面粘贴到这里，例如从 # P1002 ... 开始"></textarea>
+                <div class="problem-importer-actions">
+                  <span id="problem-import-status">自动识别题号、标题、描述、输入输出格式、样例和说明；发布前请补充隐藏测试点</span>
+                  <button id="import-problem-markdown" type="button" class="admin-button primary">解析并自动填入</button>
+                </div>
+              </div>
+            </details>
             <div class="form-grid three-columns">
               <label class="form-field"><span>题号 *</span><input id="problem-id" class="admin-input" required placeholder="P006"></label>
               <label class="form-field"><span>题目名称 *</span><input id="problem-title" class="admin-input" required placeholder="两数相乘"></label>
@@ -161,6 +171,6 @@
   </div>
 
   <div id="admin-toast" class="admin-toast" role="status"></div>
-  <script src="js/admin.js?v=20260920-7"></script>
+  <script src="js/admin.js?v=20260920-8"></script>
 </body>
 </html>
