@@ -1,5 +1,75 @@
 [
   {
+    "username": "26自动化刘桂余",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 12,
+    "language": "c",
+    "timestamp": 1789913956747
+  },
+  {
+    "username": "纪楷基",
+    "problemId": "P003",
+    "passed": false,
+    "passedTests": 4,
+    "totalTests": 5,
+    "totalTime": 13,
+    "language": "c",
+    "timestamp": 1789913955669
+  },
+  {
+    "username": "电子信息类邓智轩",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 2,
+    "language": "c",
+    "timestamp": 1789913955361
+  },
+  {
+    "username": "26级电子信息类黄佳仪",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789913952354
+  },
+  {
+    "username": "26级电子信息类黄佳仪",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 12,
+    "language": "c",
+    "timestamp": 1789913951229
+  },
+  {
+    "username": "电子信息类邓智轩",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 2,
+    "language": "c",
+    "timestamp": 1789913948798
+  },
+  {
+    "username": "26级电子信息类黄佳仪",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 11,
+    "language": "c",
+    "timestamp": 1789913941909
+  },
+  {
     "username": "GG绷",
     "problemId": "P006",
     "passed": true,
