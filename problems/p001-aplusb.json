@@ -8,6 +8,16 @@
   "constraints": "- `0 ≤ a, b ≤ 10^9`\n- 保证结果在 32 位有符号整数范围内",
   "sampleInput": "1 2",
   "sampleOutput": "3",
+  "samples": [
+    {
+      "input": "1 2",
+      "output": "3"
+    },
+    {
+      "input": "4 5",
+      "output": "9"
+    }
+  ],
   "testCases": [
     {
       "input": "1 2",
