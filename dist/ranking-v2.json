@@ -97,6 +97,12 @@
       "lastSubmit": 1789910108773
     },
     {
+      "username": "纪楷基",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789911268292
+    },
+    {
       "username": "26智能制造贾智棋",
       "solvedCount": 1,
       "totalTime": 13,
@@ -187,6 +193,12 @@
         "username": "自动化阳湘兰",
         "attempts": 1,
         "acceptedAt": 1789909716251,
+        "totalTime": 10
+      },
+      {
+        "username": "纪楷基",
+        "attempts": 1,
+        "acceptedAt": 1789911250410,
         "totalTime": 10
       },
       {
