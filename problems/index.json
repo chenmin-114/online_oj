@@ -12,8 +12,8 @@
     "title": "最大值",
     "difficulty": "easy",
     "file": "p002-max.json",
-    "acceptRate": "69%",
-    "submitCount": 16
+    "acceptRate": "65%",
+    "submitCount": 17
   },
   {
     "id": "P003",
@@ -37,7 +37,7 @@
     "difficulty": "medium",
     "file": "p005-binary-search.json",
     "acceptRate": "100%",
-    "submitCount": 2
+    "submitCount": 3
   },
   {
     "id": "P006",
