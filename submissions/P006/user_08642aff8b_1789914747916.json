@@ -1,0 +1,11 @@
+{
+  "username": "电子信息类郑思杰",
+  "problemId": "P006",
+  "passed": false,
+  "passedTests": 2,
+  "totalTests": 5,
+  "totalTime": 6,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+Cgp2b2lkIGEoKTsKCmludCBtYWluKCkgewogICAgLy8g5Zyo5q2k57yW5YaZ5L2g55qE5Luj56CBCiAgICBpbnQgdG90YWw7CiAgICBzY2FuZigiJWQiLCZ0b3RhbCk7CiAgICBpbnQgaD0wOwogICAgaW50IG1pbj0wOwogICAgaW50IHM9MDsKCiAgICBpZih0b3RhbD42MCl7CiAgICBoPSh0b3RhbC82MCkvNjA7CiAgICBtaW49KHRvdGFsLzYwKSU2MDsKICAgIHM9KHRvdGFsJTYwKSU2MDsKCiAgICBhKGgpOwogICAgYShtaW4pOwogICAgaWYoczwxMCYmcz4wKXsKICAgICAgICBwcmludGYoIjAlZCIscyk7CiAgICB9ZWxzZSBpZihoPT0wKXsKICAgICAgICBwcmludGYoIjAwIik7CiAgICB9CiAgICB9CmVsc2Uge3M9dG90YWw7CiAgICBwcmludGYoIjAwOjAwOiVkIixzKTsKfQogICAgcmV0dXJuIDA7Cn0KCnZvaWQgYShpbnQgYikKewogICAgaWYoYjwxMCYmYj4wKXsKICAgICAgICBwcmludGYoIjAlZDoiLGIpOwogICAgfWVsc2UgaWYoYj09MCl7CiAgICAgICAgcHJpbnRmKCIwMDoiKTsKICAgIH0KfQo=",
+  "timestamp": 1789914747916
+}
