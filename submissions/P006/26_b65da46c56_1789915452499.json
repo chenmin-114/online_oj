@@ -1,0 +1,11 @@
+{
+  "username": "26电子信息工程林贤宇",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbih2b2lkKQp7CiAgICBpbnQgdG90YWxfc2VjOwogICAgc2NhbmYoIiVkIiwgJnRvdGFsX3NlYyk7CiAgICAKICAgIGludCBoID0gdG90YWxfc2VjIC8gMzYwMDsKICAgIGludCByZW1haW4gPSB0b3RhbF9zZWMgJSAzNjAwOwogICAgaW50IG0gPSByZW1haW4gLyA2MDsKICAgIGludCBzID0gcmVtYWluICUgNjA7CiAgICAKICAgIHByaW50ZigiJTAyZDolMDJkOiUwMmRcbiIsIGgsIG0sIHMpOwogICAgcmV0dXJuIDA7Cn0K",
+  "timestamp": 1789915452499
+}
