@@ -229,22 +229,28 @@
       "lastSubmit": 1789914536862
     },
     {
+      "username": "机械电子工程3班巫俊辉",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789914610826
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
       "lastSubmit": 1789911710988
     },
     {
-      "username": "智能感知龙炜镔",
-      "solvedCount": 1,
-      "totalTime": 11,
-      "lastSubmit": 1789913615886
-    },
-    {
       "username": "26级电子信息类黄佳仪",
       "solvedCount": 1,
       "totalTime": 11,
       "lastSubmit": 1789913968840
+    },
+    {
+      "username": "智能感知龙炜镔",
+      "solvedCount": 1,
+      "totalTime": 11,
+      "lastSubmit": 1789914602778
     },
     {
       "username": "Y_sy_a",
@@ -567,6 +573,12 @@
         "totalTime": 10
       },
       {
+        "username": "机械电子工程3班巫俊辉",
+        "attempts": 1,
+        "acceptedAt": 1789914610826,
+        "totalTime": 10
+      },
+      {
         "username": "机制5班胡斐桦",
         "attempts": 2,
         "acceptedAt": 1789911710988,
@@ -614,6 +626,7 @@
         "acceptedAt": 1789913271931,
         "totalTime": 15
       }
-    ]
+    ],
+    "P004": []
   }
 }

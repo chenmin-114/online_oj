@@ -29,7 +29,7 @@
     "difficulty": "easy",
     "file": "p004-palindrome.json",
     "acceptRate": "0%",
-    "submitCount": 0
+    "submitCount": 1
   },
   {
     "id": "P005",
@@ -44,8 +44,8 @@
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "71%",
-    "submitCount": 70
+    "acceptRate": "72%",
+    "submitCount": 71
   },
   {
     "id": "P007",
