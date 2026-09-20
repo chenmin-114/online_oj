@@ -61,6 +61,12 @@
       "lastSubmit": 1789907352642
     },
     {
+      "username": "Y_sy_a",
+      "solvedCount": 1,
+      "totalTime": 15,
+      "lastSubmit": 1789907436515
+    },
+    {
       "username": "a",
       "solvedCount": 1,
       "totalTime": 15026,
@@ -151,6 +157,12 @@
         "attempts": 1,
         "acceptedAt": 1789907294077,
         "totalTime": 10
+      },
+      {
+        "username": "Y_sy_a",
+        "attempts": 1,
+        "acceptedAt": 1789907436515,
+        "totalTime": 15
       }
     ]
   }

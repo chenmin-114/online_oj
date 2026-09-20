@@ -1,5 +1,15 @@
 [
   {
+    "username": "Y_sy_a",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 15,
+    "language": "cpp",
+    "timestamp": 1789907436515
+  },
+  {
     "username": "_______",
     "problemId": "P006",
     "passed": true,
