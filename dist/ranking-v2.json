@@ -181,6 +181,12 @@
       "lastSubmit": 1789907436515
     },
     {
+      "username": "自动化 唐博",
+      "solvedCount": 1,
+      "totalTime": 15,
+      "lastSubmit": 1789913271931
+    },
+    {
       "username": "a",
       "solvedCount": 1,
       "totalTime": 15026,
@@ -426,6 +432,12 @@
         "username": "Y_sy_a",
         "attempts": 1,
         "acceptedAt": 1789907436515,
+        "totalTime": 15
+      },
+      {
+        "username": "自动化 唐博",
+        "attempts": 1,
+        "acceptedAt": 1789913271931,
         "totalTime": 15
       }
     ]
