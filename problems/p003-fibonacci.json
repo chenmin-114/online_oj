@@ -8,6 +8,12 @@
   "constraints": "- `0 ≤ n ≤ 10^9`",
   "sampleInput": "10",
   "sampleOutput": "55",
+  "samples": [
+    {
+      "input": "10",
+      "output": "55"
+    }
+  ],
   "testCases": [
     {
       "input": "0",
@@ -27,7 +33,7 @@
     },
     {
       "input": "45",
-      "expectedOutput": "134626906"
+      "expectedOutput": "134903163"
     }
   ],
   "hints": [
