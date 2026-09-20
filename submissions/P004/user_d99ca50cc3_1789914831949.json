@@ -1,0 +1,11 @@
+{
+  "username": "智能感知龙炜镔",
+  "problemId": "P004",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CiNpbmNsdWRlIDxzdHJpbmcuaD4KaW50IG1haW4oKSAKewogICAgY2hhciBhWzEwMDAwMF07CiAgICBzY2FuZigiJXMiLGEpOwogICAgaW50IGxlbj0wOwogICAgaW50IGI9MDsKICAgIGxlbiA9IHN0cmxlbiAoYSk7CiAgICBmb3IgKGludCBpPTA7aTxsZW4vMjtpKyspCiAgICB7CiAgICAgICAgaWYgKGFbaV0hPWFbbGVuLWktMV0pCiAgICAgICAgewogICAgICAgICAgICBiPTE7CiAgICAgICAgICAgIGJyZWFrOwogICAgICAgIH0KICAgICAgICBlbHNlCiAgICAgICAgewogICAgICAgICAgICBiPTA7CiAgICAgICAgfQoKICAgIAogICAgfQogICAgaWYgKGI9PTApCiAgICB7CiAgICAgICAgcHJpbnRmKCJZRVMiKTsKICAgIH0KICAgIGVsc2UKICAgIHsKICAgICAgICBwcmludGYoIk5PIik7CiAgICB9CgoKCiAgICAKICAgIHJldHVybiAwOwp9Cg==",
+  "timestamp": 1789914831949
+}
