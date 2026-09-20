@@ -1,0 +1,11 @@
+{
+  "username": "生物医学工程黎舜坤",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIGludCBoaCwgbW0sIHNzOwogICAgaW50IHRvdGFsOwogICAgc2NhbmYoIiVkIiwgJnRvdGFsKTsKICAgIGhoID0gdG90YWwgLyAzNjAwOwogICAgbW0gPSAodG90YWwgJSAzNjAwKSAvIDYwOwogICAgc3MgPSAodG90YWwgJSAzNjAwKSAlIDYwOwogICAgcHJpbnRmKCIlMDJkOiUwMmQ6JTAyZCIsIGhoLCBtbSwgc3MpOwogICAgcmV0dXJuIDA7Cn0K",
+  "timestamp": 1789919896461
+}
