@@ -391,6 +391,12 @@
       "lastSubmit": 1789919896461
     },
     {
+      "username": "26自动化类王棋炫",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789920592694
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -1093,6 +1099,12 @@
         "username": "生物医学工程黎舜坤",
         "attempts": 3,
         "acceptedAt": 1789919896461,
+        "totalTime": 10
+      },
+      {
+        "username": "26自动化类王棋炫",
+        "attempts": 1,
+        "acceptedAt": 1789920592694,
         "totalTime": 10
       },
       {
