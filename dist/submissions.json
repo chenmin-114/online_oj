@@ -1,5 +1,25 @@
 [
   {
+    "username": "智能制造郭佳锋",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 3,
+    "language": "cpp",
+    "timestamp": 1789917962816
+  },
+  {
+    "username": "智能制造郭佳锋",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 3,
+    "language": "cpp",
+    "timestamp": 1789917952655
+  },
+  {
     "username": "a",
     "problemId": "P001",
     "passed": false,
