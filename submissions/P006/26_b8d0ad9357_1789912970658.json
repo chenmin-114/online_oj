@@ -1,0 +1,11 @@
+{
+  "username": "26电气丰川祥子",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CmludCBtYWluKCkgewogICAgaW50IGEsYixjLGQsZTsKICAgIHNjYW5mKCIlZCIsJmEpOwogICAgaWYoYT44NjM5OSB8fCBhPDApewogICAgICAgIHJldHVybiAwOwogICAgfQogICAgYiA9IGEgLyA2MDsKICAgIGMgPSBiIC8gNjA7CiAgICBkID0gYSAlIDYwOwogICAgZSA9IGIgJSA2MDsKICAgIHByaW50ZigiJTAyZDolMDJkOiUwMmQiLGMsZSxkKTsKICAgIHJldHVybiAwOwp9Cg==",
+  "timestamp": 1789912970658
+}
