@@ -55,6 +55,12 @@
       "lastSubmit": 1789915769630
     },
     {
+      "username": "26电子信息赵天楷",
+      "solvedCount": 3,
+      "totalTime": 33,
+      "lastSubmit": 1789918561726
+    },
+    {
       "username": "hello",
       "solvedCount": 2,
       "totalTime": 20,
@@ -113,12 +119,6 @@
       "solvedCount": 2,
       "totalTime": 23,
       "lastSubmit": 1789913956747
-    },
-    {
-      "username": "26电子信息赵天楷",
-      "solvedCount": 2,
-      "totalTime": 23,
-      "lastSubmit": 1789918532290
     },
     {
       "username": "自动化2班林师鸿",
@@ -367,6 +367,18 @@
       "lastSubmit": 1789918163288
     },
     {
+      "username": "自动化梁恩基",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789918562544
+    },
+    {
+      "username": "电子信息  姚锦灿",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789918588207
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -461,18 +473,6 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789915939805
-    },
-    {
-      "username": "自动化梁恩基",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789918392851
-    },
-    {
-      "username": "电子信息  姚锦灿",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789918524938
     }
   ],
   "problems": {
@@ -770,6 +770,12 @@
         "totalTime": 10
       },
       {
+        "username": "26电子信息赵天楷",
+        "attempts": 12,
+        "acceptedAt": 1789918561726,
+        "totalTime": 10
+      },
+      {
         "username": "GG绷",
         "attempts": 11,
         "acceptedAt": 1789916742647,
@@ -1027,6 +1033,18 @@
         "username": "Hajihong",
         "attempts": 1,
         "acceptedAt": 1789918163288,
+        "totalTime": 10
+      },
+      {
+        "username": "自动化梁恩基",
+        "attempts": 4,
+        "acceptedAt": 1789918562544,
+        "totalTime": 10
+      },
+      {
+        "username": "电子信息  姚锦灿",
+        "attempts": 2,
+        "acceptedAt": 1789918585643,
         "totalTime": 10
       },
       {

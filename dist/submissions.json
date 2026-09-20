@@ -1,5 +1,45 @@
 [
   {
+    "username": "电子信息  姚锦灿",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789918588207
+  },
+  {
+    "username": "电子信息  姚锦灿",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789918585643
+  },
+  {
+    "username": "自动化梁恩基",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789918562544
+  },
+  {
+    "username": "26电子信息赵天楷",
+    "problemId": "P003",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789918561726
+  },
+  {
     "username": "26电子信息赵天楷",
     "problemId": "P003",
     "passed": false,

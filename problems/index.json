@@ -20,8 +20,8 @@
     "title": "斐波那契数列",
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
-    "acceptRate": "15%",
-    "submitCount": 54
+    "acceptRate": "16%",
+    "submitCount": 55
   },
   {
     "id": "P004",
@@ -44,8 +44,8 @@
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "65%",
-    "submitCount": 127
+    "acceptRate": "66%",
+    "submitCount": 130
   },
   {
     "id": "P007",
