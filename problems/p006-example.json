@@ -1,30 +1,48 @@
 {
   "id": "P006",
-  "title": "c+d（test）",
+  "title": "智能微波炉倒计时",
   "difficulty": "easy",
-  "description": "给定两个整数 c 和 d，请计算它们的和并输出。",
-  "inputFormat": "一行，包含两个整数 c 和 d，用空格分隔。",
-  "outputFormat": "一行，一个整数，表示 c + d 的结果。",
-  "constraints": "- 0 ≤ a, b ≤ 10^9\n- 保证结果在 32 位有符号整数范围内",
-  "sampleInput": "1 2",
-  "sampleOutput": "3",
-  "testCases": [
+  "description": "你正在为家里的智能微波炉编写控制程序。微波炉的底层芯片只认识“秒”，但用户面板上需要显示人类可读的“时:分:秒”倒计时格式。\n\n现在你需要编写一个转换程序，把用户输入的总秒数，拆解成标准的时间格式显示在屏幕上。这也是嵌入式开发中基础的数据解析逻辑哦！",
+  "inputFormat": "输入只有一行，包含一个正整数 $total\\_sec$，代表用户设定的总秒数。",
+  "outputFormat": "输出只有一行，将总秒数转换为 `HH:MM:SS` 的格式。\n\n**注意**：如果时、分、秒是个位数，前面必须补 `0`（例如：输入 `3609`，应输出 `01:00:09`）。",
+  "constraints": "- $0 \\le total\\_sec \\le 86399$（即不超过 23:59:59）。",
+  "sampleInput": "3661",
+  "sampleOutput": "01:01:01",
+  "samples": [
     {
-      "input": "2 3",
-      "expectedOutput": "5"
+      "input": "3661",
+      "output": "01:01:01"
     },
     {
-      "input": "7 2",
-      "expectedOutput": "9"
-    },
-    {
-      "input": "5 7",
-      "expectedOutput": "12"
-    },
-    {
-      "input": "4444 1111",
-      "expectedOutput": "5555"
+      "input": "59",
+      "output": "00:00:59"
     }
   ],
-  "hints": []
+  "testCases": [
+    {
+      "input": "3661",
+      "expectedOutput": "01:01:01"
+    },
+    {
+      "input": "59",
+      "expectedOutput": "00:00:59"
+    },
+    {
+      "input": "0",
+      "expectedOutput": "00:00:00"
+    },
+    {
+      "input": "12345",
+      "expectedOutput": "03:25:45"
+    },
+    {
+      "input": "7200",
+      "expectedOutput": "02:00:00"
+    }
+  ],
+  "hints": [
+    "- **时间换算**：$1$ 小时 = $3600$ 秒，$1$ 分钟 = $60$ 秒。",
+    "- **运算技巧**：可以使用整数除法 `/` 获取高位数值，使用取模运算 `%` 获取剩余低位数值。",
+    "- **格式化输出**：在 C 语言中，`printf(\"%02d\", num);` 可以在数字不足两位时自动在前面补 `0`。"
+  ]
 }
