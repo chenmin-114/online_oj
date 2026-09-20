@@ -1,5 +1,15 @@
 [
   {
+    "username": "26级电子信息类黄佳仪",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 2,
+    "language": "c",
+    "timestamp": 1789913835099
+  },
+  {
     "username": "GG绷",
     "problemId": "P006",
     "passed": false,
