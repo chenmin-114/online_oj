@@ -319,6 +319,12 @@
       "lastSubmit": 1789915189831
     },
     {
+      "username": "生医工郑可晴",
+      "solvedCount": 1,
+      "totalTime": 11,
+      "lastSubmit": 1789916195745
+    },
+    {
       "username": "Y_sy_a",
       "solvedCount": 1,
       "totalTime": 15,
@@ -353,12 +359,6 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789914923834
-    },
-    {
-      "username": "生医工郑可晴",
-      "solvedCount": 0,
-      "totalTime": 0,
-      "lastSubmit": 1789915871589
     },
     {
       "username": "猫猫头",
@@ -511,6 +511,12 @@
         "username": "电信类 谭卓彬",
         "attempts": 1,
         "acceptedAt": 1789912726731,
+        "totalTime": 11
+      },
+      {
+        "username": "生医工郑可晴",
+        "attempts": 3,
+        "acceptedAt": 1789916195745,
         "totalTime": 11
       },
       {
