@@ -37,6 +37,12 @@
       "lastSubmit": 1789914674637
     },
     {
+      "username": "26测绘余子骞",
+      "solvedCount": 3,
+      "totalTime": 30,
+      "lastSubmit": 1789917934180
+    },
+    {
       "username": "26级电子信息类黄佳仪",
       "solvedCount": 3,
       "totalTime": 31,
@@ -91,12 +97,6 @@
       "lastSubmit": 1789917473737
     },
     {
-      "username": "26测绘余子骞",
-      "solvedCount": 2,
-      "totalTime": 20,
-      "lastSubmit": 1789917897509
-    },
-    {
       "username": "电信类 谭卓彬",
       "solvedCount": 2,
       "totalTime": 21,
@@ -118,7 +118,7 @@
       "username": "26电子信息赵天楷",
       "solvedCount": 2,
       "totalTime": 23,
-      "lastSubmit": 1789917794940
+      "lastSubmit": 1789917927774
     },
     {
       "username": "2",
@@ -418,7 +418,7 @@
       "username": "a",
       "solvedCount": 1,
       "totalTime": 15026,
-      "lastSubmit": 1789825365500
+      "lastSubmit": 1789917936196
     },
     {
       "username": "___",
@@ -443,6 +443,12 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789915939805
+    },
+    {
+      "username": "智能制造郭佳锋",
+      "solvedCount": 0,
+      "totalTime": 0,
+      "lastSubmit": 1789917926732
     }
   ],
   "problems": {
@@ -713,6 +719,12 @@
         "username": "纪楷基",
         "attempts": 9,
         "acceptedAt": 1789917221912,
+        "totalTime": 10
+      },
+      {
+        "username": "26测绘余子骞",
+        "attempts": 2,
+        "acceptedAt": 1789917934180,
         "totalTime": 10
       },
       {

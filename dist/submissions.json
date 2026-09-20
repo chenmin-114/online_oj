@@ -1,5 +1,45 @@
 [
   {
+    "username": "a",
+    "problemId": "P001",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 2,
+    "language": "c",
+    "timestamp": 1789917936196
+  },
+  {
+    "username": "26测绘余子骞",
+    "problemId": "P003",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789917934180
+  },
+  {
+    "username": "26电子信息赵天楷",
+    "problemId": "P003",
+    "passed": false,
+    "passedTests": 2,
+    "totalTests": 5,
+    "totalTime": 8,
+    "language": "c",
+    "timestamp": 1789917927774
+  },
+  {
+    "username": "智能制造郭佳锋",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 4,
+    "language": "cpp",
+    "timestamp": 1789917926732
+  },
+  {
     "username": "张广鹏",
     "problemId": "P006",
     "passed": true,
