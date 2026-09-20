@@ -1,0 +1,11 @@
+{
+  "username": "GG绷",
+  "problemId": "P006",
+  "passed": false,
+  "passedTests": 3,
+  "totalTests": 5,
+  "totalTime": 9,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CiNpbmNsdWRlIDxzdGRsaWIuaD4KI2luY2x1ZGUgPHN0cmluZy5oPgojaW5jbHVkZSA8bWF0aC5oPgojaW5jbHVkZSA8c3RkYm9vbC5oPgoKaW50IHQ7CmludCBoLG07CgppbnQgbWFpbigpIHsKICAgIHNjYW5mKCIlZCIsJnQpOwogICAgd2hpbGUodC8zNjAwKXsKICAgICAgICBoKys7CiAgICAgICAgdC89MzYwMDsKICAgIH0KICAgIGlmKGg8MTApIHByaW50ZigiMCIpOwogICAgcHJpbnRmKCIlZDoiLGgpOwogICAgd2hpbGUodC82MCl7CiAgICAgICAgbSsrOwogICAgICAgIHQvPTYwOwogICAgfQogICAgaWYobTwxMCkgcHJpbnRmKCIwIik7CiAgICBwcmludGYoIiVkOiIsaCk7CiAgICBpZih0PDEwKSBwcmludGYoIjAiKTsKICAgIHByaW50ZigiJWQiLHQpOwogICAgLy9zeXN0ZW0oInBhdXNlIik7CiAgICByZXR1cm4gMDsKfQ==",
+  "timestamp": 1789913490782
+}
