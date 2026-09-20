@@ -147,6 +147,17 @@ class App {
       this.loadSubmissions();
     });
 
+    // 每次返回题目列表都重新读取统计，显示最新提交数和通过率。
+    const problemsLink = document.querySelector('[data-view="problems"]');
+    problemsLink.addEventListener('click', async () => {
+      problemsLink.textContent = '题目（刷新中）';
+      try {
+        await this.loadProblemList();
+      } finally {
+        problemsLink.textContent = '题目';
+      }
+    });
+
     // 修改用户名
     document.getElementById('change-username-btn').addEventListener('click', () => {
       this._promptUsername();
