@@ -62,9 +62,9 @@ body {
 
 .brand-logo {
   display: block;
-  width: 39px;
-  height: 39px;
-  flex: 0 0 39px;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
   object-fit: contain;
   border-radius: 50%;
 }
