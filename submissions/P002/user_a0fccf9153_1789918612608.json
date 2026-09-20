@@ -1,0 +1,11 @@
+{
+  "username": "电子信息类叶语菡",
+  "problemId": "P002",
+  "passed": false,
+  "passedTests": 1,
+  "totalTests": 5,
+  "totalTime": 4,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IG4gPSAwOwogICAgc2NhbmYoIiVkIiwmbik7CiAgICBpbnQgYVtuXTsKICAgIGZvcihpbnQgaSA9IDA7IGkgPCBuOyBpKyspCiAgICB7CiAgICAgICAgc2NhbmYoIiVkICIsJmFbaV0pOwogICAgfQogICAgaWYobiA9PTEpCiAgICB7CiAgICAgICAgcHJpbnRmKCIlZCIsYSk7CiAgICB9CiAgICBlbHNlCiAgICB7CiAgICAgICAgaW50IGIgPSAwOwogICAgICAgIGZvciAoaW50IGkgPSAwO2kgPCBuO2krKykKICAgICAgICB7CiAgICAgICAgICAgIGlmKGFbaV0+PWFbaS0xXSkKICAgICAgICAgICAgewogICAgICAgICAgICAKICAgICAgICAgICAgICAgIGI9YVtpXTsKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIHByaW50ZigiJWQiLGIpOwogICAgfQogICAgcmV0dXJuIDA7Cn0K",
+  "timestamp": 1789918612608
+}
