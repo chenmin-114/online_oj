@@ -361,6 +361,12 @@
       "lastSubmit": 1789917526044
     },
     {
+      "username": "Hajihong",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789918163288
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -991,6 +997,12 @@
         "username": "自动化4班lqh",
         "attempts": 1,
         "acceptedAt": 1789917526044,
+        "totalTime": 10
+      },
+      {
+        "username": "Hajihong",
+        "attempts": 1,
+        "acceptedAt": 1789918163288,
         "totalTime": 10
       },
       {
