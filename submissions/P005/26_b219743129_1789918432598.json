@@ -1,0 +1,11 @@
+{
+  "username": "26智能制造贾智棋",
+  "problemId": "P005",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CmludCBuLHRhcmdldDsKaW50IGZpbmQoaW50IGFbXSxpbnQgbixpbnQgdGFyZ2V0KTsKCmludCBtYWluKCkgewogICAgLy8g5Zyo5q2k57yW5YaZ5L2g55qE5Luj56CBCiAgICAJc2NhbmYoIiVkICVkIiwgJm4sICZ0YXJnZXQpOwoJaW50IGFbbl07CglpbnQgaSA9IDA7Cglmb3IoaT0wO2k8bjtpKyspCgl7CgkJc2NhbmYoIiVkIiwmYVtpXSk7CQoJfSAKCWludCB4ID0gZmluZChhLG4sdGFyZ2V0KTsKCXByaW50ZigiJWQiLCB4KTsKICAgIHJldHVybiAwOwp9CgppbnQgZmluZChpbnQgYVtdLGludCBuLGludCB0YXJnZXQpewoJaW50IHIgPSAtMTsKCWludCBqID0gMDsKCWZvcihqPTA7ajxuO2orKykKCXsKCQlpZih0YXJnZXQgPT0gYVtqXSl7CgkJCXIgPSBqOwoJCQlicmVhazsKCQl9Cgl9CglyZXR1cm4gcjsKfQo=",
+  "timestamp": 1789918432598
+}
