@@ -12,8 +12,8 @@
     "title": "最大值",
     "difficulty": "easy",
     "file": "p002-max.json",
-    "acceptRate": "75%",
-    "submitCount": 8
+    "acceptRate": "67%",
+    "submitCount": 9
   },
   {
     "id": "P003",
@@ -28,8 +28,8 @@
     "title": "回文判断",
     "difficulty": "easy",
     "file": "p004-palindrome.json",
-    "acceptRate": "0%",
-    "submitCount": 1
+    "acceptRate": "50%",
+    "submitCount": 2
   },
   {
     "id": "P005",
@@ -44,8 +44,8 @@
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "73%",
-    "submitCount": 73
+    "acceptRate": "70%",
+    "submitCount": 77
   },
   {
     "id": "P007",
