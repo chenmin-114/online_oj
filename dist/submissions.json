@@ -2,6 +2,16 @@
   {
     "username": "纪楷基",
     "problemId": "P001",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
+    "timestamp": 1789911405410
+  },
+  {
+    "username": "纪楷基",
+    "problemId": "P001",
     "passed": false,
     "passedTests": 0,
     "totalTests": 5,
