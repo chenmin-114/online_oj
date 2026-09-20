@@ -4,8 +4,8 @@
     "title": "A+B Problem",
     "difficulty": "easy",
     "file": "p001-aplusb.json",
-    "acceptRate": "83%",
-    "submitCount": 24
+    "acceptRate": "84%",
+    "submitCount": 25
   },
   {
     "id": "P002",
@@ -44,8 +44,8 @@
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "100%",
-    "submitCount": 3
+    "acceptRate": "75%",
+    "submitCount": 4
   },
   {
     "id": "P007",
