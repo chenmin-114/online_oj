@@ -105,10 +105,17 @@ class App {
   _renderProblem() {
     const p = this.currentProblem;
     document.getElementById('problem-title').textContent = `${p.id}. ${p.title}`;
-    document.getElementById('problem-description').innerHTML = this._formatMarkdown(p.description || '');
-    document.getElementById('problem-input-format').innerHTML = this._formatMarkdown(p.inputFormat || '');
-    document.getElementById('problem-output-format').innerHTML = this._formatMarkdown(p.outputFormat || '');
-    document.getElementById('problem-constraints').innerHTML = this._formatMarkdown(p.constraints || '');
+    const markdownFields = [
+      ['problem-description', p.description],
+      ['problem-input-format', p.inputFormat],
+      ['problem-output-format', p.outputFormat],
+      ['problem-constraints', p.constraints],
+    ];
+    markdownFields.forEach(([id, value]) => {
+      const container = document.getElementById(id);
+      container.innerHTML = this._formatMarkdown(value || '');
+      this._enhanceMarkdown(container);
+    });
     
     document.getElementById('sample-input').textContent = p.sampleInput || '';
     document.getElementById('sample-output').textContent = p.sampleOutput || '';
@@ -120,14 +127,52 @@ class App {
   }
 
   _formatMarkdown(text) {
-    // 简单的 Markdown 转换（生产环境可用 marked.js）
-    return text
-      .replace(/!\[([^\]]*)\]\((assets\/problems\/[a-zA-Z0-9/_-]+\.(?:png|jpe?g|webp|gif))\)/gi,
-        (_, alt, src) => `<img class="problem-image" src="${src}" alt="${this._escapeHtml(alt)}" loading="lazy">`)
-      .replace(/\n/g, '<br>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    const source = String(text || '');
+    if (!window.marked || !window.DOMPurify) {
+      return `<p>${this._escapeHtml(source).replace(/\n/g, '<br>')}</p>`;
+    }
+
+    try {
+      const html = window.marked.parse(source, {
+        gfm: true,
+        breaks: true,
+      });
+      return window.DOMPurify.sanitize(html, {
+        USE_PROFILES: { html: true },
+      });
+    } catch {
+      return `<p>${this._escapeHtml(source).replace(/\n/g, '<br>')}</p>`;
+    }
+  }
+
+  _enhanceMarkdown(container) {
+    container.querySelectorAll('img').forEach(image => {
+      image.classList.add('problem-image');
+      image.loading = 'lazy';
+    });
+
+    container.querySelectorAll('a').forEach(link => {
+      if (/^https?:\/\//i.test(link.getAttribute('href') || '')) {
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+      }
+    });
+
+    if (window.hljs) {
+      container.querySelectorAll('pre code').forEach(block => window.hljs.highlightElement(block));
+    }
+
+    if (window.renderMathInElement) {
+      window.renderMathInElement(container, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true },
+        ],
+        throwOnError: false,
+      });
+    }
   }
 
   _bindEvents() {

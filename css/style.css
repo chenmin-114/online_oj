@@ -257,6 +257,31 @@ body {
   letter-spacing: 0.5px;
 }
 
+.problem-content h1,
+.problem-content h2,
+.problem-content h3,
+.problem-content h4 {
+  margin: 18px 0 9px;
+  color: var(--text-primary);
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.problem-content h1 { font-size: 21px; }
+.problem-content h2 { padding-bottom: 6px; border-bottom: 1px solid var(--border-color); font-size: 18px; }
+.problem-content h3 { font-size: 15px; }
+.problem-content h4 { font-size: 14px; }
+.problem-content p { margin: 8px 0; line-height: 1.75; }
+.problem-content ul,
+.problem-content ol { margin: 9px 0; padding-left: 24px; line-height: 1.75; }
+.problem-content li + li { margin-top: 3px; }
+.problem-content blockquote { margin: 12px 0; padding: 9px 13px; border-left: 3px solid var(--accent-primary); background: var(--bg-tertiary); color: var(--text-secondary); }
+.problem-content blockquote p { margin: 0; }
+.problem-content a { color: var(--accent-secondary); text-underline-offset: 3px; }
+.problem-content hr { margin: 18px 0; border: 0; border-top: 1px solid var(--border-color); }
+.problem-content code:not(pre code) { padding: 2px 5px; border-radius: 4px; background: var(--bg-tertiary); color: #f0b4c6; font-family: 'Consolas', 'Monaco', monospace; font-size: .9em; }
+
 .problem-content pre {
   background: var(--bg-tertiary);
   padding: 12px;
@@ -265,6 +290,14 @@ body {
   font-size: 13px;
   overflow-x: auto;
 }
+
+.problem-content pre code { padding: 0; background: transparent; font-family: 'Consolas', 'Monaco', monospace; line-height: 1.6; }
+.problem-content table { width: 100%; margin: 12px 0; border-collapse: collapse; font-size: 13px; }
+.problem-content th,
+.problem-content td { padding: 8px 10px; border: 1px solid var(--border-color); text-align: left; }
+.problem-content th { background: var(--bg-tertiary); font-weight: 600; }
+.problem-content tbody tr:nth-child(even) { background: rgba(255,255,255,.018); }
+.problem-content .katex-display { max-width: 100%; margin: 14px 0; overflow-x: auto; overflow-y: hidden; }
 
 .problem-content .problem-image {
   display: block;
