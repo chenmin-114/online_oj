@@ -1,0 +1,11 @@
+{
+  "username": "26自动化何倍霖",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIGludCB0b3RhbGVzYyxoLG0sczsKICAgIHNjYW5mKCIlZCIsJnRvdGFsZXNjKTsKICAgIGg9dG90YWxlc2MvMzYwMDsKICAgIHByaW50ZigiJTAyZDoiLGgpOwogICAgdG90YWxlc2M9dG90YWxlc2MlMzYwMDsKICAgIG09dG90YWxlc2MvNjA7CiAgICBwcmludGYoIiUwMmQ6IixtKTsKICAgIHM9dG90YWxlc2MlNjA7CiAgICBwcmludGYoIiUwMmQiLHMpOwogICAgcmV0dXJuIDA7Cn0K",
+  "timestamp": 1789915906449
+}
