@@ -40,7 +40,7 @@
       "username": "GG绷",
       "solvedCount": 3,
       "totalTime": 44,
-      "lastSubmit": 1789915807535
+      "lastSubmit": 1789915851366
     },
     {
       "username": "hello",
@@ -283,6 +283,12 @@
       "lastSubmit": 1789915744763
     },
     {
+      "username": "26机制郭品晓",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789915866235
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -331,10 +337,10 @@
       "lastSubmit": 1789914923834
     },
     {
-      "username": "26机制郭品晓",
+      "username": "生医工郑可晴",
       "solvedCount": 0,
       "totalTime": 0,
-      "lastSubmit": 1789915638011
+      "lastSubmit": 1789915871589
     }
   ],
   "problems": {
@@ -726,6 +732,12 @@
         "username": "电子信息类郑思杰",
         "attempts": 3,
         "acceptedAt": 1789915744763,
+        "totalTime": 10
+      },
+      {
+        "username": "26机制郭品晓",
+        "attempts": 2,
+        "acceptedAt": 1789915846503,
         "totalTime": 10
       },
       {

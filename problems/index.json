@@ -4,8 +4,8 @@
     "title": "A+B Problem",
     "difficulty": "easy",
     "file": "p001-aplusb.json",
-    "acceptRate": "87%",
-    "submitCount": 47
+    "acceptRate": "84%",
+    "submitCount": 49
   },
   {
     "id": "P002",
@@ -21,7 +21,7 @@
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
     "acceptRate": "0%",
-    "submitCount": 15
+    "submitCount": 16
   },
   {
     "id": "P004",
@@ -45,7 +45,7 @@
     "difficulty": "easy",
     "file": "p006-example.json",
     "acceptRate": "69%",
-    "submitCount": 89
+    "submitCount": 91
   },
   {
     "id": "P007",
