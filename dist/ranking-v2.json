@@ -40,7 +40,7 @@
       "username": "纪楷基",
       "solvedCount": 2,
       "totalTime": 21,
-      "lastSubmit": 1789913400238
+      "lastSubmit": 1789913436076
     },
     {
       "username": "26智能制造贾智棋",
@@ -167,6 +167,12 @@
       "solvedCount": 1,
       "totalTime": 10,
       "lastSubmit": 1789913406999
+    },
+    {
+      "username": "电子信息类李耀铭",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789913425378
     },
     {
       "username": "机制5班胡斐桦",
@@ -438,6 +444,12 @@
         "username": "黄毅成",
         "attempts": 1,
         "acceptedAt": 1789913406999,
+        "totalTime": 10
+      },
+      {
+        "username": "电子信息类李耀铭",
+        "attempts": 1,
+        "acceptedAt": 1789913425378,
         "totalTime": 10
       },
       {

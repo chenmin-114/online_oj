@@ -21,7 +21,7 @@
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
     "acceptRate": "0%",
-    "submitCount": 5
+    "submitCount": 6
   },
   {
     "id": "P004",
@@ -44,8 +44,8 @@
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "77%",
-    "submitCount": 44
+    "acceptRate": "78%",
+    "submitCount": 45
   },
   {
     "id": "P007",
