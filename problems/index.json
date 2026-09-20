@@ -5,15 +5,15 @@
     "difficulty": "easy",
     "file": "p001-aplusb.json",
     "acceptRate": "87%",
-    "submitCount": 45
+    "submitCount": 46
   },
   {
     "id": "P002",
     "title": "最大值",
     "difficulty": "easy",
     "file": "p002-max.json",
-    "acceptRate": "69%",
-    "submitCount": 13
+    "acceptRate": "64%",
+    "submitCount": 14
   },
   {
     "id": "P003",
@@ -44,8 +44,8 @@
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "69%",
-    "submitCount": 87
+    "acceptRate": "68%",
+    "submitCount": 88
   },
   {
     "id": "P007",

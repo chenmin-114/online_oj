@@ -25,6 +25,12 @@
       "lastSubmit": 1789914686224
     },
     {
+      "username": "26级电子信息类黄佳仪",
+      "solvedCount": 3,
+      "totalTime": 31,
+      "lastSubmit": 1789915613911
+    },
+    {
       "username": "26智能制造贾智棋",
       "solvedCount": 3,
       "totalTime": 33,
@@ -71,12 +77,6 @@
       "solvedCount": 2,
       "totalTime": 21,
       "lastSubmit": 1789912726731
-    },
-    {
-      "username": "26级电子信息类黄佳仪",
-      "solvedCount": 2,
-      "totalTime": 21,
-      "lastSubmit": 1789915372962
     },
     {
       "username": "26自动化刘桂余",
@@ -181,12 +181,6 @@
       "lastSubmit": 1789912095695
     },
     {
-      "username": "自动化阳湘兰",
-      "solvedCount": 1,
-      "totalTime": 10,
-      "lastSubmit": 1789912326758
-    },
-    {
       "username": "mj",
       "solvedCount": 1,
       "totalTime": 10,
@@ -277,6 +271,12 @@
       "lastSubmit": 1789915452499
     },
     {
+      "username": "自动化阳湘兰",
+      "solvedCount": 1,
+      "totalTime": 10,
+      "lastSubmit": 1789915669243
+    },
+    {
       "username": "机制5班胡斐桦",
       "solvedCount": 1,
       "totalTime": 11,
@@ -329,6 +329,12 @@
       "solvedCount": 0,
       "totalTime": 0,
       "lastSubmit": 1789914923834
+    },
+    {
+      "username": "26机制郭品晓",
+      "solvedCount": 0,
+      "totalTime": 0,
+      "lastSubmit": 1789915638011
     }
   ],
   "problems": {
@@ -445,6 +451,12 @@
         "username": "机械电子工程陈梓桓",
         "attempts": 1,
         "acceptedAt": 1789915390184,
+        "totalTime": 10
+      },
+      {
+        "username": "26级电子信息类黄佳仪",
+        "attempts": 1,
+        "acceptedAt": 1789915613911,
         "totalTime": 10
       },
       {
