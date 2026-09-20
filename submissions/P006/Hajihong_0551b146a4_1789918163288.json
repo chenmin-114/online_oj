@@ -1,0 +1,11 @@
+{
+  "username": "Hajihong",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIGludCBhLGgsbSxzOwogICAgc2NhbmYoIiVkIiwmYSk7CiAgICBzPWElNjA7CiAgICAvL3ByaW50ZigiJWRcbiIscyk7IAogICAgbT1hLzYwOwogICAgLy8gICAgcHJpbnRmKCIlZFxuIixtKTsgCgogICAgaD1tLzYwOwogIC8vICAgICAgcHJpbnRmKCIlZFxuIixoKTsgCgogICAgbSU9NjA7IAovLyAgICAgICAgcHJpbnRmKCIlZFxuIixtKTsgCiAgICBpZihoPDEwKSBwcmludGYoIjAlZDoiLGgpOwogICAgZWxzZSBwcmludGYoIiVkOiIsaCk7CglpZihtPDEwKSBwcmludGYoIjAlZDoiLG0pOwogICAgZWxzZSBwcmludGYoIiVkOiIsbSk7CiAgICBpZihzPDEwKSBwcmludGYoIjAlZCIscyk7CiAgICBlbHNlIHByaW50ZigiJWQiLHMpOwogICAgcmV0dXJuIDA7Cn0K",
+  "timestamp": 1789918163288
+}
