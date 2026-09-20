@@ -272,6 +272,15 @@ body {
 .problem-content h2 { padding-bottom: 6px; border-bottom: 1px solid var(--border-color); font-size: 18px; }
 .problem-content h3 { font-size: 15px; }
 .problem-content h4 { font-size: 14px; }
+.problem-content > .problem-section-title {
+  margin: 22px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(78, 201, 176, 0.22);
+  color: var(--accent-secondary);
+  font-size: 16px;
+  font-weight: 700;
+}
+.problem-content > .problem-section-title:first-child { margin-top: 8px; }
 .problem-content p { margin: 8px 0; line-height: 1.75; }
 .problem-content ul,
 .problem-content ol { margin: 9px 0; padding-left: 24px; line-height: 1.75; }
