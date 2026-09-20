@@ -1,0 +1,11 @@
+{
+  "username": "机械电子工程邓维广",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgoKaW50IG1haW4oKSB7CiAgICAvLyDlnKjmraTnvJblhpnkvaDnmoTku6PnoIEKICAgIGludCB0b3RhbHNlYzsKICAgIHNjYW5mKCIlZCIsJnRvdGFsc2VjKTsKICAgIGlmKHRvdGFsc2VjPj0wJiZ0b3RhbHNlYzw9ODYzOTkpCiAgICB7CiAgICBpbnQgU1M9dG90YWxzZWMlNjA7CiAgICAgaW50IEhIPXRvdGFsc2VjLzM2MDA7CiAgICAgaW50IE1NPSh0b3RhbHNlYy1TUy1ISCozNjAwKS82MDsKICAgIGlmKEhIPDEwKQogICAgewogICAgICAgcHJpbnRmKCIwIik7CiAgICB9CiAgICBwcmludGYoIiVkIixISCk7CiAgICBwcmludGYoIjoiKTsKICAgIGlmKE1NPDEwKQogICAgewogICAgICAgIHByaW50ZigiMCIpOwogICAgfQogICAgcHJpbnRmKCIlZCIsTU0pOwogICAgcHJpbnRmKCI6Iik7CiAgICBpZihTUzwxMCkKICAgIHsKICAgICAgICBwcmludGYoIjAiKTsKICAgIH0KICAgIHByaW50ZigiJWQiLFNTKTsKICAgIH0KICAgIGVsc2UKICAgIHsKICAgICAgICBwcmludGYoImVycm9yISIpOwogICAgIH0KICAgIHJldHVybiAwOwp9Cg==",
+  "timestamp": 1789914278634
+}
