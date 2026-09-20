@@ -1,5 +1,15 @@
 [
   {
+    "username": "GG绷",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 3,
+    "totalTests": 5,
+    "totalTime": 9,
+    "language": "c",
+    "timestamp": 1789913490782
+  },
+  {
     "username": "纪楷基",
     "problemId": "P003",
     "passed": false,
