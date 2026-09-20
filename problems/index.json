@@ -5,7 +5,7 @@
     "difficulty": "easy",
     "file": "p001-aplusb.json",
     "acceptRate": "85%",
-    "submitCount": 40
+    "submitCount": 41
   },
   {
     "id": "P002",
@@ -45,7 +45,7 @@
     "difficulty": "easy",
     "file": "p006-example.json",
     "acceptRate": "70%",
-    "submitCount": 63
+    "submitCount": 64
   },
   {
     "id": "P007",
