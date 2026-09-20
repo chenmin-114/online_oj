@@ -634,12 +634,22 @@ async function handleSubmit(body, env) {
     }, 503);
   }
 
-  const safeUsername = username.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const safeProblemId = problemId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const path = `submissions/${safeProblemId}/${safeUsername}_${timestamp}.json`;
+  // 展示名称保留 Unicode；只有 GitHub 路径使用 ASCII 安全名称。
+  const displayUsername = String(username)
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, 50);
+  if (!displayUsername) return jsonResponse({ error: '用户名不能为空' }, 400);
+
+  const safeProblemId = String(problemId).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+  const asciiUsername = displayUsername.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+  const usernamePrefix = asciiUsername.replace(/^_+|_+$/g, '') || 'user';
+  const usernameHash = await shortHash(displayUsername);
+  const safeTimestamp = Number.isFinite(Number(timestamp)) ? Math.trunc(Number(timestamp)) : Date.now();
+  const path = `submissions/${safeProblemId}/${usernamePrefix}_${usernameHash}_${safeTimestamp}.json`;
 
   const payload = {
-    username: safeUsername,
+    username: displayUsername,
     problemId: safeProblemId,
     passed,
     passedTests,
@@ -647,7 +657,7 @@ async function handleSubmit(body, env) {
     totalTime,
     language,
     code,
-    timestamp,
+    timestamp: safeTimestamp,
   };
 
   const githubRes = await fetch(
@@ -662,8 +672,8 @@ async function handleSubmit(body, env) {
         'X-GitHub-Api-Version': '2022-11-28',
       },
       body: JSON.stringify({
-        message: `🏁 ${safeUsername} submitted ${safeProblemId} - ${passed ? 'AC' : 'WA'}`,
-        content: btoa(JSON.stringify(payload)),
+        message: `🏁 ${displayUsername} submitted ${safeProblemId} - ${passed ? 'AC' : 'WA'}`,
+        content: encodeBase64Utf8(JSON.stringify(payload, null, 2)),
       }),
     }
   );
@@ -690,6 +700,13 @@ async function handleSubmit(body, env) {
   });
 }
 
+async function shortHash(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest).slice(0, 5))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 /**
  * 统一 JSON 响应（带 CORS 头）
  */
@@ -697,7 +714,7 @@ function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
       ...CORS_HEADERS,
     },
   });
