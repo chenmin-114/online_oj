@@ -275,8 +275,8 @@ body {
 .problem-content > .problem-section-title {
   margin: 22px 0 10px;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(78, 201, 176, 0.22);
-  color: var(--accent-secondary);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
   font-size: 16px;
   font-weight: 700;
 }
