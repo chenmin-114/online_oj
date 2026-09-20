@@ -1,0 +1,11 @@
+{
+  "username": "朱铮卫",
+  "problemId": "P006",
+  "passed": true,
+  "passedTests": 5,
+  "totalTests": 5,
+  "totalTime": 10,
+  "language": "c",
+  "code": "I2luY2x1ZGUgPHN0ZGlvLmg+CgppbnQgbWFpbigpIHsKICAgIC8vIOWcqOatpOe8luWGmeS9oOeahOS7o+eggQogICAgaW50IHRvdGFsOwoJaW50IGggPSAwOwoJaW50IG0gPSAwOwoJaW50IHMgPSAwOwoJc2NhbmYgKCIlZCIsJnRvdGFsKTsKCWggPSB0b3RhbCAvIDM2MDA7CgltID0gKHRvdGFsIC0gMzYwMCAqIGgpIC8gNjA7CglzID0gdG90YWwgLSAzNjAwICogaCAtIDYwICogbTsKCXByaW50ZiAoIiUwMmQ6JTAyZDolMDJkIixoLG0scyk7CiAgICByZXR1cm4gMDsKfQo=",
+  "timestamp": 1789912095695
+}
