@@ -21,7 +21,7 @@
     "difficulty": "medium",
     "file": "p003-fibonacci.json",
     "acceptRate": "0%",
-    "submitCount": 16
+    "submitCount": 17
   },
   {
     "id": "P004",
@@ -36,16 +36,16 @@
     "title": "二分查找",
     "difficulty": "medium",
     "file": "p005-binary-search.json",
-    "acceptRate": "0%",
-    "submitCount": 0
+    "acceptRate": "100%",
+    "submitCount": 1
   },
   {
     "id": "P006",
     "title": "（Day 1）智能微波炉倒计时",
     "difficulty": "easy",
     "file": "p006-example.json",
-    "acceptRate": "70%",
-    "submitCount": 92
+    "acceptRate": "69%",
+    "submitCount": 93
   },
   {
     "id": "P007",

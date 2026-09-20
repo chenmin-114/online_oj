@@ -39,7 +39,7 @@
     "username": "GG绷",
     "solvedCount": 3,
     "totalTime": 44,
-    "lastSubmit": 1789915851366
+    "lastSubmit": 1789915939520
   },
   {
     "username": "hello",
@@ -76,6 +76,12 @@
     "solvedCount": 2,
     "totalTime": 20,
     "lastSubmit": 1789915901155
+  },
+  {
+    "username": "26测绘余子骞",
+    "solvedCount": 2,
+    "totalTime": 20,
+    "lastSubmit": 1789915954967
   },
   {
     "username": "电信类 谭卓彬",
@@ -216,12 +222,6 @@
     "lastSubmit": 1789913801575
   },
   {
-    "username": "26测绘余子骞",
-    "solvedCount": 1,
-    "totalTime": 10,
-    "lastSubmit": 1789914055396
-  },
-  {
     "username": "物联网2班【陆沛洋】",
     "solvedCount": 1,
     "totalTime": 10,
@@ -346,5 +346,11 @@
     "solvedCount": 0,
     "totalTime": 0,
     "lastSubmit": 1789915871589
+  },
+  {
+    "username": "猫猫头",
+    "solvedCount": 0,
+    "totalTime": 0,
+    "lastSubmit": 1789915939805
   }
 ]
