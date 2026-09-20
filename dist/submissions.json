@@ -7,6 +7,36 @@
     "totalTests": 5,
     "totalTime": 10,
     "language": "c",
+    "timestamp": 1789911713529
+  },
+  {
+    "username": "..",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 2,
+    "language": "c",
+    "timestamp": 1789911691549
+  },
+  {
+    "username": "机制5班胡斐桦",
+    "problemId": "P006",
+    "passed": false,
+    "passedTests": 0,
+    "totalTests": 5,
+    "totalTime": 2,
+    "language": "c",
+    "timestamp": 1789911683288
+  },
+  {
+    "username": "鸡电占紫轩",
+    "problemId": "P006",
+    "passed": true,
+    "passedTests": 5,
+    "totalTests": 5,
+    "totalTime": 10,
+    "language": "c",
     "timestamp": 1789911678974
   },
   {
