@@ -78,5 +78,13 @@
     "file": "p010.json",
     "acceptRate": "23%",
     "submitCount": 30
+  },
+  {
+    "id": "P011",
+    "title": "测试点",
+    "difficulty": "easy",
+    "file": "p011.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
