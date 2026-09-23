@@ -349,7 +349,7 @@ class OJAdmin {
   }
 
   importProblemMarkdown() {
-    const source = document.getElementById('problem-import-markdown').value
+    const source = this.normalizeImportedMarkdown(document.getElementById('problem-import-markdown').value)
       .replace(/^\uFEFF/, '')
       .replace(/\r\n?/g, '\n')
       .trim();
@@ -411,6 +411,16 @@ class OJAdmin {
     status.textContent = `本次仅更新：${recognized.join('、')}；其他内容保持不变`;
     document.querySelector('.problem-importer').open = false;
     this.toast('题面已自动填入，请检查内容并补充隐藏测试点');
+  }
+
+  normalizeImportedMarkdown(value) {
+    return String(value || '')
+      // 兼容从富文本、聊天软件或网页复制后残留的换行和空格实体。
+      .replace(/&#x0*d;|&#0*13;|&cr;/gi, '')
+      .replace(/&#x0*a;|&#0*10;|&newline;/gi, '\n')
+      .replace(/&#x0*20;|&#0*32;|&nbsp;/gi, ' ')
+      // 只解除 Markdown 标点转义，保留 \le、\dots 等 LaTeX 命令。
+      .replace(/\\([#*_`~.>\-])/g, '$1');
   }
 
   parseMarkdownSections(source) {
@@ -493,7 +503,7 @@ class OJAdmin {
     return String(value || '')
       .replace(/^\s*(?:\*\*|__|`)+/, '')
       .replace(/(?:\*\*|__|`)+\s*$/, '')
-      .replace(/^\s*#{1,6}\s*/, '')
+      .replace(/^\s*(?:#{1,6}\s*)+/, '')
       .trim();
   }
 
@@ -506,7 +516,7 @@ class OJAdmin {
 
   isProblemSectionTitle(value) {
     const title = this.normalizeSectionTitle(value);
-    return ['题目描述', '问题描述', '题意', '输入', '输入格式', '输出', '输出格式', '样例输入', '样例输出', '说明', '说明提示', '提示', '数据范围']
+    return ['题目描述', '问题描述', '题意', '输入', '输入格式', '输出', '输出格式', '输入输出样例', '样例输入', '样例输出', '说明', '说明提示', '提示', '数据范围', '测试点']
       .some(alias => title === alias || title.startsWith(alias));
   }
 
@@ -527,10 +537,16 @@ class OJAdmin {
 
   parseMarkdownTestCases(source) {
     const blocks = new Map();
-    const lines = source.replace(/\\#/g, '#').split('\n');
-    const marker = /^\s*#{1,6}\s*(?:测试点\s*)?(输入|输出)\s*#?\s*(\d+)\s*(?:\*\*|__)?\s*$/i;
+    const normalized = this.normalizeImportedMarkdown(source);
+    const testSectionHeading = /^\s*#{1,6}\s*(?:\*\*|__)?\s*测试点\s*(?:\*\*|__)?\s*#*\s*$/mi.exec(normalized);
+    const scopedSource = testSectionHeading
+      ? normalized.slice(testSectionHeading.index + testSectionHeading[0].length)
+      : normalized;
+    const lines = scopedSource.split('\n');
+    const marker = /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?\s*(?:测试点\s*)?(输入|输出)\s*#?\s*(\d+)\s*(?:\*\*|__)?\s*$/i;
     let current = null;
     lines.forEach(line => {
+      if (/^\s*```/.test(line)) return;
       const match = line.match(marker);
       if (match) {
         const number = match[2];
@@ -548,7 +564,7 @@ class OJAdmin {
     if (!blocks.size) {
       const fenced = /^(?:#{3,6}\s*)?(?:\*\*|__)?\s*测试点\s*#?\s*(\d+)?\s*(输入|输出)?\s*(?:\*\*|__)?\s*\n\s*```[^\n]*\n([\s\S]*?)\n```/gmi;
       let match;
-      while ((match = fenced.exec(source)) !== null) {
+      while ((match = fenced.exec(scopedSource)) !== null) {
         const number = match[1] || String(blocks.size + 1);
         const type = (match[2] || '输入') === '输出' ? 'output' : 'input';
         if (!blocks.has(number)) blocks.set(number, { input: '', output: '' });
