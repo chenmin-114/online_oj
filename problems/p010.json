@@ -1,0 +1,31 @@
+{
+  "id": "P010",
+  "title": "（Day 3）暗号捉迷藏（base)",
+  "difficulty": "easy",
+  "description": "想象一下，你收到了小伙伴发来的“加密消息”，消息中藏着一些带密码的暗号，需要按规则找出有效的暗号数量。\n暗号规则（类比嵌入式串口通信）：\n**暗号规则：**\n1.  每个暗号以 `$` 开头，以 `#` 结尾；\n2.  `$` 与 `#` 之间的内容必须 **完全由字符（`0-9`、`A-F`、`a-f`）组成**；\n3.  内容长度必须为 **正偶数**（2, 4, 6, ...，长度为 0 无效）；",
+  "inputFormat": "一行字符串。",
+  "outputFormat": "一个整数，表示有效暗号的数量。",
+  "constraints": "",
+  "sampleInput": "$1234#你好$deadbeef#",
+  "sampleOutput": "2",
+  "samples": [
+    {
+      "input": "$1234#你好$deadbeef#",
+      "output": "2"
+    },
+    {
+      "input": "$01#$ab #$cd#$efgh#",
+      "output": "2"
+    },
+    {
+      "input": "",
+      "output": "0"
+    },
+    {
+      "input": "$ABCDEF#$1234567890abcdef#$00#",
+      "output": "3"
+    }
+  ],
+  "showTestDetails": true,
+  "hints": []
+}

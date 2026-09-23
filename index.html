@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' https: data: blob:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' https://api.jc-oj.online https://ce.judge0.com https://api.github.com https://raw.githubusercontent.com https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>机创 OJ - 机创代码在线评测平台</title>
+  <link rel="icon" type="image/png" href="assets/logo-circle.png?v=20260920-2">
+  <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
+  <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
+  <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
+  <link rel="stylesheet" href="css/style.css?v=20260920-12">
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <header class="header">
+    <div class="container">
+      <h1 class="logo"><img class="brand-logo" src="assets/logo-circle.png?v=20260920-2" alt="">机创 OJ</h1>
+      <nav class="nav">
+        <a href="#" class="nav-link active" data-view="problems">题目</a>
+        <a href="#" class="nav-link" data-view="submissions">提交</a>
+      </nav>
+      <div class="user-info">
+        <span id="username-display">未登录</span>
+        <button id="change-username-btn" class="btn-small">修改</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 题目列表视图 -->
+    <section id="view-problems" class="view">
+      <h2>题目列表</h2>
+      <div id="problem-list" class="problem-list"></div>
+    </section>
+
+    <!-- 解题视图 -->
+    <section id="view-solve" class="view" style="display: none;">
+      <div class="solve-layout">
+        <!-- 左侧：题目描述 -->
+        <div class="problem-panel">
+          <h2 id="problem-title"></h2>
+          <div class="problem-content">
+            <h3 class="problem-section-title">题目描述</h3>
+            <div id="problem-description"></div>
+            
+            <h3 class="problem-section-title">输入格式</h3>
+            <div id="problem-input-format"></div>
+            
+            <h3 class="problem-section-title">输出格式</h3>
+            <div id="problem-output-format"></div>
+            
+            <h3 class="problem-section-title">数据范围</h3>
+            <div id="problem-constraints"></div>
+
+            <h3 id="problem-hints-title" class="problem-section-title" hidden>提示</h3>
+            <div id="problem-hints"></div>
+            
+            <h3 class="problem-section-title">样例</h3>
+            <div id="problem-samples" class="problem-samples"></div>
+          </div>
+        </div>
+
+        <!-- 右侧：代码编辑器 -->
+        <div class="editor-panel">
+          <div class="toolbar">
+            <select id="language-select" class="select">
+              <option value="c">C</option>
+              <option value="cpp">C++</option>
+              <option value="python">Python 3</option>
+              <option value="java">Java</option>
+              <option value="javascript">JavaScript</option>
+              <option value="go">Go</option>
+              <option value="rust">Rust</option>
+            </select>
+            <button id="run-btn" class="btn btn-secondary">▶ 运行</button>
+            <button id="submit-btn" class="btn btn-primary">🏁 提交</button>
+          </div>
+
+          <div id="editor-container" class="editor"></div>
+
+          <div class="io-panel">
+            <div class="io-section">
+              <label>
+                自定义输入
+                <button id="fill-sample-btn" class="btn-small">填充样例</button>
+              </label>
+              <textarea id="custom-input" class="io-textarea" placeholder="在此输入测试数据..."></textarea>
+            </div>
+            <div class="io-section">
+              <label>输出结果</label>
+              <pre id="output" class="io-output"></pre>
+            </div>
+          </div>
+
+          <div class="result-panel">
+            <div id="judge-result"></div>
+            <div id="judge-detail" class="judge-detail"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 提交历史视图 -->
+    <section id="view-submissions" class="view" style="display: none;">
+      <h2>提交历史</h2>
+      <div id="submission-list"></div>
+    </section>
+  </main>
+
+  <!-- 脚本加载（顺序很重要） -->
+  <script src="js/config.js?v=20260922-9"></script>
+  <script src="js/languages.js?v=20260919-6"></script>
+  <script src="js/editor.js?v=20260919-6"></script>
+  <script src="js/runner.js?v=20260921-8"></script>
+  <script src="js/github.js?v=20260922-10"></script>
+  <script src="js/views.js?v=20260919-6"></script>
+  <script src="vendor/marked/marked.umd.js?v=18.0.13"></script>
+  <script src="vendor/dompurify/purify.min.js?v=3.4.15"></script>
+  <script src="vendor/katex/katex.min.js?v=0.18.7"></script>
+  <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
+  <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
+  <script src="js/app.js?v=20260922-24"></script>
+</body>
+</html>

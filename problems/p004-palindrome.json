@@ -1,0 +1,22 @@
+{
+  "id": "P004",
+  "title": "回文判断",
+  "difficulty": "easy",
+  "description": "给定一个字符串，判断它是否是回文串。\n\n回文串是指正读和反读都相同的字符串，例如 `\"aba\"` 是回文串，`\"abc\"` 不是。",
+  "inputFormat": "一行，一个字符串（仅包含小写字母）。",
+  "outputFormat": "如果字符串是回文串，输出 `\"YES\"`，否则输出 `\"NO\"`。",
+  "constraints": "- 字符串长度 `1 ≤ n ≤ 10^5`\n- 仅包含小写字母 `a-z`",
+  "sampleInput": "racecar",
+  "sampleOutput": "YES",
+  "samples": [
+    {
+      "input": "racecar",
+      "output": "YES"
+    }
+  ],
+  "showTestDetails": true,
+  "hints": [
+    "可以用双指针从两端向中间比较",
+    "也可以反转字符串后比较"
+  ]
+}

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self' https://api.jc-oj.online https://ce.judge0.com https://api.github.com https://raw.githubusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>机创 OJ 管理后台</title>
+  <link rel="icon" type="image/png" href="assets/logo-circle.png?v=20260920-2">
+  <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
+  <link rel="stylesheet" href="css/style.css?v=20260920-7">
+  <link rel="stylesheet" href="css/admin.css?v=20260921-13">
+</head>
+<body class="admin-body auth-locked">
+  <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
+    <form id="admin-login-form" class="admin-login-card">
+      <img src="assets/logo-circle.png?v=20260920-2" alt="">
+      <p class="eyebrow">ADMIN ACCESS</p>
+      <h1 id="admin-login-title">机创 OJ 管理后台</h1>
+      <p>请输入管理员密码后继续</p>
+      <label class="form-field"><span>管理员密码</span><input id="admin-password" class="admin-input" type="password" autocomplete="current-password" required autofocus placeholder="请输入密码"></label>
+      <p id="admin-login-status" class="admin-login-status" role="alert"></p>
+      <button id="admin-login-button" class="admin-button primary" type="submit">登录</button>
+      <a href="index.html">返回学生页面</a>
+    </form>
+  </section>
+
+  <header class="admin-header">
+    <div class="admin-brand">
+      <img class="admin-brand-icon" src="assets/logo-circle.png?v=20260920-2" alt="">
+      <div>
+        <h1>机创 OJ</h1>
+        <span>管理控制台</span>
+      </div>
+    </div>
+    <div class="admin-header-actions">
+      <span id="sync-status" class="sync-status">尚未同步</span>
+      <button id="refresh-admin" class="admin-button secondary">↻ 刷新数据</button>
+      <button id="logout-admin" class="admin-button secondary">退出登录</button>
+      <a class="admin-button primary" href="index.html">返回前台</a>
+    </div>
+  </header>
+
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <nav>
+        <button class="admin-nav-item active" data-panel="overview"><span>▦</span> 数据总览</button>
+        <button class="admin-nav-item" data-panel="problems"><span>◇</span> 题目管理</button>
+        <button class="admin-nav-item" data-panel="submissions"><span>☷</span> 提交记录</button>
+        <button class="admin-nav-item" data-panel="leaderboards"><span>♛</span> 排行榜</button>
+        <button class="admin-nav-item" data-panel="system"><span>⚙</span> 系统状态</button>
+      </nav>
+      <div class="admin-sidebar-note">
+        <strong>安全模式</strong>
+        <p>新增和编辑操作均由 Worker 验证管理员密码。</p>
+      </div>
+    </aside>
+
+    <main class="admin-main">
+      <section id="panel-overview" class="admin-panel active">
+        <div class="admin-page-title">
+          <div><p class="eyebrow">OVERVIEW</p><h2>数据总览</h2><p>快速了解题库与评测运行情况</p></div>
+        </div>
+        <div class="metric-grid">
+          <article class="metric-card blue"><span class="metric-icon">◇</span><div><p>题目总数</p><strong id="metric-problems">—</strong></div></article>
+          <article class="metric-card violet"><span class="metric-icon">☷</span><div><p>提交总数</p><strong id="metric-submissions">—</strong></div></article>
+          <article class="metric-card green"><span class="metric-icon">✓</span><div><p>通过率</p><strong id="metric-acceptance">—</strong></div></article>
+          <article class="metric-card orange"><span class="metric-icon">◎</span><div><p>参与用户</p><strong id="metric-users">—</strong></div></article>
+        </div>
+        <div class="admin-grid two-columns">
+          <article class="admin-card">
+            <div class="card-heading"><div><h3>最近提交</h3><p>最新 8 条评测记录</p></div><button class="text-button" data-open-panel="submissions">查看全部 →</button></div>
+            <div class="table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>题目</th><th>结果</th><th>时间</th></tr></thead><tbody id="recent-submissions"></tbody></table></div>
+          </article>
+          <article class="admin-card">
+            <div class="card-heading"><div><h3>题目活跃度</h3><p>按实际提交次数统计</p></div></div>
+            <div id="problem-activity" class="activity-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="panel-problems" class="admin-panel">
+        <div class="admin-page-title row">
+          <div><p class="eyebrow">CONTENT</p><h2>题目管理</h2><p>查看题目状态，并通过 GitHub 安全修改题库</p></div>
+          <div class="title-actions">
+            <a class="admin-button secondary" target="_blank" rel="noopener" href="https://github.com/chenmin-114/online_oj/edit/main/problems/index.json">高级编辑</a>
+            <button id="show-problem-editor" class="admin-button primary">＋ 可视化新增题目</button>
+          </div>
+        </div>
+        <article class="admin-card">
+          <div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>题目</th><th>难度</th><th>实际提交</th><th>AC 数</th><th>操作</th></tr></thead><tbody id="problem-admin-list"></tbody></table></div>
+        </article>
+
+        <form id="problem-editor" class="admin-card problem-editor" hidden>
+          <div class="card-heading">
+            <div><h3 id="problem-editor-title">新增题目</h3><p id="problem-editor-subtitle">填写后会自动创建题目文件并加入题目列表</p></div>
+            <button id="close-problem-editor" type="button" class="text-button">关闭 ×</button>
+          </div>
+          <div class="problem-form">
+            <details class="problem-importer">
+              <summary><span>⚡ 一键粘贴题目 Markdown</span><small>适配洛谷等平台的常见题面格式</small></summary>
+              <div class="problem-importer-body">
+                <textarea id="problem-import-markdown" class="admin-input code-input" rows="10" placeholder="把完整题面粘贴到这里，例如从 # P1002 ... 开始"></textarea>
+                <div class="problem-importer-actions">
+                  <span id="problem-import-status">可粘贴完整题面或单独的某个部分；只更新本次识别到的内容，样例和测试点会追加</span>
+                  <button id="import-problem-markdown" type="button" class="admin-button primary">解析并自动填入</button>
+                </div>
+              </div>
+            </details>
+            <div class="form-grid three-columns">
+              <label class="form-field"><span>题号 *</span><input id="problem-id" class="admin-input" required placeholder="P006"></label>
+              <label class="form-field"><span>题目名称 *</span><input id="problem-title" class="admin-input" required placeholder="两数相乘"></label>
+              <label class="form-field"><span>难度</span><select id="problem-difficulty" class="admin-input"><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option></select></label>
+            </div>
+            <label class="form-field"><span>文件名 *</span><input id="problem-file" class="admin-input" required placeholder="p006-multiply.json"><small>只使用小写字母、数字和短横线</small></label>
+            <label class="form-field"><span>题目描述 *</span><textarea id="problem-description" class="admin-input" required rows="7" placeholder="使用 Markdown 编写题目描述"></textarea><small>支持标题、列表、表格、链接、代码块和 LaTeX 公式，例如：**重点**、```cpp、$x^2$</small></label>
+            <div class="problem-image-uploader">
+              <div class="problem-image-upload-heading">
+                <div><strong>题目图片（可选）</strong><p>先在题目描述中放置光标，选择图片后会插入到光标位置；最多 5 张</p></div>
+                <label class="admin-button secondary image-select-button">＋ 选择图片<input id="problem-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple></label>
+              </div>
+              <div id="problem-image-preview" class="problem-image-preview" hidden></div>
+            </div>
+            <div class="form-grid two-columns">
+              <label class="form-field"><span>输入格式 *</span><textarea id="problem-input-format" class="admin-input" required rows="3"></textarea></label>
+              <label class="form-field"><span>输出格式 *</span><textarea id="problem-output-format" class="admin-input" required rows="3"></textarea></label>
+            </div>
+            <label class="form-field"><span>数据范围</span><textarea id="problem-constraints" class="admin-input" rows="3"></textarea></label>
+            <div class="testcase-heading"><div><strong>输入输出样例</strong><p>学生可以看到全部样例</p></div><button id="add-sample" type="button" class="admin-button secondary">＋ 添加样例</button></div>
+            <div id="sample-editor" class="sample-case-editor"></div>
+            <div class="testcase-heading"><div><strong>测试点 *</strong><p>每个测试点都会独立运行一次</p></div><button id="add-test-case" type="button" class="admin-button secondary">＋ 添加测试点</button></div>
+            <label class="test-visibility-option">
+              <input id="problem-show-test-details" type="checkbox">
+              <span><strong>判题失败时显示测试点输入和实际输出</strong><small>两项同步显示；期望输出始终隐藏</small></span>
+            </label>
+            <div id="test-case-editor" class="test-case-editor"></div>
+            <label class="form-field"><span>提示</span><textarea id="problem-hints" class="admin-input" rows="3" placeholder="每行一条提示"></textarea></label>
+          </div>
+          <div class="problem-form-actions">
+            <span id="problem-save-status"></span>
+            <button id="reset-problem-editor" type="button" class="admin-button secondary">清空</button>
+            <button id="save-problem" type="submit" class="admin-button primary">保存并发布题目</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="panel-submissions" class="admin-panel">
+        <div class="admin-page-title row">
+          <div><p class="eyebrow">JUDGING</p><h2>提交记录</h2><p>筛选、检查并导出全站评测记录</p></div>
+          <button id="export-submissions" class="admin-button secondary">⇩ 导出 CSV</button>
+        </div>
+        <article class="admin-card">
+          <div class="filter-bar">
+            <input id="submission-search" class="admin-input" type="search" placeholder="搜索用户名或题号">
+            <select id="submission-problem" class="admin-input"><option value="">全部题目</option></select>
+            <select id="submission-result" class="admin-input"><option value="">全部结果</option><option value="accepted">Accepted</option><option value="failed">未通过</option></select>
+            <span id="submission-count" class="filter-count"></span>
+          </div>
+          <div class="table-wrap"><table class="admin-table"><thead><tr><th>时间</th><th>用户</th><th>题目</th><th>语言</th><th>结果</th><th>测试点</th><th>耗时</th></tr></thead><tbody id="all-submissions"></tbody></table></div>
+        </article>
+      </section>
+
+      <section id="panel-leaderboards" class="admin-panel">
+        <div class="admin-page-title"><div><p class="eyebrow">RANKING</p><h2>排行榜</h2><p>查看总榜与各题排行榜</p></div></div>
+        <article class="admin-card">
+          <div class="filter-bar"><select id="admin-ranking-scope" class="admin-input"><option value="overall">总榜</option></select></div>
+          <div id="admin-ranking-content" class="table-wrap"></div>
+        </article>
+      </section>
+
+      <section id="panel-system" class="admin-panel">
+        <div class="admin-page-title"><div><p class="eyebrow">OPERATIONS</p><h2>系统状态</h2><p>检查各组件连接状态与常用运维入口</p></div></div>
+        <div class="status-grid">
+          <article class="status-card"><span id="status-worker-dot" class="status-dot pending"></span><div><h3>Cloudflare Worker</h3><p id="status-worker">检查中...</p></div></article>
+          <article class="status-card"><span id="status-github-dot" class="status-dot pending"></span><div><h3>GitHub 数据存储</h3><p id="status-github">检查中...</p></div></article>
+          <article class="status-card"><span id="status-ranking-dot" class="status-dot pending"></span><div><h3>排名数据</h3><p id="status-ranking">检查中...</p></div></article>
+        </div>
+        <article class="admin-card">
+          <div class="card-heading"><div><h3>快捷入口</h3><p>高权限操作将在对应平台完成身份验证</p></div></div>
+          <div class="quick-links">
+            <a target="_blank" rel="noopener" href="https://github.com/chenmin-114/online_oj">GitHub 仓库 <span>↗</span></a>
+            <a target="_blank" rel="noopener" href="https://github.com/chenmin-114/online_oj/actions">Actions 运行记录 <span>↗</span></a>
+            <a target="_blank" rel="noopener" href="https://dash.cloudflare.com/">Cloudflare 控制台 <span>↗</span></a>
+            <a target="_blank" rel="noopener" href="https://ce.judge0.com/">Judge0 CE <span>↗</span></a>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div id="admin-toast" class="admin-toast" role="status"></div>
+  <script src="js/admin.js?v=20260922-03"></script>
+</body>
+</html>

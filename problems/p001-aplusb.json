@@ -1,0 +1,26 @@
+{
+  "id": "P001",
+  "title": "A+B Problem",
+  "difficulty": "easy",
+  "description": "给定两个整数 `a` 和 `b`，请计算它们的和并输出。",
+  "inputFormat": "一行，包含两个整数 `a` 和 `b`，用空格分隔。",
+  "outputFormat": "一行，一个整数，表示 `a + b` 的结果。",
+  "constraints": "- `0 ≤ a, b ≤ 10^9`\n- 保证结果在 32 位有符号整数范围内",
+  "sampleInput": "1 2",
+  "sampleOutput": "3",
+  "samples": [
+    {
+      "input": "1 2",
+      "output": "3"
+    },
+    {
+      "input": "4 5",
+      "output": "9"
+    }
+  ],
+  "showTestDetails": true,
+  "hints": [
+    "注意数据范围，结果可能超过 int 范围",
+    "使用 long long 或等价类型更安全"
+  ]
+}

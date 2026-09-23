@@ -1,0 +1,35 @@
+name = "oj-proxy"
+main = "worker.js"
+compatibility_date = "2026-09-19"
+workers_dev = true
+
+[vars]
+# 请在这里填写你的 GitHub 仓库名，格式：username/repo
+GITHUB_REPO = "chenmin-114/online_oj"
+# 可替换为自托管 Judge0 地址
+JUDGE0_API_URL = "https://ce.judge0.com"
+
+[[kv_namespaces]]
+binding = "OJ_TESTS"
+id = "9b0494b515244bec992275b7a31dce90"
+
+[[d1_databases]]
+binding = "OJ_DB"
+database_name = "jc-oj-submissions"
+database_id = "777ac87d-d7c7-463b-82d1-08c5aa7236f4"
+
+[[ratelimits]]
+name = "ADMIN_LOGIN_RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 5
+  period = 60
+
+[[ratelimits]]
+name = "EXECUTION_RATE_LIMITER"
+namespace_id = "1002"
+
+  [ratelimits.simple]
+  limit = 70
+  period = 60
