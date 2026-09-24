@@ -125,6 +125,7 @@
               <label class="form-field"><span>输出格式 *</span><textarea id="problem-output-format" class="admin-input" required rows="3"></textarea></label>
             </div>
             <label class="form-field"><span>数据范围</span><textarea id="problem-constraints" class="admin-input" rows="3"></textarea></label>
+            <label class="form-field"><span>提示</span><textarea id="problem-hints" class="admin-input" rows="3" placeholder="支持 Markdown；留空时学生端不会显示这个板块"></textarea></label>
             <div class="testcase-heading"><div><strong>输入输出样例</strong><p>学生可以看到全部样例</p></div><button id="add-sample" type="button" class="admin-button secondary">＋ 添加样例</button></div>
             <div id="sample-editor" class="sample-case-editor"></div>
             <label class="form-field"><span>样例解释</span><textarea id="problem-sample-explanation" class="admin-input" rows="5" placeholder="支持 Markdown；留空时学生端不会显示这个板块"></textarea></label>
@@ -134,7 +135,6 @@
               <span><strong>判题失败时显示测试点输入和实际输出</strong><small>两项同步显示；期望输出始终隐藏</small></span>
             </label>
             <div id="test-case-editor" class="test-case-editor"></div>
-            <label class="form-field"><span>提示</span><textarea id="problem-hints" class="admin-input" rows="3" placeholder="每行一条提示"></textarea></label>
           </div>
           <div class="problem-form-actions">
             <span id="problem-save-status"></span>
