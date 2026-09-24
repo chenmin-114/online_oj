@@ -377,17 +377,19 @@ class OJAdmin {
     const description = this.findMarkdownSection(sections, ['题目描述', '问题描述', '题意']);
     const inputFormat = this.findMarkdownSection(sections, ['输入格式', '输入']);
     const outputFormat = this.findMarkdownSection(sections, ['输出格式', '输出']);
-    const notes = this.findMarkdownSection(sections, ['说明/提示', '说明提示', '说明', '提示', '数据范围']);
+    const constraints = this.findMarkdownSection(sections, ['数据范围', '限制', '约束']);
+    const hints = this.findMarkdownSection(sections, ['说明/提示', '说明提示', '解题提示', '提示', '说明']);
     const samples = this.parseMarkdownSamples(source);
     const sampleExplanation = this.parseMarkdownSampleExplanation(source);
     const testCases = this.parseMarkdownTestCases(source);
     const hasDescription = hasSection(['题目描述', '问题描述', '题意']);
     const hasInputFormat = hasSection(['输入格式', '输入']);
     const hasOutputFormat = hasSection(['输出格式', '输出']);
-    const hasNotes = hasSection(['说明/提示', '说明提示', '说明', '提示', '数据范围']);
+    const hasConstraints = hasSection(['数据范围', '限制', '约束']);
+    const hasHints = hasSection(['说明/提示', '说明提示', '解题提示', '提示', '说明']);
     const hasSampleExplanation = Boolean(sampleExplanation);
 
-    if (!id && !title && !hasDescription && !hasInputFormat && !hasOutputFormat && !hasNotes && !hasSampleExplanation && !samples.length && !testCases.length) {
+    if (!id && !title && !hasDescription && !hasInputFormat && !hasOutputFormat && !hasConstraints && !hasHints && !hasSampleExplanation && !samples.length && !testCases.length) {
       status.textContent = '没有识别到可更新的题目内容，请检查 Markdown 格式';
       return;
     }
@@ -400,7 +402,8 @@ class OJAdmin {
     if (hasDescription) document.getElementById('problem-description').value = description;
     if (hasInputFormat) document.getElementById('problem-input-format').value = inputFormat;
     if (hasOutputFormat) document.getElementById('problem-output-format').value = outputFormat;
-    if (hasNotes) document.getElementById('problem-constraints').value = notes;
+    if (hasConstraints) document.getElementById('problem-constraints').value = constraints;
+    if (hasHints) document.getElementById('problem-hints').value = hints;
     if (hasSampleExplanation) document.getElementById('problem-sample-explanation').value = sampleExplanation;
 
     if (samples.length) {
@@ -410,7 +413,7 @@ class OJAdmin {
       this.appendTestCases(testCases);
     }
 
-    const recognized = [id && '题号', title && '标题', hasDescription && '描述', hasInputFormat && '输入格式', hasOutputFormat && '输出格式', samples.length && `追加 ${samples.length} 组样例`, hasSampleExplanation && '样例解释', testCases.length && `追加 ${testCases.length} 个测试点`, hasNotes && '说明']
+    const recognized = [id && '题号', title && '标题', hasDescription && '描述', hasInputFormat && '输入格式', hasOutputFormat && '输出格式', hasConstraints && '数据范围', hasHints && '提示', samples.length && `追加 ${samples.length} 组样例`, hasSampleExplanation && '样例解释', testCases.length && `追加 ${testCases.length} 个测试点`]
       .filter(Boolean);
     status.textContent = `本次仅更新：${recognized.join('、')}；其他内容保持不变`;
     document.querySelector('.problem-importer').open = false;
@@ -435,7 +438,7 @@ class OJAdmin {
       const trimmed = line.trim();
       const headingMatch = trimmed.match(/^#{1,6}\s+(.+?)\s*#*$/);
       const standalone = trimmed.match(/^(?:\*\*|__)(.+?)(?:\*\*|__)$/);
-      const plain = trimmed.match(/^(题目描述|问题描述|题意|输入格式?|输出格式?|样例输入|样例输出|说明(?:\/提示)?|提示|数据范围)\s*[：:]?$/i);
+      const plain = trimmed.match(/^(题目描述|问题描述|题意|输入格式?|输出格式?|样例输入|样例输出|说明(?:\/提示)?|解题提示|提示|数据范围|限制|约束)\s*[：:]?$/i);
       const candidate = headingMatch?.[1] || standalone?.[1] || plain?.[1];
       if (candidate && this.isProblemSectionTitle(candidate)) {
         markers.push({
@@ -520,7 +523,7 @@ class OJAdmin {
 
   isProblemSectionTitle(value) {
     const title = this.normalizeSectionTitle(value);
-    return ['题目描述', '问题描述', '题意', '输入', '输入格式', '输出', '输出格式', '样例', '示例', '输入输出样例', '样例输入', '样例输出', '样例解释', '示例解释', '说明', '说明提示', '提示', '数据范围', '测试点']
+    return ['题目描述', '问题描述', '题意', '输入', '输入格式', '输出', '输出格式', '样例', '示例', '输入输出样例', '样例输入', '样例输出', '样例解释', '示例解释', '说明', '说明提示', '解题提示', '提示', '数据范围', '限制', '约束', '测试点']
       .some(alias => title === alias || title.startsWith(alias));
   }
 
