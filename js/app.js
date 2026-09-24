@@ -74,12 +74,17 @@ class App {
     const container = document.getElementById('problem-list');
     container.innerHTML = problems.map(p => {
       const difficulty = ['easy', 'medium', 'hard'].includes(p.difficulty) ? p.difficulty : 'easy';
+      const submitCount = Number.isFinite(Number(p.submitCount)) ? Number(p.submitCount) : 0;
       return `
       <div class="problem-card" data-id="${this._escapeHtml(p.id)}" data-file="${this._escapeHtml(p.file)}">
         <div class="problem-header">
           <span class="problem-id">${this._escapeHtml(p.id)}</span>
           <span class="problem-title">${this._escapeHtml(p.title)}</span>
           <span class="difficulty ${difficulty}">${this._difficultyText(difficulty)}</span>
+        </div>
+        <div class="problem-meta">
+          <span>通过率: ${this._escapeHtml(p.acceptRate || 'N/A')}</span>
+          <span>提交: ${submitCount}</span>
         </div>
       </div>
     `;
@@ -250,7 +255,7 @@ class App {
       this.loadSubmissions();
     });
 
-    // 每次返回题目列表都重新读取题目，及时显示管理员发布的更新。
+    // 每次返回题目列表都重新读取统计，显示最新提交数和通过率。
     const problemsLink = document.querySelector('[data-view="problems"]');
     problemsLink.addEventListener('click', async () => {
       const problemList = document.getElementById('problem-list');
