@@ -563,8 +563,40 @@ class OJAdmin {
     const populated = explanations
       .map(item => ({ ...item, content: item.lines.join('\n').trim() }))
       .filter(item => item.content);
-    if (populated.length <= 1) return populated[0]?.content || '';
-    return populated.map(item => `**样例 #${item.number}**\n\n${item.content}`).join('\n\n');
+    if (populated.length) return this.formatSampleExplanations(populated);
+
+    // 兼容紧跟在样例输出后的 “> 解释：...” 引用写法。
+    const quoted = [];
+    let currentQuote = null;
+    const quoteStart = /^\s*>\s*(?:\*\*|__)?\s*(?:样例\s*#?\s*(\d+)\s*)?解释\s*(?:\*\*|__)?\s*[：:]\s*(.*)$/i;
+    const quoteContinuation = /^\s*>\s?(.*)$/;
+    lines.forEach(line => {
+      const start = line.match(quoteStart);
+      if (start) {
+        currentQuote = {
+          number: start[1] || String(quoted.length + 1),
+          lines: [start[2]],
+        };
+        quoted.push(currentQuote);
+        return;
+      }
+      const continuation = currentQuote && line.match(quoteContinuation);
+      if (continuation) {
+        currentQuote.lines.push(continuation[1]);
+      } else {
+        currentQuote = null;
+      }
+    });
+    return this.formatSampleExplanations(quoted
+      .map(item => ({ ...item, content: item.lines.join('\n').trim() }))
+      .filter(item => item.content));
+  }
+
+  formatSampleExplanations(explanations) {
+    if (explanations.length <= 1) return explanations[0]?.content || '';
+    return explanations
+      .map(item => `**样例 #${item.number}**\n\n${item.content}`)
+      .join('\n\n');
   }
 
   parseMarkdownTestCases(source) {
