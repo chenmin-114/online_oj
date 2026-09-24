@@ -838,6 +838,7 @@ function validateProblem(input, requestedFile) {
     inputFormat: input.inputFormat.trim().slice(0, 10000),
     outputFormat: input.outputFormat.trim().slice(0, 10000),
     constraints: String(input.constraints || '').trim().slice(0, 10000),
+    sampleExplanation: String(input.sampleExplanation || '').trim().slice(0, 20000),
     // 保留首组旧字段，兼容已经缓存的旧版学生页面。
     sampleInput: samples[0]?.input || '',
     sampleOutput: samples[0]?.output || '',

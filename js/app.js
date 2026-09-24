@@ -128,11 +128,16 @@ class App {
       ['problem-input-format', p.inputFormat],
       ['problem-output-format', p.outputFormat],
       ['problem-constraints', p.constraints],
+      ['problem-sample-explanation', p.sampleExplanation],
     ];
     markdownFields.forEach(([id, value]) => {
       const container = document.getElementById(id);
-      container.innerHTML = this._formatMarkdown(value || '');
-      this._enhanceMarkdown(container);
+      const title = document.getElementById(`${id}-title`);
+      const hasContent = Boolean(String(value || '').trim());
+      container.hidden = !hasContent;
+      if (title) title.hidden = !hasContent;
+      container.innerHTML = hasContent ? this._formatMarkdown(value) : '';
+      if (hasContent) this._enhanceMarkdown(container);
     });
 
     const hintsTitle = document.getElementById('problem-hints-title');
@@ -187,6 +192,9 @@ class App {
         ? [{ input: problem.sampleInput || '', output: problem.sampleOutput || '' }]
         : []);
     const container = document.getElementById('problem-samples');
+    const title = document.getElementById('problem-samples-title');
+    container.hidden = !samples.length;
+    if (title) title.hidden = !samples.length;
     container.innerHTML = samples.length ? samples.map((sample, index) => `
       <div class="sample-group">
         <div class="sample">
@@ -194,7 +202,8 @@ class App {
           <div><strong>输出 #${index + 1}</strong><pre>${this._escapeHtml(sample.output || '')}</pre></div>
         </div>
       </div>
-    `).join('') : '<p>暂无样例</p>';
+    `).join('') : '';
+    if (samples.length) this._enhanceMarkdown(container);
   }
 
   _enhanceMarkdown(container) {

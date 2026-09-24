@@ -326,6 +326,7 @@ class OJAdmin {
       document.getElementById('problem-input-format').value = problem.inputFormat || '';
       document.getElementById('problem-output-format').value = problem.outputFormat || '';
       document.getElementById('problem-constraints').value = problem.constraints || '';
+      document.getElementById('problem-sample-explanation').value = problem.sampleExplanation || '';
       document.getElementById('problem-show-test-details').checked = problem.showTestDetails === true;
       document.getElementById('problem-hints').value = Array.isArray(problem.hints) ? problem.hints.join('\n') : '';
 
@@ -378,13 +379,15 @@ class OJAdmin {
     const outputFormat = this.findMarkdownSection(sections, ['输出格式', '输出']);
     const notes = this.findMarkdownSection(sections, ['说明/提示', '说明提示', '说明', '提示', '数据范围']);
     const samples = this.parseMarkdownSamples(source);
+    const sampleExplanation = this.parseMarkdownSampleExplanation(source);
     const testCases = this.parseMarkdownTestCases(source);
     const hasDescription = hasSection(['题目描述', '问题描述', '题意']);
     const hasInputFormat = hasSection(['输入格式', '输入']);
     const hasOutputFormat = hasSection(['输出格式', '输出']);
     const hasNotes = hasSection(['说明/提示', '说明提示', '说明', '提示', '数据范围']);
+    const hasSampleExplanation = Boolean(sampleExplanation);
 
-    if (!id && !title && !hasDescription && !hasInputFormat && !hasOutputFormat && !hasNotes && !samples.length && !testCases.length) {
+    if (!id && !title && !hasDescription && !hasInputFormat && !hasOutputFormat && !hasNotes && !hasSampleExplanation && !samples.length && !testCases.length) {
       status.textContent = '没有识别到可更新的题目内容，请检查 Markdown 格式';
       return;
     }
@@ -398,6 +401,7 @@ class OJAdmin {
     if (hasInputFormat) document.getElementById('problem-input-format').value = inputFormat;
     if (hasOutputFormat) document.getElementById('problem-output-format').value = outputFormat;
     if (hasNotes) document.getElementById('problem-constraints').value = notes;
+    if (hasSampleExplanation) document.getElementById('problem-sample-explanation').value = sampleExplanation;
 
     if (samples.length) {
       this.appendSamples(samples);
@@ -406,7 +410,7 @@ class OJAdmin {
       this.appendTestCases(testCases);
     }
 
-    const recognized = [id && '题号', title && '标题', hasDescription && '描述', hasInputFormat && '输入格式', hasOutputFormat && '输出格式', samples.length && `追加 ${samples.length} 组样例`, testCases.length && `追加 ${testCases.length} 个测试点`, hasNotes && '说明']
+    const recognized = [id && '题号', title && '标题', hasDescription && '描述', hasInputFormat && '输入格式', hasOutputFormat && '输出格式', samples.length && `追加 ${samples.length} 组样例`, hasSampleExplanation && '样例解释', testCases.length && `追加 ${testCases.length} 个测试点`, hasNotes && '说明']
       .filter(Boolean);
     status.textContent = `本次仅更新：${recognized.join('、')}；其他内容保持不变`;
     document.querySelector('.problem-importer').open = false;
@@ -516,14 +520,14 @@ class OJAdmin {
 
   isProblemSectionTitle(value) {
     const title = this.normalizeSectionTitle(value);
-    return ['题目描述', '问题描述', '题意', '输入', '输入格式', '输出', '输出格式', '输入输出样例', '样例输入', '样例输出', '说明', '说明提示', '提示', '数据范围', '测试点']
+    return ['题目描述', '问题描述', '题意', '输入', '输入格式', '输出', '输出格式', '样例', '示例', '输入输出样例', '样例输入', '样例输出', '样例解释', '示例解释', '说明', '说明提示', '提示', '数据范围', '测试点']
       .some(alias => title === alias || title.startsWith(alias));
   }
 
   parseMarkdownSamples(source) {
     const blocks = new Map();
     const counters = { input: 0, output: 0 };
-    const pattern = /^(?:#{3,6}\s*)?(?:\*\*|__)?\s*(输入|输出)(?:样例|示例)?\s*#?\s*(\d+)?\s*(?:\*\*|__)?\s*\n\s*```[^\n]*\n([\s\S]*?)\n```/gm;
+    const pattern = /^(?:#{1,6}\s*)?(?:\*\*|__)?\s*(?:样例|示例)?\s*(输入|输出)(?:样例|示例)?\s*#?\s*(\d+)?\s*(?:\*\*|__)?\s*\n\s*```[^\n]*\n([\s\S]*?)\n```/gm;
     let match;
     while ((match = pattern.exec(source)) !== null) {
       const type = match[1] === '输入' ? 'input' : 'output';
@@ -533,6 +537,34 @@ class OJAdmin {
       blocks.get(number)[type] = match[3].replace(/\n$/, '');
     }
     return Array.from(blocks.values()).filter(sample => sample.input || sample.output);
+  }
+
+  parseMarkdownSampleExplanation(source) {
+    const lines = source.split('\n');
+    const heading = /^\s*#{1,6}\s*(?:\*\*|__)?\s*(?:样例|示例)(?:解释|说明)\s*#?\s*(\d+)?\s*(?:\*\*|__)?\s*$/i;
+    const anyHeading = /^\s*#{1,6}\s+/;
+    const explanations = [];
+    let current = null;
+
+    lines.forEach(line => {
+      const match = line.match(heading);
+      if (match) {
+        current = { number: match[1] || String(explanations.length + 1), lines: [] };
+        explanations.push(current);
+        return;
+      }
+      if (current && anyHeading.test(line)) {
+        current = null;
+        return;
+      }
+      if (current) current.lines.push(line);
+    });
+
+    const populated = explanations
+      .map(item => ({ ...item, content: item.lines.join('\n').trim() }))
+      .filter(item => item.content);
+    if (populated.length <= 1) return populated[0]?.content || '';
+    return populated.map(item => `**样例 #${item.number}**\n\n${item.content}`).join('\n\n');
   }
 
   parseMarkdownTestCases(source) {
@@ -769,6 +801,7 @@ class OJAdmin {
       inputFormat: document.getElementById('problem-input-format').value,
       outputFormat: document.getElementById('problem-output-format').value,
       constraints: document.getElementById('problem-constraints').value,
+      sampleExplanation: document.getElementById('problem-sample-explanation').value,
       sampleInput: samples[0]?.input || '',
       sampleOutput: samples[0]?.output || '',
       samples,

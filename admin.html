@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="assets/logo-circle.png?v=20260920-2">
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260921-13">
+  <link rel="stylesheet" href="css/admin.css?v=20260924-01">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -127,6 +127,7 @@
             <label class="form-field"><span>数据范围</span><textarea id="problem-constraints" class="admin-input" rows="3"></textarea></label>
             <div class="testcase-heading"><div><strong>输入输出样例</strong><p>学生可以看到全部样例</p></div><button id="add-sample" type="button" class="admin-button secondary">＋ 添加样例</button></div>
             <div id="sample-editor" class="sample-case-editor"></div>
+            <label class="form-field"><span>样例解释</span><textarea id="problem-sample-explanation" class="admin-input" rows="5" placeholder="支持 Markdown；留空时学生端不会显示这个板块"></textarea></label>
             <div class="testcase-heading"><div><strong>测试点 *</strong><p>每个测试点都会独立运行一次</p></div><button id="add-test-case" type="button" class="admin-button secondary">＋ 添加测试点</button></div>
             <label class="test-visibility-option">
               <input id="problem-show-test-details" type="checkbox">
@@ -188,6 +189,6 @@
   </div>
 
   <div id="admin-toast" class="admin-toast" role="status"></div>
-  <script src="js/admin.js?v=20260923-01"></script>
+  <script src="js/admin.js?v=20260924-02"></script>
 </body>
 </html>

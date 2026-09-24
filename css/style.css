@@ -322,6 +322,7 @@ body {
 }
 
 .problem-samples { display: grid; gap: 14px; }
+.sample-group { display: grid; gap: 12px; }
 .sample {
   display: grid;
   grid-template-columns: 1fr 1fr;
