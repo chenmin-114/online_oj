@@ -66,7 +66,7 @@
   {
     "id": "P009",
     "title": "（Day 3）暗号捉迷藏",
-    "difficulty": "easy",
+    "difficulty": "medium",
     "file": "p009.json",
     "acceptRate": "25%",
     "submitCount": 129
