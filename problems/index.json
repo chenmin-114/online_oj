@@ -86,5 +86,13 @@
     "file": "p011.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P012",
+    "title": "（Day 5）洗衣机 “还有几分钟？”",
+    "difficulty": "easy",
+    "file": "p012.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
