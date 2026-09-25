@@ -426,8 +426,8 @@ class OJAdmin {
       .replace(/&#x0*d;|&#0*13;|&cr;/gi, '')
       .replace(/&#x0*a;|&#0*10;|&newline;/gi, '\n')
       .replace(/&#x0*20;|&#0*32;|&nbsp;/gi, ' ')
-      // 只解除 Markdown 标点转义，保留 \le、\dots 等 LaTeX 命令。
-      .replace(/\\([#*_`~.>\-])/g, '$1');
+      // 只解除 Markdown 标点转义，兼容被重复转义的 \\#，并保留 \le、\dots 等 LaTeX 命令。
+      .replace(/\\+([#*_`~.>\-])/g, '$1');
   }
 
   parseMarkdownSections(source) {
@@ -438,20 +438,25 @@ class OJAdmin {
       const trimmed = line.trim();
       const headingMatch = trimmed.match(/^#{1,6}\s+(.+?)\s*#*$/);
       const standalone = trimmed.match(/^(?:\*\*|__)(.+?)(?:\*\*|__)$/);
+      const inlineBold = trimmed.match(/^(?:\*\*|__)\s*(.+?)\s*(?:\*\*|__)\s*(?:[：:]\s*)?(.*)$/);
       const plain = trimmed.match(/^(题目描述|问题描述|题意|输入格式?|输出格式?|样例输入|样例输出|说明(?:\/提示)?|解题提示|提示|数据范围|限制|约束)\s*[：:]?$/i);
-      const candidate = headingMatch?.[1] || standalone?.[1] || plain?.[1];
+      const candidate = headingMatch?.[1] || standalone?.[1] || inlineBold?.[1] || plain?.[1];
       if (candidate && this.isProblemSectionTitle(candidate)) {
         markers.push({
           title: this.cleanMarkdownHeading(candidate),
           start: offset + line.length + 1,
           lineStart: offset,
+          inlineContent: inlineBold?.[2]?.trim() || '',
         });
       }
       offset += line.length + 1;
     });
     return markers.map((marker, index) => ({
       title: marker.title,
-      content: source.slice(marker.start, markers[index + 1]?.lineStart ?? source.length).trim(),
+      content: [
+        marker.inlineContent,
+        source.slice(marker.start, markers[index + 1]?.lineStart ?? source.length).trim(),
+      ].filter(Boolean).join('\n').trim(),
     }));
   }
 
@@ -539,26 +544,41 @@ class OJAdmin {
       if (!blocks.has(number)) blocks.set(number, { input: '', output: '' });
       blocks.get(number)[type] = match[3].replace(/\n$/, '');
     }
+
+    // 兼容 “**样例输入 1** 10 5 15” 这类标题和内容在同一行的写法。
+    const inlinePattern = /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?\s*(?:(?:样例|示例)\s*(输入|输出)|(输入|输出)\s*(?:样例|示例))\s*#?\s*(\d+)?\s*(?:\*\*|__)?\s*(?:[：:]\s*)?(.+?)\s*$/gmi;
+    const inlineCounters = { input: 0, output: 0 };
+    while ((match = inlinePattern.exec(source)) !== null) {
+      const type = (match[1] || match[2]) === '输入' ? 'input' : 'output';
+      inlineCounters[type] += 1;
+      const number = match[3] || String(inlineCounters[type]);
+      if (!blocks.has(number)) blocks.set(number, { input: '', output: '' });
+      if (!blocks.get(number)[type]) blocks.get(number)[type] = match[4].trim();
+    }
     return Array.from(blocks.values()).filter(sample => sample.input || sample.output);
   }
 
   parseMarkdownSampleExplanation(source) {
     const lines = source.split('\n');
-    const heading = /^\s*#{1,6}\s*(?:\*\*|__)?\s*(?:样例|示例)(?:解释|说明)\s*#?\s*(\d+)?\s*(?:\*\*|__)?\s*$/i;
-    const anyHeading = /^\s*#{1,6}\s+/;
+    const heading = /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?\s*(?:样例|示例)(?:解释|说明)\s*#?\s*(\d+)?\s*(?:\*\*|__)?\s*(?:[：:]\s*)?(.*)$/i;
     const explanations = [];
     let current = null;
 
     lines.forEach(line => {
       const match = line.match(heading);
       if (match) {
-        current = { number: match[1] || String(explanations.length + 1), lines: [] };
+        current = { number: match[1] || String(explanations.length + 1), lines: match[2] ? [match[2]] : [] };
         explanations.push(current);
         return;
       }
-      if (current && anyHeading.test(line)) {
-        current = null;
-        return;
+      if (current) {
+        const trimmed = line.trim();
+        const sectionHeading = trimmed.match(/^#{1,6}\s+(.+?)\s*#*$/)?.[1]
+          || trimmed.match(/^(?:\*\*|__)\s*(.+?)\s*(?:\*\*|__)(?:\s+.*)?$/)?.[1];
+        if (sectionHeading && this.isProblemSectionTitle(sectionHeading)) {
+          current = null;
+          return;
+        }
       }
       if (current) current.lines.push(line);
     });
@@ -605,7 +625,7 @@ class OJAdmin {
   parseMarkdownTestCases(source) {
     const blocks = new Map();
     const normalized = this.normalizeImportedMarkdown(source);
-    const testSectionHeading = /^\s*#{1,6}\s*(?:\*\*|__)?\s*测试点\s*(?:\*\*|__)?\s*#*\s*$/mi.exec(normalized);
+    const testSectionHeading = /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?\s*测试点\s*(?:\*\*|__)?\s*#*\s*$/mi.exec(normalized);
     const scopedSource = testSectionHeading
       ? normalized.slice(testSectionHeading.index + testSectionHeading[0].length)
       : normalized;
