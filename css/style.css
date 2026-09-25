@@ -316,7 +316,7 @@ body {
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: #fff;
+  background: #e2e5ea;
   box-sizing: border-box;
   object-fit: contain;
 }
