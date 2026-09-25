@@ -94,5 +94,13 @@
     "file": "p012.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P013",
+    "title": "（Day 6）月饼礼盒的“完美拼装”",
+    "difficulty": "easy",
+    "file": "p013.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
