@@ -302,8 +302,7 @@ async function handleData(request, env) {
       const problems = JSON.parse(rawContent);
       const statsResult = await env.OJ_DB.prepare(`
         SELECT problem_id, COUNT(*) AS total,
-               COUNT(DISTINCT username) AS participants,
-               COUNT(DISTINCT CASE WHEN passed = 1 THEN username END) AS accepted_users
+               SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) AS accepted
         FROM submissions
         WHERE ${group === 'control' ? "problem_id NOT LIKE 'vision:%'" : "problem_id LIKE 'vision:%'"}
         GROUP BY problem_id
@@ -315,12 +314,9 @@ async function handleData(request, env) {
       for (const problem of problems) {
         const problemStats = stats.get(problem.id);
         const total = Number(problemStats?.total || 0);
-        const participants = Number(problemStats?.participants || 0);
-        const acceptedUsers = Number(problemStats?.accepted_users || 0);
+        const accepted = Number(problemStats?.accepted || 0);
         problem.submitCount = total;
-        problem.acceptRate = participants > 0
-          ? `${Math.round((acceptedUsers / participants) * 100)}%`
-          : '0%';
+        problem.acceptRate = total > 0 ? `${Math.round((accepted / total) * 100)}%` : '0%';
       }
       return jsonResponse(problems);
     } catch (error) {
