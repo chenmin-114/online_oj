@@ -38,8 +38,8 @@ body.username-locked { overflow: hidden; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 10, 12, .68);
-  backdrop-filter: blur(4px);
+  background: rgba(10, 10, 12, .24);
+  backdrop-filter: blur(2px);
 }
 .username-login-card {
   width: min(100%, 390px);
@@ -48,7 +48,8 @@ body.username-locked { overflow: hidden; }
   gap: 15px;
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  background: var(--bg-secondary);
+  background: rgba(37, 37, 38, .76);
+  backdrop-filter: blur(14px);
   box-shadow: 0 24px 70px rgba(0, 0, 0, .5);
 }
 .username-login-card > img { width: 66px; height: 66px; margin: 0 auto; border-radius: 50%; }
