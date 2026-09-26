@@ -1,0 +1,16 @@
+{
+  "id": "P004",
+  "group": "vision",
+  "title": "判断像素明暗",
+  "difficulty": "easy",
+  "description": "灰度图像中的像素值在 $0$ 到 $255$ 之间。规定像素值大于等于 $128$ 时为亮像素，否则为暗像素。请判断给定像素的明暗。",
+  "inputFormat": "输入一个整数 $x$，表示像素值。",
+  "outputFormat": "如果 $x\\ge128$，输出 `Bright`；否则输出 `Dark`。",
+  "constraints": "$0 \\le x \\le 255$",
+  "sampleExplanation": "$200\\ge128$，因此它是亮像素。",
+  "sampleInput": "200",
+  "sampleOutput": "Bright",
+  "samples": [{ "input": "200", "output": "Bright" }, { "input": "80", "output": "Dark" }],
+  "showTestDetails": true,
+  "hints": ["使用 `if` 和 `else` 判断像素值是否大于等于 `128`。"]
+}

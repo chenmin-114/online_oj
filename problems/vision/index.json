@@ -1,1 +1,42 @@
-[]
+[
+  {
+    "id": "P001",
+    "title": "输出第一句话",
+    "difficulty": "easy",
+    "file": "p001-hello-python.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "P002",
+    "title": "两个数相加",
+    "difficulty": "easy",
+    "file": "p002-add.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "P003",
+    "title": "计算图像像素数",
+    "difficulty": "easy",
+    "file": "p003-pixels.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "P004",
+    "title": "判断像素明暗",
+    "difficulty": "easy",
+    "file": "p004-brightness.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "P005",
+    "title": "统计亮像素",
+    "difficulty": "easy",
+    "file": "p005-count-bright.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  }
+]

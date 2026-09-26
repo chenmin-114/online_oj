@@ -1,0 +1,16 @@
+{
+  "id": "P005",
+  "group": "vision",
+  "title": "统计亮像素",
+  "difficulty": "easy",
+  "description": "给你一行灰度像素值。像素值大于等于 $128$ 时称为亮像素。请统计其中有多少个亮像素。",
+  "inputFormat": "第一行输入一个整数 $n$，表示像素数量。\n\n第二行输入 $n$ 个整数，表示每个像素的灰度值。",
+  "outputFormat": "输出一个整数，表示亮像素的数量。",
+  "constraints": "- $1 \\le n \\le 100$\n- $0 \\le$ 每个像素值 $\\le 255$",
+  "sampleExplanation": "`128`、`200` 和 `255` 大于等于 `128`，所以共有 $3$ 个亮像素。",
+  "sampleInput": "5\n0 127 128 200 255",
+  "sampleOutput": "3",
+  "samples": [{ "input": "5\n0 127 128 200 255", "output": "3" }],
+  "showTestDetails": true,
+  "hints": ["先把计数器设为 `0`，遍历每个像素；遇到大于等于 `128` 的值就把计数器加 `1`。"]
+}

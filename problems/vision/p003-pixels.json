@@ -1,0 +1,16 @@
+{
+  "id": "P003",
+  "group": "vision",
+  "title": "计算图像像素数",
+  "difficulty": "easy",
+  "description": "一张矩形图像的宽度为 $w$，高度为 $h$。请计算这张图像一共有多少个像素。",
+  "inputFormat": "一行两个整数 $w$ 和 $h$，分别表示图像的宽度和高度。",
+  "outputFormat": "输出一个整数，表示图像的像素总数。",
+  "constraints": "$0 \\le w,h \\le 10000$",
+  "sampleExplanation": "图像共有 $4\\times3=12$ 个像素。",
+  "sampleInput": "4 3",
+  "sampleOutput": "12",
+  "samples": [{ "input": "4 3", "output": "12" }],
+  "showTestDetails": true,
+  "hints": ["矩形的总像素数等于宽度乘以高度。"]
+}

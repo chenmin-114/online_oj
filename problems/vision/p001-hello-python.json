@@ -1,0 +1,16 @@
+{
+  "id": "P001",
+  "group": "vision",
+  "title": "输出第一句话",
+  "difficulty": "easy",
+  "description": "请编写一个程序，输出视觉组的第一句欢迎语：`Hello, Vision!`。",
+  "inputFormat": "本题没有输入。",
+  "outputFormat": "输出一行：`Hello, Vision!`。注意大小写、空格和标点必须完全一致。",
+  "constraints": "无。",
+  "sampleExplanation": "直接使用 `print()` 输出指定内容即可。",
+  "sampleInput": "",
+  "sampleOutput": "Hello, Vision!",
+  "samples": [{ "input": "", "output": "Hello, Vision!" }],
+  "showTestDetails": true,
+  "hints": ["Python 可以使用：`print(\"Hello, Vision!\")`。"]
+}
