@@ -89,6 +89,10 @@
 .admin-brand span { color: var(--admin-muted); font-size: 12px; }
 .admin-header-actions { gap: 10px; }
 .sync-status { color: var(--admin-muted); font-size: 12px; margin-right: 8px; }
+.admin-group-switcher { padding: 3px; display: flex; gap: 3px; border: 1px solid var(--admin-border); border-radius: 9px; background: var(--admin-panel); }
+.admin-group-switch { min-height: 32px; padding: 0 13px; border: 0; border-radius: 6px; background: transparent; color: var(--admin-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.admin-group-switch:hover { color: var(--admin-text); }
+.admin-group-switch.active { background: var(--admin-blue); color: white; }
 
 .admin-button {
   display: inline-flex;
@@ -285,6 +289,7 @@ input.admin-input { min-width: 240px; }
 @media (max-width: 760px) {
   .admin-header { height: auto; padding: 14px 16px; align-items: flex-start; gap: 12px; }
   .admin-header-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .admin-group-switcher { order: -1; }
   .sync-status { display: none; }
   .admin-shell { display: block; }
   .admin-sidebar { padding: 8px; border-right: 0; border-bottom: 1px solid var(--admin-border); }

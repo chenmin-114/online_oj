@@ -14,13 +14,14 @@ class GitHubStore {
   /**
    * 提交源码给 Worker 服务端判题。浏览器不再上报 passed 等结果字段。
    */
-  async submit(problemId, username, language, code, onProgress) {
+  async submit(problemId, username, language, code, onProgress, group = 'control') {
     const payload = {
       type: 'judge_submit_stream',
       username,
       problemId,
       language,
       code,
+      group,
     };
 
     if (!this.workerUrl) throw new Error('服务端判题尚未配置');
@@ -110,7 +111,7 @@ class GitHubStore {
   /**
    * 获取用户的提交历史（由 GitHub Actions 生成，不包含源代码）
    */
-  async getSubmissions(username) {
+  async getSubmissions(username, group = 'control') {
     const url = window.OJ_CONFIG.SUBMISSIONS_URL ||
       (this.repo ? `https://raw.githubusercontent.com/${this.repo}/main/dist/submissions.json` : '');
     if (!url) return [];
@@ -119,7 +120,7 @@ class GitHubStore {
     const normalizedUsername = String(username).trim().normalize('NFC');
     const separator = url.includes('?') ? '&' : '?';
     const response = await fetch(
-      `${url}${separator}username=${encodeURIComponent(normalizedUsername)}&t=${Date.now()}`,
+      `${url}${separator}username=${encodeURIComponent(normalizedUsername)}&group=${encodeURIComponent(group)}&t=${Date.now()}`,
       {
       cache: 'no-store',
       }

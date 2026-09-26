@@ -37,6 +37,34 @@ const DATA_FILES = {
   'problems': 'problems/index.json',
 };
 
+const GROUPS = {
+  control: { label: '电控组', directory: 'problems' },
+  vision: { label: '视觉组', directory: 'problems/vision' },
+};
+
+function normalizeGroup(value) {
+  return Object.hasOwn(GROUPS, value) ? value : 'control';
+}
+
+function problemIndexPath(group) {
+  return `${GROUPS[group].directory}/index.json`;
+}
+
+function problemFilePath(group, file) {
+  return `${GROUPS[group].directory}/${file}`;
+}
+
+// 旧数据库记录的 problem_id 直接是 P001；视觉组使用前缀隔离，
+// 因此无需改写已有 D1 表或历史提交。
+function storedProblemId(group, problemId) {
+  return group === 'control' ? problemId : `${group}:${problemId}`;
+}
+
+function publicProblemId(value) {
+  const match = /^(control|vision):(P\d{3,6})$/.exec(String(value || ''));
+  return match ? { group: match[1], problemId: match[2] } : { group: 'control', problemId: String(value || '') };
+}
+
 // 兼容仍在浏览器缓存中的旧版 JDoodle 前端字段。
 const LEGACY_LANGUAGE_IDS = {
   c: 103,
@@ -211,6 +239,11 @@ async function secureTextEqual(left, right) {
 async function handleData(request, env) {
   const params = new URL(request.url).searchParams;
   const fileType = params.get('file');
+  const requestedGroup = params.get('group');
+  if (requestedGroup && !Object.hasOwn(GROUPS, requestedGroup)) {
+    return jsonResponse({ error: '组别不正确' }, 400);
+  }
+  const group = normalizeGroup(requestedGroup);
 
   if (env.OJ_DB && fileType === 'submissions') {
     return await handleD1Submissions(request, env, params);
@@ -218,20 +251,20 @@ async function handleData(request, env) {
   if (env.OJ_DB && fileType === 'ranking-v2') {
     const authError = await requireAdmin(request, env);
     if (authError) return authError;
-    return await handleD1Ranking(env);
+    return await handleD1Ranking(env, group);
   }
 
   if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
     return jsonResponse({ error: 'GitHub 存储尚未配置' }, 503);
   }
 
-  let path = DATA_FILES[fileType];
+  let path = fileType === 'problems' ? problemIndexPath(group) : DATA_FILES[fileType];
   if (fileType === 'problem') {
     const name = String(params.get('name') || '').toLowerCase();
     if (!/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/.test(name)) {
       return jsonResponse({ error: '题目文件名不正确' }, 400);
     }
-    path = `problems/${name}`;
+    path = problemFilePath(group, name);
   }
   if (!path) {
     return jsonResponse({ error: '不支持的数据文件' }, 400);
@@ -248,6 +281,9 @@ async function handleData(request, env) {
     }
   );
   if (!githubRes.ok) {
+    if (fileType === 'problems' && group === 'vision' && githubRes.status === 404) {
+      return jsonResponse([]);
+    }
     return githubErrorResponse(githubRes, '读取数据文件失败');
   }
 
@@ -259,9 +295,13 @@ async function handleData(request, env) {
         SELECT problem_id, COUNT(*) AS total,
                SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) AS accepted
         FROM submissions
+        WHERE ${group === 'control' ? "problem_id NOT LIKE 'vision:%'" : "problem_id LIKE 'vision:%'"}
         GROUP BY problem_id
       `).all();
-      const stats = new Map((statsResult.results || []).map(row => [row.problem_id, row]));
+      const stats = new Map((statsResult.results || []).map(row => {
+        const parsed = publicProblemId(row.problem_id);
+        return [parsed.problemId, row];
+      }));
       for (const problem of problems) {
         const problemStats = stats.get(problem.id);
         const total = Number(problemStats?.total || 0);
@@ -288,7 +328,7 @@ async function handleData(request, env) {
       if (!env.ADMIN_PASSWORD || !await secureTextEqual(suppliedPassword, env.ADMIN_PASSWORD)) {
         return await failedAdminAuthResponse(request, env, '管理员身份验证失败，请重新登录');
       }
-      const hiddenProblem = await readHiddenProblem(problem.id, env);
+      const hiddenProblem = await readHiddenProblem(problem.id, env, group);
       if (!hiddenProblem || !Array.isArray(hiddenProblem.testCases)) {
         return jsonResponse({ error: '隐藏测试数据不存在' }, 503);
       }
@@ -298,6 +338,7 @@ async function handleData(request, env) {
       delete problem.testCases;
     }
 
+    problem.group = group;
     return jsonResponse(problem);
   }
 
@@ -311,9 +352,11 @@ async function handleData(request, env) {
 }
 
 function submissionSummary(row) {
+  const parsed = publicProblemId(row.problem_id);
   return {
     username: row.username,
-    problemId: row.problem_id,
+    group: parsed.group,
+    problemId: parsed.problemId,
     passed: Number(row.passed) === 1,
     passedTests: Number(row.passed_tests),
     totalTests: Number(row.total_tests),
@@ -324,6 +367,10 @@ function submissionSummary(row) {
 }
 
 async function handleD1Submissions(request, env, params) {
+  const group = normalizeGroup(params.get('group'));
+  const groupCondition = group === 'control'
+    ? "problem_id NOT LIKE 'vision:%'"
+    : "problem_id LIKE 'vision:%'";
   const suppliedPassword = request.headers.get('X-Admin-Password');
   if (suppliedPassword) {
     if (!env.ADMIN_PASSWORD || !await secureTextEqual(suppliedPassword, env.ADMIN_PASSWORD)) {
@@ -333,6 +380,7 @@ async function handleD1Submissions(request, env, params) {
       SELECT username, problem_id, passed, passed_tests, total_tests,
              total_time, language, timestamp
       FROM submissions
+      WHERE ${groupCondition}
       ORDER BY timestamp DESC
       LIMIT 20000
     `).all();
@@ -350,23 +398,27 @@ async function handleD1Submissions(request, env, params) {
     SELECT username, problem_id, passed, passed_tests, total_tests,
            total_time, language, timestamp
     FROM submissions
-    WHERE username = ?1
+    WHERE username = ?1 AND ${groupCondition}
     ORDER BY timestamp DESC
     LIMIT 500
   `).bind(username).all();
   return jsonResponse((result.results || []).map(submissionSummary));
 }
 
-async function handleD1Ranking(env) {
+async function handleD1Ranking(env, group) {
+  const groupCondition = group === 'control'
+    ? "problem_id NOT LIKE 'vision:%'"
+    : "problem_id LIKE 'vision:%'";
   const result = await env.OJ_DB.prepare(`
     SELECT username, problem_id, passed, total_time, timestamp
     FROM submissions
+    WHERE ${groupCondition}
     ORDER BY timestamp ASC
     LIMIT 100000
   `).all();
   const submissions = (result.results || []).map(row => ({
     username: row.username,
-    problemId: row.problem_id,
+    problemId: publicProblemId(row.problem_id).problemId,
     passed: Number(row.passed) === 1,
     totalTime: Number(row.total_time),
     timestamp: Number(row.timestamp),
@@ -525,11 +577,15 @@ async function handleCreateProblem(body, env) {
   }
   if (!env.OJ_TESTS) return jsonResponse({ error: '隐藏测试数据库尚未配置' }, 503);
 
+  if (body.group && !Object.hasOwn(GROUPS, body.group)) {
+    return jsonResponse({ error: '组别不正确' }, 400);
+  }
+  const group = normalizeGroup(body.group);
   const validation = validateProblem(body.problem, body.file);
   if (validation.error) return jsonResponse({ error: validation.error }, 400);
 
   const { problem, file } = validation;
-  const imageValidation = validateProblemImages(body.images, problem.id);
+  const imageValidation = validateProblemImages(body.images, problem.id, group);
   if (imageValidation.error) return jsonResponse({ error: imageValidation.error }, 400);
   const images = imageValidation.images;
   if (images.length) {
@@ -549,22 +605,26 @@ async function handleCreateProblem(body, env) {
       problem.description = `${problem.description}\n\n${imageMarkdown}`;
     }
   }
-  const indexPath = 'problems/index.json';
-  const problemPath = `problems/${file}`;
+  const indexPath = problemIndexPath(group);
+  const problemPath = problemFilePath(group, file);
   const headers = githubHeaders(env.GITHUB_TOKEN);
   const indexUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${indexPath}`;
 
   const indexRes = await fetch(indexUrl, { headers });
-  if (!indexRes.ok) {
+  if (!indexRes.ok && !(group === 'vision' && indexRes.status === 404)) {
     return githubErrorResponse(indexRes, '读取题目索引失败');
   }
 
-  const indexFile = await indexRes.json();
+  const indexFile = indexRes.ok ? await indexRes.json() : null;
   let index;
-  try {
-    index = JSON.parse(decodeBase64Utf8(indexFile.content));
-  } catch {
-    return jsonResponse({ error: '题目索引格式不正确' }, 500);
+  if (indexFile) {
+    try {
+      index = JSON.parse(decodeBase64Utf8(indexFile.content));
+    } catch {
+      return jsonResponse({ error: '题目索引格式不正确' }, 500);
+    }
+  } else {
+    index = [];
   }
 
   if (!Array.isArray(index)) {
@@ -611,15 +671,15 @@ async function handleCreateProblem(body, env) {
     }
   }
 
-  await env.OJ_TESTS.put(`problem:${problem.id}`, JSON.stringify(problem));
-  const publicProblem = { ...problem };
+  await env.OJ_TESTS.put(`problem:${group}:${problem.id}`, JSON.stringify(problem));
+  const publicProblem = { ...problem, group };
   delete publicProblem.testCases;
 
   const createProblemRes = await fetch(problemUrl, {
     method: 'PUT',
     headers,
     body: JSON.stringify({
-      message: `📝 Add problem ${problem.id} - ${problem.title}`,
+      message: `📝 Add ${GROUPS[group].label} problem ${problem.id} - ${problem.title}`,
       content: encodeBase64Utf8(JSON.stringify(publicProblem, null, 2)),
     }),
   });
@@ -641,9 +701,9 @@ async function handleCreateProblem(body, env) {
     method: 'PUT',
     headers,
     body: JSON.stringify({
-      message: `🗂️ Register problem ${problem.id}`,
+      message: `🗂️ Register ${GROUPS[group].label} problem ${problem.id}`,
       content: encodeBase64Utf8(JSON.stringify(index, null, 2)),
-      sha: indexFile.sha,
+      ...(indexFile ? { sha: indexFile.sha } : {}),
     }),
   });
   if (!updateIndexRes.ok) {
@@ -674,10 +734,14 @@ async function handleUpdateProblem(body, env) {
   }
   if (!env.OJ_TESTS) return jsonResponse({ error: '隐藏测试数据库尚未配置' }, 503);
 
+  if (body.group && !Object.hasOwn(GROUPS, body.group)) {
+    return jsonResponse({ error: '组别不正确' }, 400);
+  }
+  const group = normalizeGroup(body.group);
   const validation = validateProblem(body.problem, body.file);
   if (validation.error) return jsonResponse({ error: validation.error }, 400);
   const { problem, file } = validation;
-  const imageValidation = validateProblemImages(body.images, problem.id);
+  const imageValidation = validateProblemImages(body.images, problem.id, group);
   if (imageValidation.error) return jsonResponse({ error: imageValidation.error }, 400);
   const images = imageValidation.images;
 
@@ -699,8 +763,8 @@ async function handleUpdateProblem(body, env) {
   }
 
   const headers = githubHeaders(env.GITHUB_TOKEN);
-  const indexPath = 'problems/index.json';
-  const problemPath = `problems/${file}`;
+  const indexPath = problemIndexPath(group);
+  const problemPath = problemFilePath(group, file);
   const indexUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${indexPath}`;
   const problemUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${problemPath}`;
   const [indexRes, problemRes] = await Promise.all([
@@ -745,15 +809,15 @@ async function handleUpdateProblem(body, env) {
     if (!createImageRes.ok) return githubErrorResponse(createImageRes, `上传图片 ${image.alt} 失败`);
   }
 
-  await env.OJ_TESTS.put(`problem:${problem.id}`, JSON.stringify(problem));
-  const publicProblem = { ...problem };
+  await env.OJ_TESTS.put(`problem:${group}:${problem.id}`, JSON.stringify(problem));
+  const publicProblem = { ...problem, group };
   delete publicProblem.testCases;
 
   const updateProblemRes = await fetch(problemUrl, {
     method: 'PUT',
     headers,
     body: JSON.stringify({
-      message: `✏️ Update problem ${problem.id} - ${problem.title}`,
+      message: `✏️ Update ${GROUPS[group].label} problem ${problem.id} - ${problem.title}`,
       content: encodeBase64Utf8(JSON.stringify(publicProblem, null, 2)),
       sha: problemFile.sha,
     }),
@@ -766,7 +830,7 @@ async function handleUpdateProblem(body, env) {
     method: 'PUT',
     headers,
     body: JSON.stringify({
-      message: `🗂️ Sync problem ${problem.id} metadata`,
+      message: `🗂️ Sync ${GROUPS[group].label} problem ${problem.id} metadata`,
       content: encodeBase64Utf8(JSON.stringify(index, null, 2)),
       sha: indexFile.sha,
     }),
@@ -853,7 +917,7 @@ function validateProblem(input, requestedFile) {
   return { problem, file };
 }
 
-function validateProblemImages(input, problemId) {
+function validateProblemImages(input, problemId, group = 'control') {
   if (input === undefined || input === null) return { images: [] };
   if (!Array.isArray(input) || input.length > 5) {
     return { error: '每道题最多上传 5 张图片' };
@@ -902,7 +966,9 @@ function validateProblemImages(input, problemId) {
       id,
       alt,
       content,
-      path: `assets/problems/${baseName}/${baseName}-${id.slice(0, 8)}.${extension}`,
+      path: group === 'control'
+        ? `assets/problems/${baseName}/${baseName}-${id.slice(0, 8)}.${extension}`
+        : `assets/problems/${group}/${baseName}/${baseName}-${id.slice(0, 8)}.${extension}`,
     });
   }
 
@@ -942,10 +1008,15 @@ function decodeBase64Utf8(value) {
 /**
  * 从 KV 读取包含隐藏测试点的完整题目。
  */
-async function readHiddenProblem(problemId, env) {
+async function readHiddenProblem(problemId, env, group = 'control') {
   if (!env.OJ_TESTS || !/^P\d{3,6}$/.test(String(problemId))) return null;
   try {
-    return await env.OJ_TESTS.get(`problem:${problemId}`, 'json');
+    const groupedProblem = await env.OJ_TESTS.get(`problem:${group}:${problemId}`, 'json');
+    if (groupedProblem) return groupedProblem;
+    // 兼容分组功能上线前保存的电控组隐藏测试点。
+    return group === 'control'
+      ? await env.OJ_TESTS.get(`problem:${problemId}`, 'json')
+      : null;
   } catch {
     return null;
   }
@@ -960,19 +1031,23 @@ async function prepareJudgeSubmission(body, env) {
   const language = typeof body.language === 'string' ? body.language.trim() : '';
   const script = typeof body.code === 'string' ? body.code : '';
   const languageId = SUBMISSION_LANGUAGE_IDS[language];
+  if (body.group && !Object.hasOwn(GROUPS, body.group)) {
+    throw judgeError('组别不正确', 400, 'INVALID_GROUP');
+  }
+  const group = normalizeGroup(body.group);
 
   if (!username || username.length > 50 || !/^P\d{3,6}$/.test(problemId)
       || !Number.isInteger(languageId) || !script.trim() || script.length > 200000) {
     throw judgeError('提交内容格式不正确', 400, 'INVALID_SUBMISSION');
   }
 
-  const problem = await readHiddenProblem(problemId, env);
+  const problem = await readHiddenProblem(problemId, env, group);
   const testCases = problem?.testCases;
   if (!Array.isArray(testCases) || testCases.length === 0 || testCases.length > 50) {
     throw judgeError('题目隐藏测试数据不可用', 503, 'TESTS_UNAVAILABLE');
   }
 
-  return { username, problemId, language, script, languageId, problem, testCases };
+  return { username, problemId, group, language, script, languageId, problem, testCases };
 }
 
 function judgeError(message, status = 500, code = 'JUDGE_FAILED') {
@@ -1011,7 +1086,7 @@ async function executeWithRetry(payload, env, onRetry) {
 
 async function runJudgeSubmission(body, env, onEvent, shouldPersist = true) {
   const prepared = await prepareJudgeSubmission(body, env);
-  const { username, problemId, language, script, languageId, problem, testCases } = prepared;
+  const { username, problemId, group, language, script, languageId, problem, testCases } = prepared;
   if (onEvent) await onEvent({ type: 'start', totalTests: testCases.length });
 
   const results = [];
@@ -1074,6 +1149,7 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true) {
   const passed = passedTests === testCases.length;
   const result = {
     problemId,
+    group,
     language,
     passed,
     passedTests,
@@ -1088,6 +1164,7 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true) {
     const saveResponse = await persistSubmission({
       username,
       problemId,
+      group,
       passed,
       passedTests,
       totalTests: testCases.length,
@@ -1152,6 +1229,10 @@ async function handleJudgeSubmitStream(body, env) {
  */
 async function persistSubmission(body, env) {
   const { username, problemId, passed, passedTests, totalTests, totalTime, language, code, timestamp } = body;
+  if (body.group && !Object.hasOwn(GROUPS, body.group)) {
+    return jsonResponse({ error: '组别不正确' }, 400);
+  }
+  const group = normalizeGroup(body.group);
 
   if (!username || !problemId || typeof passed !== 'boolean') {
     return jsonResponse({ error: 'Invalid payload' }, 400);
@@ -1195,7 +1276,7 @@ async function persistSubmission(body, env) {
       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
     `).bind(
       displayUsername,
-      normalizedProblemId,
+      storedProblemId(group, normalizedProblemId),
       passed ? 1 : 0,
       normalizedPassedTests,
       normalizedTotalTests,

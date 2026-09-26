@@ -39,12 +39,19 @@ for (const directory of publicDirectories) {
 
 // GitHub Pages only receives public problem statements. Hidden tests remain in Worker KV.
 const publicProblemsDirectory = path.join(outputDirectory, 'problems');
-for (const file of fs.readdirSync(publicProblemsDirectory)) {
+for (const filePath of walkFiles(publicProblemsDirectory)) {
+  const file = path.basename(filePath);
   if (!/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/i.test(file)) continue;
-  const filePath = path.join(publicProblemsDirectory, file);
   const problem = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   delete problem.testCases;
   fs.writeFileSync(filePath, `${JSON.stringify(problem, null, 2)}\n`);
+}
+
+function walkFiles(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? walkFiles(entryPath) : [entryPath];
+  });
 }
 
 fs.writeFileSync(path.join(outputDirectory, '.nojekyll'), '');
@@ -60,6 +67,7 @@ for (const requiredPath of [
   'js/admin.js',
   'css/style.css',
   'problems/index.json',
+  'problems/vision/index.json',
 ]) {
   if (!fs.existsSync(path.join(outputDirectory, requiredPath))) {
     throw new Error(`Pages artifact is incomplete: ${requiredPath}`);
@@ -68,4 +76,3 @@ for (const requiredPath of [
 
 console.log(`Public Pages artifact created at ${outputDirectory}`);
 console.log(`Published top-level entries: ${publishedEntries.sort().join(', ')}`);
-

@@ -157,6 +157,32 @@ body {
 }
 
 /* ========== 题目列表 ========== */
+.group-switcher {
+  width: fit-content;
+  margin-top: 16px;
+  padding: 4px;
+  display: flex;
+  gap: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-secondary);
+}
+
+.group-switch {
+  min-width: 92px;
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.group-switch:hover { color: var(--text-primary); }
+.group-switch.active { background: var(--accent-primary); color: white; }
+
 .problem-list {
   display: grid;
   gap: 12px;

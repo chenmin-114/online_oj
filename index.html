@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260925-01">
+  <link rel="stylesheet" href="css/style.css?v=20260926-01">
 </head>
 <body>
   <!-- 顶部导航 -->
@@ -31,6 +31,10 @@
     <!-- 题目列表视图 -->
     <section id="view-problems" class="view">
       <h2>题目列表</h2>
+      <div class="group-switcher" aria-label="选择题目组别">
+        <button type="button" class="group-switch active" data-group="control">电控组</button>
+        <button type="button" class="group-switch" data-group="vision">视觉组</button>
+      </div>
       <div id="problem-list" class="problem-list"></div>
     </section>
 
@@ -116,13 +120,13 @@
   <script src="js/languages.js?v=20260919-6"></script>
   <script src="js/editor.js?v=20260919-6"></script>
   <script src="js/runner.js?v=20260921-8"></script>
-  <script src="js/github.js?v=20260922-10"></script>
+  <script src="js/github.js?v=20260926-01"></script>
   <script src="js/views.js?v=20260919-6"></script>
   <script src="vendor/marked/marked.umd.js?v=18.0.13"></script>
   <script src="vendor/dompurify/purify.min.js?v=3.4.15"></script>
   <script src="vendor/katex/katex.min.js?v=0.18.7"></script>
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
-  <script src="js/app.js?v=20260924-01"></script>
+  <script src="js/app.js?v=20260926-01"></script>
 </body>
 </html>

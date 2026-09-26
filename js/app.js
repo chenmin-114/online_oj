@@ -10,6 +10,9 @@ class App {
     this.views = new ViewManager();
     this.currentProblem = null;
     this.problemList = [];
+    this.problemLoadSequence = 0;
+    const requestedGroup = new URLSearchParams(location.search).get('group');
+    this.group = ['control', 'vision'].includes(requestedGroup) ? requestedGroup : 'control';
     this.username = localStorage.getItem('oj_username') || '';
   }
 
@@ -30,6 +33,7 @@ class App {
 
     // 绑定事件
     this._bindEvents();
+    this._renderGroupSwitcher();
 
     // 检查用户名
     if (!this.username) {
@@ -46,32 +50,69 @@ class App {
   }
 
   async loadProblemList() {
+    const loadSequence = ++this.problemLoadSequence;
+    const requestedGroup = this.group;
     try {
       const configuredUrl = window.OJ_CONFIG.PROBLEMS_URL;
       let response;
 
       try {
-        response = await fetch(configuredUrl || 'problems/index.json', { cache: 'no-store' });
+        const apiUrl = configuredUrl
+          ? `${configuredUrl}&group=${encodeURIComponent(this.group)}`
+          : this._localProblemIndexUrl();
+        response = await fetch(apiUrl, { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
       } catch (workerError) {
         if (!configuredUrl) throw workerError;
         // 自定义接口暂时不可达时，仍允许从 GitHub Pages 加载题目列表。
-        response = await fetch(`problems/index.json?t=${Date.now()}`, { cache: 'no-store' });
+        response = await fetch(`${this._localProblemIndexUrl()}?t=${Date.now()}`, { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
       }
 
       const problems = await response.json();
+      if (loadSequence !== this.problemLoadSequence || requestedGroup !== this.group) return;
       this.problemList = problems;
       this._renderProblemList(problems);
     } catch (err) {
+      if (loadSequence !== this.problemLoadSequence || requestedGroup !== this.group) return;
       console.error('加载题目列表失败:', err);
       document.getElementById('problem-list').innerHTML = 
-        '<p class="error">题目列表加载失败，请检查 problems/index.json</p>';
+        '<p class="error">题目列表加载失败，请稍后刷新重试</p>';
     }
+  }
+
+  _localProblemIndexUrl() {
+    return this.group === 'vision' ? 'problems/vision/index.json' : 'problems/index.json';
+  }
+
+  _renderGroupSwitcher() {
+    document.querySelectorAll('.group-switch').forEach(button => {
+      button.classList.toggle('active', button.dataset.group === this.group);
+      button.setAttribute('aria-pressed', button.dataset.group === this.group ? 'true' : 'false');
+    });
+  }
+
+  async switchGroup(group) {
+    if (!['control', 'vision'].includes(group) || group === this.group) return;
+    this.group = group;
+    this.currentProblem = null;
+    this.problemList = [];
+    this._renderGroupSwitcher();
+    const url = new URL(location.href);
+    if (group === 'control') url.searchParams.delete('group');
+    else url.searchParams.set('group', group);
+    history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    this.views.show('problems');
+    document.getElementById('problem-list').innerHTML = '<p class="info">⏳ 正在加载题目...</p>';
+    await this.loadProblemList();
   }
 
   _renderProblemList(problems) {
     const container = document.getElementById('problem-list');
+    if (!problems.length) {
+      container.innerHTML = `<p class="info">${this.group === 'vision' ? '视觉组' : '电控组'}暂无题目</p>`;
+      return;
+    }
     container.innerHTML = problems.map(p => {
       const difficulty = ['easy', 'medium', 'hard'].includes(p.difficulty) ? p.difficulty : 'easy';
       const submitCount = Number.isFinite(Number(p.submitCount)) ? Number(p.submitCount) : 0;
@@ -105,17 +146,21 @@ class App {
   }
 
   async loadProblem(file) {
+    const requestedGroup = this.group;
     try {
       const workerUrl = window.OJ_CONFIG.WORKER_URL;
       const problemUrl = workerUrl
-        ? `${workerUrl}/?file=problem&name=${encodeURIComponent(file)}&t=${Date.now()}`
-        : `problems/${file}?t=${Date.now()}`;
+        ? `${workerUrl}/?file=problem&name=${encodeURIComponent(file)}&group=${encodeURIComponent(this.group)}&t=${Date.now()}`
+        : `${this.group === 'vision' ? 'problems/vision' : 'problems'}/${file}?t=${Date.now()}`;
       const response = await fetch(problemUrl, { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      this.currentProblem = await response.json();
+      const problem = await response.json();
+      if (requestedGroup !== this.group) return;
+      this.currentProblem = problem;
       this._renderProblem();
       this.views.show('solve');
     } catch (err) {
+      if (requestedGroup !== this.group) return;
       alert('题目加载失败: ' + err.message);
     }
   }
@@ -237,6 +282,10 @@ class App {
   }
 
   _bindEvents() {
+    document.querySelectorAll('.group-switch').forEach(button => {
+      button.addEventListener('click', () => this.switchGroup(button.dataset.group));
+    });
+
     // 语言切换
     document.getElementById('language-select').addEventListener('change', (e) => {
       const langId = e.target.value;
@@ -357,7 +406,8 @@ class App {
         this.username,
         langId,
         code,
-        event => this._renderJudgeProgress(event)
+        event => this._renderJudgeProgress(event),
+        this.group
       );
       this._renderJudgeResult(result);
     } catch (err) {
@@ -424,7 +474,7 @@ class App {
     container.innerHTML = '<p class="info">⏳ 正在加载提交记录...</p>';
 
     try {
-      const submissions = await this.github.getSubmissions(this.username);
+      const submissions = await this.github.getSubmissions(this.username, this.group);
       if (submissions.length === 0) {
         container.innerHTML = '<p class="info">暂无提交记录</p>';
         return;

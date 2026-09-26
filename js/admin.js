@@ -11,6 +11,8 @@ class OJAdmin {
     };
     this.problems = [];
     this.submissions = [];
+    this.group = 'control';
+    this.loadSequence = 0;
     this.ranking = { overall: [], problems: {} };
     this.filteredSubmissions = [];
     this.problemImages = [];
@@ -57,6 +59,7 @@ class OJAdmin {
         this.bindControls();
         this.controlsBound = true;
       }
+      this.renderGroupSwitcher();
       await this.loadAll();
     } catch (error) {
       sessionStorage.removeItem('oj_admin_password');
@@ -89,6 +92,9 @@ class OJAdmin {
   }
 
   bindControls() {
+    document.querySelectorAll('.admin-group-switch').forEach(button => {
+      button.addEventListener('click', () => this.switchGroup(button.dataset.group));
+    });
     document.getElementById('refresh-admin').addEventListener('click', () => this.loadAll());
     document.getElementById('logout-admin').addEventListener('click', () => this.logout());
     document.getElementById('submission-search').addEventListener('input', () => this.renderSubmissions());
@@ -125,6 +131,36 @@ class OJAdmin {
     });
   }
 
+  groupLabel(group = this.group) {
+    return group === 'vision' ? '视觉组' : '电控组';
+  }
+
+  renderGroupSwitcher() {
+    document.querySelectorAll('.admin-group-switch').forEach(button => {
+      const active = button.dataset.group === this.group;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    const display = document.getElementById('problem-group-display');
+    if (display) display.value = this.groupLabel();
+    const advancedEditor = document.getElementById('advanced-problem-editor');
+    if (advancedEditor) {
+      const path = this.group === 'vision' ? 'problems/vision/index.json' : 'problems/index.json';
+      advancedEditor.href = `https://github.com/${this.config.repo}/edit/main/${path}`;
+    }
+  }
+
+  async switchGroup(group) {
+    if (!['control', 'vision'].includes(group) || group === this.group) return;
+    this.group = group;
+    this.editingProblem = null;
+    this.hideProblemEditor();
+    this.resetProblemEditor();
+    this.renderGroupSwitcher();
+    document.getElementById('sync-status').textContent = `正在切换到${this.groupLabel()}...`;
+    await this.loadAll();
+  }
+
   openPanel(name) {
     document.querySelectorAll('.admin-nav-item').forEach(item => {
       item.classList.toggle('active', item.dataset.panel === name);
@@ -136,6 +172,8 @@ class OJAdmin {
   }
 
   async loadAll() {
+    const loadSequence = ++this.loadSequence;
+    const requestedGroup = this.group;
     const button = document.getElementById('refresh-admin');
     button.disabled = true;
     button.textContent = '↻ 同步中...';
@@ -146,6 +184,7 @@ class OJAdmin {
       this.fetchJson(this.config.submissionsUrl),
       this.fetchRanking(),
     ]);
+    if (loadSequence !== this.loadSequence || requestedGroup !== this.group) return;
 
     if (problemsResult.status === 'fulfilled' && Array.isArray(problemsResult.value)) {
       this.problems = problemsResult.value;
@@ -168,7 +207,7 @@ class OJAdmin {
     }).catch(() => {
       this.setStatus('worker', false, '连接失败');
     });
-    document.getElementById('sync-status').textContent = `更新于 ${new Date().toLocaleTimeString()}`;
+    document.getElementById('sync-status').textContent = `${this.groupLabel()} · 更新于 ${new Date().toLocaleTimeString()}`;
     button.disabled = false;
     button.textContent = '↻ 刷新数据';
     this.toast('管理数据已刷新');
@@ -176,7 +215,7 @@ class OJAdmin {
 
   async fetchJson(url) {
     const separator = url.includes('?') ? '&' : '?';
-    const response = await fetch(`${url}${separator}t=${Date.now()}`, {
+    const response = await fetch(`${url}${separator}group=${encodeURIComponent(this.group)}&t=${Date.now()}`, {
       cache: 'no-store',
       headers: this.adminHeaders(),
     });
@@ -290,6 +329,7 @@ class OJAdmin {
     this.clearProblemImages();
     this.addSample();
     this.addTestCase();
+    this.renderGroupSwitcher();
   }
 
   startNewProblem() {
@@ -311,11 +351,13 @@ class OJAdmin {
   }
 
   async editProblem(file) {
+    const requestedGroup = this.group;
     try {
       this.toast('正在读取题目内容...');
       const problem = await this.fetchJson(`${this.config.workerUrl}/?file=problem&name=${encodeURIComponent(file)}`);
+      if (requestedGroup !== this.group) return;
       this.resetProblemEditor();
-      this.editingProblem = { file, id: problem.id };
+      this.editingProblem = { file, id: problem.id, group: this.group };
       this.setProblemEditorMode(true);
 
       document.getElementById('problem-id').value = problem.id || '';
@@ -345,6 +387,7 @@ class OJAdmin {
       testCases.forEach(testCase => this.addTestCase(testCase.input, testCase.expectedOutput));
       this.showProblemEditor();
     } catch (error) {
+      if (requestedGroup !== this.group) return;
       this.toast(`读取题目失败：${error.message}`);
     }
   }
@@ -885,6 +928,7 @@ class OJAdmin {
         headers: this.adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           type: isEditing ? 'update_problem' : 'create_problem',
+          group: this.group,
           file: document.getElementById('problem-file').value,
           problem,
           images,
@@ -1007,7 +1051,7 @@ class OJAdmin {
     const blob = new Blob(['\ufeff' + [header.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `oj-submissions-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `oj-submissions-${this.group}-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
     this.toast(`已导出 ${this.filteredSubmissions.length} 条记录`);
