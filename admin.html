@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="assets/logo-circle.png?v=20260920-2">
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260926-02">
+  <link rel="stylesheet" href="css/admin.css?v=20260926-03">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -78,6 +78,16 @@
           <article class="admin-card">
             <div class="card-heading"><div><h3>题目活跃度</h3><p>按实际提交次数统计</p></div></div>
             <div id="problem-activity" class="activity-list"></div>
+          </article>
+        </div>
+        <div class="analytics-grid">
+          <article class="admin-card">
+            <div class="card-heading"><div><h3>近 30 天网站浏览人数</h3><p id="daily-visitors-subtitle">当前组别每日独立用户名</p></div></div>
+            <div id="daily-visitors-chart" class="daily-visitors-chart"><p class="empty-cell">正在读取...</p></div>
+          </article>
+          <article class="admin-card">
+            <div class="card-heading"><div><h3>每道题总浏览人数</h3><p id="problem-visitors-subtitle">当前组别的累计独立用户名</p></div></div>
+            <div class="table-wrap"><table class="admin-table"><thead><tr><th>题号</th><th>题目</th><th>浏览人数</th></tr></thead><tbody id="problem-visitors"></tbody></table></div>
           </article>
         </div>
       </section>
@@ -202,6 +212,6 @@
   </div>
 
   <div id="admin-toast" class="admin-toast" role="status"></div>
-  <script src="js/admin.js?v=20260926-02"></script>
+  <script src="js/admin.js?v=20260926-03"></script>
 </body>
 </html>

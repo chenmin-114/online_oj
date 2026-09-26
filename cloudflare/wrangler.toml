@@ -33,3 +33,11 @@ namespace_id = "1002"
   [ratelimits.simple]
   limit = 70
   period = 60
+
+[[ratelimits]]
+name = "ANALYTICS_RATE_LIMITER"
+namespace_id = "1003"
+
+  [ratelimits.simple]
+  limit = 300
+  period = 60

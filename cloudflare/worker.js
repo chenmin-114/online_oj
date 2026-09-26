@@ -143,6 +143,10 @@ export default {
           return await failedAdminAuthResponse(request, env, '管理员密码错误');
         }
         return jsonResponse({ success: true });
+      } else if (body.type === 'analytics_view') {
+        const rateLimitError = await enforceRateLimit(env.ANALYTICS_RATE_LIMITER, request, 'analytics');
+        if (rateLimitError) return rateLimitError;
+        return await handleAnalyticsView(body, env);
       } else if (body.type === 'execute') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
         if (rateLimitError) return rateLimitError;
@@ -253,6 +257,11 @@ async function handleData(request, env) {
     if (authError) return authError;
     return await handleD1Ranking(env, group);
   }
+  if (env.OJ_DB && fileType === 'analytics') {
+    const authError = await requireAdmin(request, env);
+    if (authError) return authError;
+    return await handleAnalyticsReport(env, group);
+  }
 
   if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
     return jsonResponse({ error: 'GitHub 存储尚未配置' }, 503);
@@ -349,6 +358,97 @@ async function handleData(request, env) {
       ...CORS_HEADERS,
     },
   });
+}
+
+function hongKongDay(timestamp = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Hong_Kong',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(timestamp));
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+async function analyticsVisitorHash(visitorId, env) {
+  const secret = String(env.ADMIN_PASSWORD || 'jc-oj-analytics');
+  const bytes = new TextEncoder().encode(`v1:${secret}:${visitorId}`);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function handleAnalyticsView(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '访问统计数据库尚未配置' }, 503);
+  const visitorId = String(body.visitorId || '').trim().normalize('NFC');
+  if (!visitorId || visitorId.length > 50 || /[\u0000-\u001f\u007f]/.test(visitorId)) {
+    return jsonResponse({ error: '登录用户名格式不正确' }, 400);
+  }
+
+  const group = normalizeGroup(body.group);
+  const problemId = body.problemId == null ? '' : String(body.problemId).trim().toUpperCase();
+  if (problemId && !/^P\d{3,6}$/.test(problemId)) {
+    return jsonResponse({ error: '题号格式不正确' }, 400);
+  }
+
+  const now = Date.now();
+  const visitorHash = await analyticsVisitorHash(visitorId, env);
+  const statements = [env.OJ_DB.prepare(`
+    INSERT OR IGNORE INTO analytics_site_daily (day, group_name, visitor_hash, first_seen)
+    VALUES (?1, ?2, ?3, ?4)
+  `).bind(hongKongDay(now), group, visitorHash, now)];
+
+  if (problemId) {
+    statements.push(env.OJ_DB.prepare(`
+      INSERT INTO analytics_problem_visitors
+        (group_name, problem_id, visitor_hash, first_seen, last_seen)
+      VALUES (?1, ?2, ?3, ?4, ?4)
+      ON CONFLICT(group_name, problem_id, visitor_hash)
+      DO UPDATE SET last_seen = excluded.last_seen
+    `).bind(group, problemId, visitorHash, now));
+  }
+
+  await env.OJ_DB.batch(statements);
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
+async function handleAnalyticsReport(env, group) {
+  const today = hongKongDay();
+  const startDate = new Date(`${today}T00:00:00+08:00`);
+  startDate.setUTCDate(startDate.getUTCDate() - 29);
+  const startDay = hongKongDay(startDate.getTime());
+
+  const [dailyResult, problemResult] = await env.OJ_DB.batch([
+    env.OJ_DB.prepare(`
+      SELECT day, COUNT(*) AS visitors
+      FROM analytics_site_daily
+      WHERE group_name = ?1 AND day >= ?2 AND day <= ?3
+      GROUP BY day
+      ORDER BY day ASC
+    `).bind(group, startDay, today),
+    env.OJ_DB.prepare(`
+      SELECT problem_id, COUNT(*) AS visitors
+      FROM analytics_problem_visitors
+      WHERE group_name = ?1
+      GROUP BY problem_id
+      ORDER BY problem_id ASC
+    `).bind(group),
+  ]);
+
+  const dailyCounts = new Map((dailyResult.results || []).map(row => [row.day, Number(row.visitors) || 0]));
+  const daily = [];
+  for (let offset = 29; offset >= 0; offset--) {
+    const date = new Date(`${today}T00:00:00+08:00`);
+    date.setUTCDate(date.getUTCDate() - offset);
+    const day = hongKongDay(date.getTime());
+    daily.push({ day, visitors: dailyCounts.get(day) || 0 });
+  }
+
+  const problems = {};
+  for (const row of problemResult.results || []) {
+    problems[row.problem_id] = Number(row.visitors) || 0;
+  }
+  return jsonResponse({ daily, problems });
 }
 
 function submissionSummary(row) {

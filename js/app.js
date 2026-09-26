@@ -18,6 +18,7 @@ class App {
     this.editorFontSize = this._loadEditorFontSize();
     this.codeSaveTimer = null;
     this.isRestoringCode = false;
+    this.analyticsPending = new Set();
   }
 
   async init() {
@@ -49,6 +50,7 @@ class App {
     } else {
       document.getElementById('username-display').textContent = this.username;
     }
+    this._trackView();
 
     // 题目列表与编辑器并行加载；这里只等待首屏真正需要的题目数据。
     await this.loadProblemList();
@@ -113,6 +115,7 @@ class App {
     this.currentProblem = null;
     this.problemList = [];
     this._renderGroupSwitcher();
+    this._trackView();
     const url = new URL(location.href);
     if (group === 'control') url.searchParams.delete('group');
     else url.searchParams.set('group', group);
@@ -179,6 +182,7 @@ class App {
       this.currentProblem = problem;
       this._renderProblem();
       this.views.show('solve');
+      this._trackView(problem.id);
     } catch (err) {
       if (requestSequence !== this.problemRequestSequence || requestedGroup !== this.group) return;
       alert('题目加载失败: ' + err.message);
@@ -398,6 +402,35 @@ class App {
     });
   }
 
+  _trackView(problemId = '') {
+    const workerUrl = window.OJ_CONFIG.WORKER_URL;
+    if (!workerUrl || !this.username) return;
+    const now = new Date();
+    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const usernameKey = encodeURIComponent(this.username.normalize('NFC'));
+    const viewKey = problemId
+      ? `oj_analytics_sent_problem:${usernameKey}:${this.group}:${problemId}`
+      : `oj_analytics_sent_site:${usernameKey}:${this.group}:${day}`;
+    try {
+      if (localStorage.getItem(viewKey) || this.analyticsPending.has(viewKey)) return;
+    } catch {}
+    this.analyticsPending.add(viewKey);
+    fetch(workerUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'analytics_view',
+        visitorId: this.username,
+        group: this.group,
+        problemId: problemId || undefined,
+      }),
+      keepalive: true,
+    }).then(response => {
+      if (!response.ok) return;
+      try { localStorage.setItem(viewKey, '1'); } catch {}
+    }).catch(() => {}).finally(() => this.analyticsPending.delete(viewKey));
+  }
+
   _promptUsername() {
     const name = prompt('请输入你的用户名（用于排行榜显示）:', this.username);
     if (name && name.trim()) {
@@ -407,6 +440,7 @@ class App {
       localStorage.setItem('oj_username', this.username);
       document.getElementById('username-display').textContent = this.username;
       if (this.currentProblem) this._restoreCode(document.getElementById('language-select').value);
+      this._trackView(this.currentProblem?.id || '');
     }
   }
 

@@ -8,12 +8,14 @@ class OJAdmin {
       // 数据经 Worker 直读，绕开 GitHub Pages CDN 的 10 分钟缓存
       submissionsUrl: `${workerUrl}/?file=submissions`,
       rankingUrl: `${workerUrl}/?file=ranking-v2`,
+      analyticsUrl: `${workerUrl}/?file=analytics`,
     };
     this.problems = [];
     this.submissions = [];
     this.group = 'control';
     this.loadSequence = 0;
     this.ranking = { overall: [], problems: {} };
+    this.analytics = { daily: [], problems: {} };
     this.filteredSubmissions = [];
     this.problemImages = [];
     this.editingProblem = null;
@@ -182,10 +184,11 @@ class OJAdmin {
     button.textContent = '↻ 同步中...';
 
     const workerCheck = this.fetchWorkerHealth();
-    const [problemsResult, submissionsResult, rankingResult] = await Promise.allSettled([
+    const [problemsResult, submissionsResult, rankingResult, analyticsResult] = await Promise.allSettled([
       this.fetchJson(this.config.problemsUrl),
       this.fetchJson(this.config.submissionsUrl),
       this.fetchRanking(),
+      this.fetchJson(this.config.analyticsUrl),
     ]);
     if (loadSequence !== this.loadSequence || requestedGroup !== this.group) return;
 
@@ -199,6 +202,11 @@ class OJAdmin {
       this.ranking = Array.isArray(rankingResult.value)
         ? { overall: rankingResult.value, problems: {} }
         : rankingResult.value;
+    }
+    if (analyticsResult.status === 'fulfilled' && analyticsResult.value) {
+      this.analytics = analyticsResult.value;
+    } else {
+      this.analytics = { daily: [], problems: {} };
     }
 
     this.renderAll();
@@ -253,6 +261,34 @@ class OJAdmin {
     this.renderSubmissions();
     this.populateRankingSelector();
     this.renderLeaderboard('overall');
+    this.renderAnalytics();
+  }
+
+  renderAnalytics() {
+    const daily = Array.isArray(this.analytics.daily) ? this.analytics.daily : [];
+    const chart = document.getElementById('daily-visitors-chart');
+    const maxDaily = Math.max(1, ...daily.map(item => Number(item.visitors) || 0));
+    chart.innerHTML = daily.length ? daily.map(item => {
+      const count = Number(item.visitors) || 0;
+      const shortDay = String(item.day || '').slice(5).replace('-', '/');
+      return `<div class="daily-visitor-column" title="${this.escape(item.day)}：${this.escape(count)} 人">
+        <span>${this.escape(count)}</span>
+        <div><i style="height:${Math.max(count ? 5 : 0, count / maxDaily * 100)}%"></i></div>
+        <small>${this.escape(shortDay)}</small>
+      </div>`;
+    }).join('') : '<p class="empty-cell">暂无浏览数据</p>';
+
+    const problemCounts = this.analytics.problems || {};
+    const body = document.getElementById('problem-visitors');
+    body.innerHTML = this.problems.length ? this.problems.map(problem => `
+      <tr>
+        <td><strong>${this.escape(problem.id)}</strong></td>
+        <td>${this.escape(problem.title)}</td>
+        <td>${this.escape(Number(problemCounts[problem.id]) || 0)} 人</td>
+      </tr>
+    `).join('') : '<tr><td colspan="3" class="empty-cell">暂无题目</td></tr>';
+    document.getElementById('daily-visitors-subtitle').textContent = `${this.groupLabel()} · 每日独立用户名`;
+    document.getElementById('problem-visitors-subtitle').textContent = `${this.groupLabel()} · 累计独立用户名`;
   }
 
   renderMetrics() {
