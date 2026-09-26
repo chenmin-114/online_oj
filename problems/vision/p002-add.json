@@ -1,7 +1,6 @@
 {
   "id": "P002",
-  "group": "vision",
-  "title": "两个数相加",
+  "title": "两数相加",
   "difficulty": "easy",
   "description": "读入两个整数，计算并输出它们的和。",
   "inputFormat": "一行两个整数 $a$ 和 $b$，中间用空格隔开。",
@@ -10,7 +9,15 @@
   "sampleExplanation": "$3+5=8$，所以输出 `8`。",
   "sampleInput": "3 5",
   "sampleOutput": "8",
-  "samples": [{ "input": "3 5", "output": "8" }],
+  "samples": [
+    {
+      "input": "3 5",
+      "output": "8"
+    }
+  ],
   "showTestDetails": true,
-  "hints": ["可以使用 `a, b = map(int, input().split())` 读取两个整数。"]
+  "hints": [
+    "可以使用 `a, b = map(int, input().split())` 读取两个整数。"
+  ],
+  "group": "vision"
 }
