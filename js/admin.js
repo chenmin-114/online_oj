@@ -277,6 +277,10 @@ class OJAdmin {
         <small>${this.escape(shortDay)}</small>
       </div>`;
     }).join('') : '<p class="empty-cell">暂无浏览数据</p>';
+    // 30 天数据较宽时，默认展示最右侧的最新日期。
+    requestAnimationFrame(() => {
+      chart.scrollLeft = chart.scrollWidth;
+    });
 
     const problemCounts = this.analytics.problems || {};
     const body = document.getElementById('problem-visitors');

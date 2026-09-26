@@ -39,7 +39,7 @@ body.username-locked { overflow: hidden; }
   align-items: center;
   justify-content: center;
   background: rgba(10, 10, 12, .1);
-  backdrop-filter: blur(2.5px);
+  backdrop-filter: blur(2px);
 }
 .username-login-card {
   width: min(100%, 390px);
@@ -49,7 +49,7 @@ body.username-locked { overflow: hidden; }
   border: 1px solid var(--border-color);
   border-radius: 12px;
   background: rgba(37, 37, 38, .4);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(9px);
   box-shadow: 0 14px 38px rgba(0, 0, 0, .2);
 }
 .username-login-card > img { width: 66px; height: 66px; margin: 0 auto; border-radius: 50%; }
