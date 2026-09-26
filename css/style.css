@@ -38,8 +38,7 @@ body.username-locked { overflow: hidden; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 10, 12, .24);
-  backdrop-filter: blur(2px);
+  background: rgba(10, 10, 12, .08);
 }
 .username-login-card {
   width: min(100%, 390px);
@@ -48,9 +47,9 @@ body.username-locked { overflow: hidden; }
   gap: 15px;
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  background: rgba(37, 37, 38, .76);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, .5);
+  background: rgba(37, 37, 38, .42);
+  backdrop-filter: blur(5px);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .2);
 }
 .username-login-card > img { width: 66px; height: 66px; margin: 0 auto; border-radius: 50%; }
 .username-login-card h2 { color: var(--text-primary); text-align: center; font-size: 22px; }
