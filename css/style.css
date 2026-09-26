@@ -159,7 +159,7 @@ body {
 /* ========== 题目列表 ========== */
 .group-switcher {
   width: fit-content;
-  margin: 16px 0;
+  margin: 16px 0 12px;
   padding: 4px;
   display: flex;
   gap: 4px;
@@ -197,7 +197,7 @@ body {
 .problem-list {
   display: grid;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 12px;
 }
 
 .problem-card {
