@@ -27,6 +27,49 @@ body {
   line-height: 1.6;
 }
 
+body.username-gate-pending > :not(.username-login) { visibility: hidden; }
+body.username-locked { overflow: hidden; }
+.username-login[hidden] { display: none; }
+.username-login {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 12, .68);
+  backdrop-filter: blur(4px);
+}
+.username-login-card {
+  width: min(100%, 390px);
+  padding: 30px;
+  display: grid;
+  gap: 15px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .5);
+}
+.username-login-card > img { width: 66px; height: 66px; margin: 0 auto; border-radius: 50%; }
+.username-login-card h2 { color: var(--text-primary); text-align: center; font-size: 22px; }
+.username-login-card > p:not(.username-login-status) { color: var(--text-secondary); text-align: center; font-size: 13px; }
+.username-login-card label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 13px; }
+.username-login-card input {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  outline: none;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+}
+.username-login-card input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(14, 99, 156, .2); }
+.username-login-status { min-height: 19px; color: var(--error); font-size: 12px; text-align: left; }
+.username-login-card .btn { min-height: 42px; }
+
 .container {
   max-width: 1400px;
   margin: 0 auto;

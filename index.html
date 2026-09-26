@@ -9,9 +9,22 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260926-08">
+  <link rel="stylesheet" href="css/style.css?v=20260926-09">
 </head>
-<body>
+<body class="username-gate-pending">
+  <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
+    <form id="username-login-form" class="username-login-card">
+      <img src="assets/logo-circle.png?v=20260920-2" alt="">
+      <h2 id="username-login-title">登录机创 OJ</h2>
+      <p>请输入用户名，用于提交记录显示</p>
+      <label>
+        <span>用户名</span>
+        <input id="username-login-input" type="text" maxlength="50" autocomplete="username" required placeholder="请输入用户名">
+      </label>
+      <p id="username-login-status" class="username-login-status" role="alert"></p>
+      <button id="username-login-submit" class="btn btn-primary" type="submit">进入平台</button>
+    </form>
+  </section>
   <!-- 顶部导航 -->
   <header class="header">
     <div class="container">
@@ -135,6 +148,6 @@
   <script src="vendor/katex/katex.min.js?v=0.18.7"></script>
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
-  <script src="js/app.js?v=20260926-06"></script>
+  <script src="js/app.js?v=20260926-07"></script>
 </body>
 </html>

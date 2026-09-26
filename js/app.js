@@ -14,7 +14,7 @@ class App {
     this.problemRequestSequence = 0;
     const requestedGroup = new URLSearchParams(location.search).get('group');
     this.group = ['control', 'vision'].includes(requestedGroup) ? requestedGroup : 'control';
-    this.username = localStorage.getItem('oj_username') || '';
+    this.username = (localStorage.getItem('oj_username') || '').trim();
     this.editorFontSize = this._loadEditorFontSize();
     this.codeSaveTimer = null;
     this.isRestoringCode = false;
@@ -43,17 +43,20 @@ class App {
     this._updateFontSizeDisplay();
     this._initSolveResizer();
     this._renderGroupSwitcher();
+    // 登录弹窗显示期间也加载背景题目列表，但遮罩会阻止任何操作。
+    const problemListLoading = this.loadProblemList();
 
-    // 检查用户名
+    // 检查用户名；没有用户名时必须完成登录，页面保持可见但不可操作。
+    document.body.classList.remove('username-gate-pending');
     if (!this.username) {
-      this._promptUsername();
+      await this._promptUsername();
     } else {
       document.getElementById('username-display').textContent = this.username;
     }
     this._trackView();
 
     // 题目列表与编辑器并行加载；这里只等待首屏真正需要的题目数据。
-    await this.loadProblemList();
+    await problemListLoading;
 
     // 保留 Promise 引用，避免编辑器初始化失败产生未处理的异步错误。
     this.editorInitialization = editorInitialization;
@@ -432,16 +435,50 @@ class App {
   }
 
   _promptUsername() {
-    const name = prompt('请输入你的用户名（用于排行榜显示）:', this.username);
-    if (name && name.trim()) {
-      this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
-      clearTimeout(this.codeSaveTimer);
-      this.username = name.trim();
-      localStorage.setItem('oj_username', this.username);
-      document.getElementById('username-display').textContent = this.username;
-      if (this.currentProblem) this._restoreCode(document.getElementById('language-select').value);
-      this._trackView(this.currentProblem?.id || '');
-    }
+    const dialog = document.getElementById('username-login');
+    const form = document.getElementById('username-login-form');
+    const input = document.getElementById('username-login-input');
+    const status = document.getElementById('username-login-status');
+    const title = document.getElementById('username-login-title');
+    const submit = document.getElementById('username-login-submit');
+    const changing = Boolean(this.username);
+
+    title.textContent = changing ? '修改用户名' : '登录机创 OJ';
+    submit.textContent = changing ? '确认修改' : '进入平台';
+    input.value = this.username;
+    status.textContent = '';
+    dialog.hidden = false;
+    document.body.classList.add('username-locked');
+    const lockedPageElements = document.querySelectorAll('.header, body > main');
+    lockedPageElements.forEach(element => { element.inert = true; });
+    setTimeout(() => input.focus(), 0);
+
+    return new Promise(resolve => {
+      const handleSubmit = event => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) {
+          status.textContent = '请输入用户名后才能进入平台';
+          input.focus();
+          return;
+        }
+
+        this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
+        clearTimeout(this.codeSaveTimer);
+        this.username = name;
+        localStorage.setItem('oj_username', this.username);
+        document.getElementById('username-display').textContent = this.username;
+        if (this.currentProblem) this._restoreCode(document.getElementById('language-select').value);
+        this._trackView(this.currentProblem?.id || '');
+
+        form.removeEventListener('submit', handleSubmit);
+        dialog.hidden = true;
+        document.body.classList.remove('username-locked');
+        lockedPageElements.forEach(element => { element.inert = false; });
+        resolve(this.username);
+      };
+      form.addEventListener('submit', handleSubmit);
+    });
   }
 
   _codeCacheKey(languageId = document.getElementById('language-select')?.value) {
@@ -588,7 +625,7 @@ class App {
     }
 
     if (!this.username) {
-      this._promptUsername();
+      await this._promptUsername();
       if (!this.username) return;
     }
 
