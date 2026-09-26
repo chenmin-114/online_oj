@@ -159,7 +159,7 @@ body {
 /* ========== 题目列表 ========== */
 .group-switcher {
   width: fit-content;
-  margin-top: 16px;
+  margin: 0 0 16px;
   padding: 4px;
   display: flex;
   gap: 4px;
