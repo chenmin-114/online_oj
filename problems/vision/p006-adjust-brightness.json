@@ -1,0 +1,31 @@
+{
+  "id": "P006",
+  "group": "vision",
+  "title": "调整单个像素亮度",
+  "difficulty": "easy",
+  "description": "灰度图像中的一个像素值范围是 $0$ 到 $255$。现在要给一个像素增加或减少亮度。\n\n给你原始像素值 `pixel` 和亮度变化量 `change`，请返回调整后的像素值。\n\n- 如果计算结果小于 $0$，返回 $0$；\n- 如果计算结果大于 $255$，返回 $255$；\n- 否则返回计算结果。",
+  "inputFormat": "本题使用核心函数模式，不需要调用 `input()`。\n\n系统会向函数传入两个整数变量：\n\n- `pixel`：原始像素值；\n- `change`：亮度变化量，可以是正数、零或负数。",
+  "outputFormat": "使用 `return` 返回一个整数，表示调整后的像素值。",
+  "constraints": "- $0 \\le pixel \\le 255$\n- $-255 \\le change \\le 255$",
+  "sampleExplanation": "样例 1 中，$100 + 30 = 130$，结果在合法范围内，所以返回 `130`。\n\n样例 2 中，$250 + 20 = 270$，超过了最大值 $255$，所以返回 `255`。\n\n样例 3 中，$5 - 10 = -5$，小于最小值 $0$，所以返回 `0`。",
+  "sampleInput": "[100, 30]",
+  "sampleOutput": "130",
+  "samples": [
+    { "input": "[100, 30]", "output": "130" },
+    { "input": "[250, 20]", "output": "255" },
+    { "input": "[5, -10]", "output": "0" }
+  ],
+  "showTestDetails": true,
+  "hintsDefaultExpanded": true,
+  "hints": [
+    "先计算 `result = pixel + change`。",
+    "再使用 `if` 判断 `result` 是否小于 `0` 或大于 `255`。"
+  ],
+  "pythonJudgeMode": "function",
+  "pythonFunction": {
+    "signature": "adjustBrightness(self, pixel: int, change: int) -> int",
+    "methodName": "adjustBrightness",
+    "parameterTypes": ["int", "int"],
+    "returnType": "int"
+  }
+}

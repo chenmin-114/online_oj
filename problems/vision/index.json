@@ -38,5 +38,13 @@
     "file": "p005-count-bright.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P006",
+    "title": "调整单个像素亮度",
+    "difficulty": "easy",
+    "file": "p006-adjust-brightness.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
