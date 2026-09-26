@@ -218,6 +218,7 @@
 .form-field > span { color: #cbd5ea; font-weight: 600; }
 .form-field small { color: #66738f; font-size: 10px; }
 .form-field .admin-input { width: 100%; min-width: 0; padding: 9px 11px; resize: vertical; }
+.form-field[hidden] { display: none; }
 .code-input { font-family: 'Consolas', 'Monaco', monospace !important; }
 .problem-image-uploader { padding: 14px; border: 1px dashed #354565; border-radius: 10px; background: rgba(91,140,255,.035); }
 .problem-image-upload-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }

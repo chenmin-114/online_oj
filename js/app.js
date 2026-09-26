@@ -215,8 +215,10 @@ class App {
       hintsContainer.innerHTML = this._formatMarkdown(hints);
       this._enhanceMarkdown(hintsContainer);
       hintsTitle.hidden = false;
+      this._setHintsExpanded(p.hintsDefaultExpanded !== false);
     } else {
       hintsContainer.innerHTML = '';
+      hintsContainer.hidden = true;
       hintsTitle.hidden = true;
     }
     
@@ -226,7 +228,9 @@ class App {
     document.querySelector('.solve-layout')?.style.removeProperty('--problem-pane-width');
 
     // 优先恢复当前用户在这道题、这个语言下保存的代码。
-    const defaultLanguage = this.group === 'vision' ? 'python' : window.OJ_CONFIG.DEFAULT_LANGUAGE;
+    const defaultLanguage = p.pythonJudgeMode === 'function' || this.group === 'vision'
+      ? 'python'
+      : window.OJ_CONFIG.DEFAULT_LANGUAGE;
     const lang = getLanguageById(defaultLanguage);
     document.getElementById('language-select').value = lang.id;
     this.editor.setLanguage(lang.id);
@@ -375,6 +379,20 @@ class App {
       this._setEditorFontSize(this.editorFontSize + 1);
     });
 
+    document.getElementById('reset-code-btn').addEventListener('click', () => {
+      if (!confirm('确定要放弃当前代码并恢复默认模板吗？')) return;
+      const languageId = document.getElementById('language-select').value;
+      const template = getProblemLanguageTemplate(languageId, this.currentProblem);
+      this.editor.setCode(template);
+      this._saveCurrentCode(template, languageId);
+      this.editor.focus();
+    });
+
+    document.getElementById('toggle-hints-btn').addEventListener('click', () => {
+      const button = document.getElementById('toggle-hints-btn');
+      this._setHintsExpanded(button.getAttribute('aria-expanded') !== 'true');
+    });
+
     window.addEventListener('beforeunload', () => {
       this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
     });
@@ -394,7 +412,8 @@ class App {
 
   _codeCacheKey(languageId = document.getElementById('language-select')?.value) {
     if (!this.username || !this.currentProblem || !languageId) return '';
-    return `oj_code_v1:${encodeURIComponent(this.username)}:${this.group}:${this.currentProblem.id}:${languageId}`;
+    const modeSuffix = languageId === 'python' && this.currentProblem.pythonJudgeMode === 'function' ? ':function' : '';
+    return `oj_code_v1:${encodeURIComponent(this.username)}:${this.group}:${this.currentProblem.id}:${languageId}${modeSuffix}`;
   }
 
   _saveCurrentCode(code = this.editor?.getCode(), languageId = document.getElementById('language-select')?.value) {
@@ -415,7 +434,7 @@ class App {
 
   _restoreCode(languageId) {
     clearTimeout(this.codeSaveTimer);
-    const lang = getLanguageById(languageId);
+    const template = getProblemLanguageTemplate(languageId, this.currentProblem);
     const key = this._codeCacheKey(languageId);
     let cachedCode = null;
     try {
@@ -424,7 +443,7 @@ class App {
       console.warn('读取代码本地缓存失败:', error);
     }
     this.isRestoringCode = true;
-    this.editor.setCode(cachedCode === null ? lang.template : cachedCode);
+    this.editor.setCode(cachedCode === null ? template : cachedCode);
     this.isRestoringCode = false;
   }
 
@@ -445,6 +464,14 @@ class App {
   _updateFontSizeDisplay() {
     const display = document.getElementById('font-size-value');
     if (display) display.textContent = `${this.editorFontSize}px`;
+  }
+
+  _setHintsExpanded(expanded) {
+    const container = document.getElementById('problem-hints');
+    const button = document.getElementById('toggle-hints-btn');
+    container.hidden = !expanded;
+    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    button.textContent = expanded ? '收起' : '展开';
   }
 
   _initSolveResizer() {
@@ -499,9 +526,12 @@ class App {
 
     try {
       const lang = getLanguageById(langId);
+      const executionCode = langId === 'python' && this.currentProblem?.pythonJudgeMode === 'function'
+        ? buildPythonFunctionScript(code, this.currentProblem.pythonFunction)
+        : code;
       const result = await this.runner.execute(
         lang.judge0LanguageId,
-        code,
+        executionCode,
         customInput
       );
 

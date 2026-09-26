@@ -894,6 +894,14 @@ function validateProblem(input, requestedFile) {
     }];
   }
 
+  const pythonJudgeMode = input.pythonJudgeMode === 'function' ? 'function' : 'standard';
+  let pythonFunction = null;
+  if (pythonJudgeMode === 'function') {
+    const functionValidation = normalizePythonFunctionSignature(input.pythonFunctionSignature);
+    if (functionValidation.error) return { error: functionValidation.error };
+    pythonFunction = functionValidation.pythonFunction;
+  }
+
   const problem = {
     id,
     title: input.title.trim().slice(0, 100),
@@ -909,12 +917,67 @@ function validateProblem(input, requestedFile) {
     samples,
     testCases,
     showTestDetails: input.showTestDetails === true,
+    // 旧题没有该字段时保持原有行为：默认展开提示。
+    hintsDefaultExpanded: input.hintsDefaultExpanded !== false,
     hints: Array.isArray(input.hints)
       ? input.hints.map(item => String(item).trim()).filter(Boolean).slice(0, 20)
       : [],
+    pythonJudgeMode,
+    ...(pythonFunction ? { pythonFunction } : {}),
   };
 
   return { problem, file };
+}
+
+function normalizePythonFunctionSignature(value) {
+  let signature = typeof value === 'string' ? value.trim() : '';
+  signature = signature.replace(/^def\s+/, '').replace(/:\s*$/, '').trim();
+  const match = /^([A-Za-z_]\w*)\s*\((.*)\)\s*(?:->\s*(.+))?$/.exec(signature);
+  if (!match) {
+    return { error: 'Python 方法签名格式不正确，例如：hasCycle(self, head: ListNode) -> bool' };
+  }
+
+  const methodName = match[1];
+  const rawParameters = match[2].trim() ? match[2].split(',').map(item => item.trim()) : [];
+  if (rawParameters[0] !== 'self') {
+    return { error: 'Python 核心函数的第一个参数必须是 self' };
+  }
+
+  const normalizedParameters = ['self'];
+  const parameterTypes = [];
+  const parameterNames = new Set(['self']);
+  for (const parameter of rawParameters.slice(1)) {
+    const parameterMatch = /^([A-Za-z_]\w*)\s*:\s*(.+)$/.exec(parameter);
+    if (!parameterMatch) return { error: `参数“${parameter}”需要填写类型标注` };
+    if (parameterNames.has(parameterMatch[1])) return { error: `参数名“${parameterMatch[1]}”重复` };
+    const type = normalizePythonFunctionType(parameterMatch[2]);
+    if (!type) return { error: `暂不支持参数类型“${parameterMatch[2]}”` };
+    parameterNames.add(parameterMatch[1]);
+    parameterTypes.push(type);
+    normalizedParameters.push(`${parameterMatch[1]}: ${type}`);
+  }
+
+  const returnType = match[3] ? normalizePythonFunctionType(match[3], true) : 'Any';
+  if (!returnType) return { error: `暂不支持返回类型“${match[3]}”` };
+  return {
+    pythonFunction: {
+      signature: `${methodName}(${normalizedParameters.join(', ')}) -> ${returnType}`,
+      methodName,
+      parameterTypes,
+      returnType,
+    },
+  };
+}
+
+function normalizePythonFunctionType(value, allowNone = false) {
+  const type = String(value || '').replace(/\s/g, '');
+  if (['int', 'float', 'str', 'bool', 'Any', 'ListNode', 'TreeNode'].includes(type)) return type;
+  if (allowNone && type === 'None') return type;
+  const generic = /^(List|list|Optional)\[(.+)\]$/.exec(type);
+  if (!generic) return '';
+  const inner = normalizePythonFunctionType(generic[2], allowNone);
+  if (!inner) return '';
+  return `${generic[1] === 'list' ? 'List' : generic[1]}[${inner}]`;
 }
 
 function validateProblemImages(input, problemId, group = 'control') {
@@ -1005,6 +1068,132 @@ function decodeBase64Utf8(value) {
   return new TextDecoder().decode(bytes);
 }
 
+function buildPythonFunctionSubmission(source, pythonFunction) {
+  const config = JSON.stringify({
+    methodName: pythonFunction.methodName,
+    parameterTypes: pythonFunction.parameterTypes,
+  });
+  return `from typing import List, Optional, Any
+import json as __oj_json
+import sys as __oj_sys
+
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val = val
+        self.next = next
+
+class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val = val
+        self.left = left
+        self.right = right
+
+${source}
+
+def __oj_convert(value, type_name):
+    type_name = type_name.replace(' ', '')
+    if type_name.startswith('Optional[') and type_name.endswith(']'):
+        if value is None:
+            return None
+        type_name = type_name[9:-1]
+    if type_name in ('Any', ''):
+        return value
+    if type_name == 'int':
+        return int(value)
+    if type_name == 'float':
+        return float(value)
+    if type_name == 'str':
+        return str(value)
+    if type_name == 'bool':
+        return bool(value)
+    if (type_name.startswith('List[') or type_name.startswith('list[')) and type_name.endswith(']'):
+        item_type = type_name[type_name.index('[') + 1:-1]
+        return [__oj_convert(item, item_type) for item in value]
+    if type_name == 'ListNode':
+        values = value.get('values', []) if isinstance(value, dict) else value
+        cycle_position = value.get('pos', -1) if isinstance(value, dict) else -1
+        nodes = [ListNode(item) for item in values]
+        for index in range(len(nodes) - 1):
+            nodes[index].next = nodes[index + 1]
+        if nodes and isinstance(cycle_position, int) and 0 <= cycle_position < len(nodes):
+            nodes[-1].next = nodes[cycle_position]
+        return nodes[0] if nodes else None
+    if type_name == 'TreeNode':
+        if not value or value[0] is None:
+            return None
+        nodes = [None if item is None else TreeNode(item) for item in value]
+        child = 1
+        for node in nodes:
+            if node is None:
+                continue
+            if child < len(nodes):
+                node.left = nodes[child]
+                child += 1
+            if child < len(nodes):
+                node.right = nodes[child]
+                child += 1
+        return nodes[0]
+    return value
+
+def __oj_serialize(value):
+    if isinstance(value, ListNode):
+        result, visited = [], set()
+        while value is not None and id(value) not in visited and len(result) < 10000:
+            visited.add(id(value))
+            result.append(value.val)
+            value = value.next
+        return result
+    if isinstance(value, TreeNode):
+        result, queue = [], [value]
+        while queue and len(result) < 10000:
+            node = queue.pop(0)
+            if node is None:
+                result.append(None)
+                continue
+            result.append(node.val)
+            queue.extend([node.left, node.right])
+        while result and result[-1] is None:
+            result.pop()
+        return result
+    if isinstance(value, tuple):
+        return [__oj_serialize(item) for item in value]
+    if isinstance(value, list):
+        return [__oj_serialize(item) for item in value]
+    if isinstance(value, dict):
+        return {key: __oj_serialize(item) for key, item in value.items()}
+    return value
+
+def __oj_print(value):
+    value = __oj_serialize(value)
+    if isinstance(value, bool):
+        print('true' if value else 'false')
+    elif value is None:
+        print('null')
+    elif isinstance(value, str):
+        print(value)
+    elif isinstance(value, (list, dict)):
+        print(__oj_json.dumps(value, ensure_ascii=False, separators=(',', ':')))
+    else:
+        print(value)
+
+__oj_config = ${config}
+if 'Solution' in globals() and hasattr(Solution, __oj_config['methodName']):
+    __oj_text = __oj_sys.stdin.read().strip()
+    __oj_raw = __oj_json.loads(__oj_text) if __oj_text else None
+    __oj_types = __oj_config['parameterTypes']
+    if len(__oj_types) == 0:
+        __oj_values = []
+    elif len(__oj_types) == 1:
+        __oj_values = [__oj_raw]
+    else:
+        if not isinstance(__oj_raw, list) or len(__oj_raw) != len(__oj_types):
+            raise ValueError('多个参数的测试输入必须是长度匹配的 JSON 数组')
+        __oj_values = __oj_raw
+    __oj_args = [__oj_convert(value, type_name) for value, type_name in zip(__oj_values, __oj_types)]
+    __oj_print(getattr(Solution(), __oj_config['methodName'])(*__oj_args))
+`;
+}
+
 /**
  * 从 KV 读取包含隐藏测试点的完整题目。
  */
@@ -1092,6 +1281,11 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true) {
   const results = [];
   let passedTests = 0;
   let totalTime = 0;
+  const executionScript = language === 'python'
+    && problem.pythonJudgeMode === 'function'
+    && problem.pythonFunction
+    ? buildPythonFunctionSubmission(script, problem.pythonFunction)
+    : script;
 
   for (const [index, testCase] of testCases.entries()) {
     if (!testCase || typeof testCase.input !== 'string' || typeof testCase.expectedOutput !== 'string') {
@@ -1099,7 +1293,7 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true) {
     }
 
     const execution = await executeWithRetry({
-      script,
+      script: executionScript,
       stdin: testCase.input,
       languageId,
     }, env, async (attempt, maxAttempts) => {

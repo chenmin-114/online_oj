@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="assets/logo-circle.png?v=20260920-2">
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260926-01">
+  <link rel="stylesheet" href="css/admin.css?v=20260926-02">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -131,6 +131,14 @@
             </div>
             <label class="form-field"><span>数据范围</span><textarea id="problem-constraints" class="admin-input" rows="3"></textarea></label>
             <label class="form-field"><span>提示</span><textarea id="problem-hints" class="admin-input" rows="3" placeholder="支持 Markdown；留空时学生端不会显示这个板块"></textarea></label>
+            <label class="test-visibility-option">
+              <input id="problem-hints-default-expanded" type="checkbox" checked>
+              <span><strong>学生打开题目时默认展开提示</strong><small>取消勾选后，提示默认收起，学生仍可手动展开</small></span>
+            </label>
+            <div class="form-grid two-columns">
+              <label class="form-field"><span>Python 判题模式</span><select id="problem-python-judge-mode" class="admin-input"><option value="standard">标准输入输出</option><option value="function">核心函数模式</option></select><small>核心函数模式会提供 Solution 方法模板，同时仍兼容普通 input()/print() 写法。</small></label>
+              <label id="python-function-signature-field" class="form-field" hidden><span>Python 方法签名 *</span><input id="problem-python-function-signature" class="admin-input code-input" placeholder="hasCycle(self, head: ListNode) -> bool"><small>测试输入使用 JSON，多参数写成数组；bool 输出写 true/false，列表输出写 JSON。支持 int、float、str、bool、List、ListNode、TreeNode、Optional。</small></label>
+            </div>
             <div class="testcase-heading"><div><strong>输入输出样例</strong><p>学生可以看到全部样例</p></div><button id="add-sample" type="button" class="admin-button secondary">＋ 添加样例</button></div>
             <div id="sample-editor" class="sample-case-editor"></div>
             <label class="form-field"><span>样例解释</span><textarea id="problem-sample-explanation" class="admin-input" rows="5" placeholder="支持 Markdown；留空时学生端不会显示这个板块"></textarea></label>
@@ -194,6 +202,6 @@
   </div>
 
   <div id="admin-toast" class="admin-toast" role="status"></div>
-  <script src="js/admin.js?v=20260926-01"></script>
+  <script src="js/admin.js?v=20260926-02"></script>
 </body>
 </html>

@@ -129,6 +129,9 @@ class OJAdmin {
         fileInput.value = id ? `${id}.json` : '';
       }
     });
+    document.getElementById('problem-python-judge-mode').addEventListener('change', () => {
+      this.updatePythonJudgeModeFields();
+    });
   }
 
   groupLabel(group = this.group) {
@@ -329,7 +332,16 @@ class OJAdmin {
     this.clearProblemImages();
     this.addSample();
     this.addTestCase();
+    this.updatePythonJudgeModeFields();
     this.renderGroupSwitcher();
+  }
+
+  updatePythonJudgeModeFields() {
+    const functionMode = document.getElementById('problem-python-judge-mode').value === 'function';
+    const field = document.getElementById('python-function-signature-field');
+    const input = document.getElementById('problem-python-function-signature');
+    field.hidden = !functionMode;
+    input.required = functionMode;
   }
 
   startNewProblem() {
@@ -370,7 +382,11 @@ class OJAdmin {
       document.getElementById('problem-constraints').value = problem.constraints || '';
       document.getElementById('problem-sample-explanation').value = problem.sampleExplanation || '';
       document.getElementById('problem-show-test-details').checked = problem.showTestDetails === true;
+      document.getElementById('problem-hints-default-expanded').checked = problem.hintsDefaultExpanded !== false;
       document.getElementById('problem-hints').value = Array.isArray(problem.hints) ? problem.hints.join('\n') : '';
+      document.getElementById('problem-python-judge-mode').value = problem.pythonJudgeMode === 'function' ? 'function' : 'standard';
+      document.getElementById('problem-python-function-signature').value = problem.pythonFunction?.signature || '';
+      this.updatePythonJudgeModeFields();
 
       const sampleEditor = document.getElementById('sample-editor');
       sampleEditor.innerHTML = '';
@@ -905,7 +921,10 @@ class OJAdmin {
       samples,
       testCases,
       showTestDetails: document.getElementById('problem-show-test-details').checked,
+      hintsDefaultExpanded: document.getElementById('problem-hints-default-expanded').checked,
       hints: document.getElementById('problem-hints').value.split('\n').map(item => item.trim()).filter(Boolean),
+      pythonJudgeMode: document.getElementById('problem-python-judge-mode').value,
+      pythonFunctionSignature: document.getElementById('problem-python-function-signature').value,
     };
 
     const saveButton = document.getElementById('save-problem');
