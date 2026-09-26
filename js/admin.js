@@ -338,14 +338,21 @@ class OJAdmin {
   renderProblems() {
     const body = document.getElementById('problem-admin-list');
     const counts = this.countBy(this.submissions, item => item.problemId);
-    const accepted = this.countBy(this.submissions.filter(item => item.passed), item => item.problemId);
+    const acceptedUsers = {};
+    this.submissions.filter(item => item.passed).forEach(item => {
+      const problemId = String(item.problemId || '');
+      const username = String(item.username || '').trim().normalize('NFC');
+      if (!problemId || !username) return;
+      if (!acceptedUsers[problemId]) acceptedUsers[problemId] = new Set();
+      acceptedUsers[problemId].add(username);
+    });
     body.innerHTML = this.problems.length ? this.problems.map(problem => `
       <tr>
         <td><strong>${this.escape(problem.id)}</strong></td>
         <td>${this.escape(problem.title)}</td>
         <td><span class="difficulty-pill ${this.escape(problem.difficulty)}">${this.escape(this.difficultyText(problem.difficulty))}</span></td>
         <td>${this.escape(counts[problem.id] || 0)}</td>
-        <td>${this.escape(accepted[problem.id] || 0)}</td>
+        <td>${this.escape(acceptedUsers[problem.id]?.size || 0)}</td>
         <td><button type="button" class="table-link table-link-button" data-edit-problem="${this.escape(problem.file)}">可视化编辑</button></td>
       </tr>
     `).join('') : '<tr><td colspan="6" class="empty-cell">暂无题目</td></tr>';
