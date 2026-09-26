@@ -183,6 +183,17 @@ body {
 .group-switch:hover { color: var(--text-primary); }
 .group-switch.active { background: var(--accent-primary); color: white; }
 
+.submission-heading { display: flex; align-items: center; gap: 10px; }
+.group-label {
+  padding: 3px 9px;
+  border: 1px solid rgba(86, 156, 214, .35);
+  border-radius: 99px;
+  background: rgba(14, 99, 156, .18);
+  color: var(--info);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .problem-list {
   display: grid;
   gap: 12px;

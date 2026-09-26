@@ -90,6 +90,10 @@ class App {
       button.classList.toggle('active', button.dataset.group === this.group);
       button.setAttribute('aria-pressed', button.dataset.group === this.group ? 'true' : 'false');
     });
+    const submissionGroupLabel = document.getElementById('submission-group-label');
+    if (submissionGroupLabel) {
+      submissionGroupLabel.textContent = this.group === 'vision' ? '视觉组' : '电控组';
+    }
   }
 
   async switchGroup(group) {
@@ -485,6 +489,7 @@ class App {
           <thead>
             <tr>
               <th>时间</th>
+              <th>组别</th>
               <th>题目</th>
               <th>语言</th>
               <th>结果</th>
@@ -496,6 +501,7 @@ class App {
             ${submissions.map(item => `
               <tr>
                 <td>${this._escapeHtml(new Date(Number(item.timestamp)).toLocaleString())}</td>
+                <td>${this._escapeHtml((item.group || this.group) === 'vision' ? '视觉组' : '电控组')}</td>
                 <td>${this._escapeHtml(item.problemId)}</td>
                 <td>${this._escapeHtml(item.language)}</td>
                 <td class="${item.passed ? 'success' : 'error'}">${item.passed ? 'Accepted' : 'Wrong Answer'}</td>
