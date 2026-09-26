@@ -418,7 +418,10 @@ async function handleAnalyticsReport(env, group) {
   startDate.setUTCDate(startDate.getUTCDate() - 29);
   const startDay = hongKongDay(startDate.getTime());
 
-  const [dailyResult, problemResult] = await env.OJ_DB.batch([
+  const submissionGroupCondition = group === 'control'
+    ? "problem_id NOT LIKE 'vision:%'"
+    : "problem_id LIKE 'vision:%'";
+  const [dailyResult, problemVisitorResult, submitterResult] = await env.OJ_DB.batch([
     env.OJ_DB.prepare(`
       SELECT day, COUNT(*) AS visitors
       FROM analytics_site_daily
@@ -427,12 +430,17 @@ async function handleAnalyticsReport(env, group) {
       ORDER BY day ASC
     `).bind(group, startDay, today),
     env.OJ_DB.prepare(`
-      SELECT problem_id, COUNT(*) AS visitors
+      SELECT problem_id, visitor_hash
       FROM analytics_problem_visitors
       WHERE group_name = ?1
-      GROUP BY problem_id
       ORDER BY problem_id ASC
     `).bind(group),
+    env.OJ_DB.prepare(`
+      SELECT DISTINCT problem_id, username
+      FROM submissions
+      WHERE ${submissionGroupCondition}
+      ORDER BY problem_id ASC
+    `),
   ]);
 
   const dailyCounts = new Map((dailyResult.results || []).map(row => [row.day, Number(row.visitors) || 0]));
@@ -444,9 +452,32 @@ async function handleAnalyticsReport(env, group) {
     daily.push({ day, visitors: dailyCounts.get(day) || 0 });
   }
 
+  // 已提交过题目的用户名一定浏览过该题。将提交用户与浏览记录做并集，
+  // 同一用户名既浏览又提交时仍然只计算一次。
+  const problemVisitors = new Map();
+  for (const row of problemVisitorResult.results || []) {
+    if (!problemVisitors.has(row.problem_id)) problemVisitors.set(row.problem_id, new Set());
+    problemVisitors.get(row.problem_id).add(row.visitor_hash);
+  }
+  const submitterRows = submitterResult.results || [];
+  const uniqueUsernames = Array.from(new Set(submitterRows
+    .map(row => String(row.username || '').trim().normalize('NFC'))
+    .filter(Boolean)));
+  const usernameHashes = new Map(await Promise.all(uniqueUsernames.map(async username => [
+    username,
+    await analyticsVisitorHash(username, env),
+  ])));
+  for (const row of submitterRows) {
+    const username = String(row.username || '').trim().normalize('NFC');
+    if (!username) continue;
+    const problemId = publicProblemId(row.problem_id).problemId;
+    if (!problemVisitors.has(problemId)) problemVisitors.set(problemId, new Set());
+    problemVisitors.get(problemId).add(usernameHashes.get(username));
+  }
+
   const problems = {};
-  for (const row of problemResult.results || []) {
-    problems[row.problem_id] = Number(row.visitors) || 0;
+  for (const [problemId, visitors] of problemVisitors) {
+    problems[problemId] = visitors.size;
   }
   return jsonResponse({ daily, problems });
 }
