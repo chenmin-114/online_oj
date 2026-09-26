@@ -1,6 +1,6 @@
 {
   "id": "P001",
-  "title": "Hello Vision !",
+  "title": "Hello Vision！",
   "difficulty": "easy",
   "description": "请编写一个程序，输出视觉组的第一句欢迎语：`Hello, Vision!`。",
   "inputFormat": "本题没有输入。",
