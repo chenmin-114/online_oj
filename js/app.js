@@ -207,7 +207,9 @@ class App {
     this._renderSamples(p);
 
     // 重置编辑器
-    const lang = getLanguageById(window.OJ_CONFIG.DEFAULT_LANGUAGE);
+    const defaultLanguage = this.group === 'vision' ? 'python' : window.OJ_CONFIG.DEFAULT_LANGUAGE;
+    const lang = getLanguageById(defaultLanguage);
+    document.getElementById('language-select').value = lang.id;
     this.editor.setLanguage(lang.id);
     this.editor.setCode(lang.template);
   }
