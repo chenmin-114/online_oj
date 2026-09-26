@@ -1,7 +1,7 @@
 [
   {
     "id": "P001",
-    "title": "输出第一句话",
+    "title": "Hello Vision !",
     "difficulty": "easy",
     "file": "p001-hello-python.json",
     "acceptRate": "0%",
