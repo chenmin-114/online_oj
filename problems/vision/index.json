@@ -9,7 +9,7 @@
   },
   {
     "id": "P002",
-    "title": "两个数相加",
+    "title": "两数相加",
     "difficulty": "easy",
     "file": "p002-add.json",
     "acceptRate": "0%",
