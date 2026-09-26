@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260926-06">
+  <link rel="stylesheet" href="css/style.css?v=20260926-07">
 </head>
 <body>
   <!-- 顶部导航 -->
@@ -68,6 +68,8 @@
           </div>
         </div>
 
+        <div id="solve-resizer" class="solve-resizer" role="separator" aria-label="调整题目和代码区域宽度" aria-orientation="vertical" tabindex="0"></div>
+
         <!-- 右侧：代码编辑器 -->
         <div class="editor-panel">
           <div class="toolbar">
@@ -80,6 +82,11 @@
               <option value="go">Go</option>
               <option value="rust">Rust</option>
             </select>
+            <div class="font-size-control" aria-label="代码字体大小">
+              <button id="font-size-decrease" type="button" class="btn-small" title="缩小代码字体">A−</button>
+              <span id="font-size-value" aria-live="polite">14px</span>
+              <button id="font-size-increase" type="button" class="btn-small" title="放大代码字体">A+</button>
+            </div>
             <button id="run-btn" class="btn btn-secondary">▶ 运行</button>
             <button id="submit-btn" class="btn btn-primary">🏁 提交</button>
           </div>
@@ -90,7 +97,7 @@
             <div class="io-section">
               <label>
                 自定义输入
-                <button id="fill-sample-btn" class="btn-small">填充样例</button>
+                <button id="clear-input-btn" type="button" class="btn-small">清空输入</button>
               </label>
               <textarea id="custom-input" class="io-textarea" placeholder="在此输入测试数据..."></textarea>
             </div>
@@ -118,7 +125,7 @@
   <!-- 脚本加载（顺序很重要） -->
   <script src="js/config.js?v=20260922-9"></script>
   <script src="js/languages.js?v=20260919-6"></script>
-  <script src="js/editor.js?v=20260919-6"></script>
+  <script src="js/editor.js?v=20260926-01"></script>
   <script src="js/runner.js?v=20260921-8"></script>
   <script src="js/github.js?v=20260926-01"></script>
   <script src="js/views.js?v=20260919-6"></script>
@@ -127,6 +134,6 @@
   <script src="vendor/katex/katex.min.js?v=0.18.7"></script>
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
-  <script src="js/app.js?v=20260926-03"></script>
+  <script src="js/app.js?v=20260926-04"></script>
 </body>
 </html>

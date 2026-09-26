@@ -7,6 +7,9 @@ class EditorManager {
     this.containerId = containerId;
     this.editor = null;
     this.currentLanguage = 'c';
+    this.pendingCode = null;
+    this.changeListeners = [];
+    this.fontSize = window.OJ_CONFIG.EDITOR_FONT_SIZE;
   }
 
   async init() {
@@ -36,10 +39,10 @@ class EditorManager {
     this.editor = monaco.editor.create(
       document.getElementById(this.containerId),
       {
-        value: lang.template,
+        value: this.pendingCode === null ? lang.template : this.pendingCode,
         language: lang.monacoLang,
         theme: window.OJ_CONFIG.DEFAULT_THEME,
-        fontSize: window.OJ_CONFIG.EDITOR_FONT_SIZE,
+        fontSize: this.fontSize,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         automaticLayout: true,
@@ -51,6 +54,10 @@ class EditorManager {
         padding: { top: 10, bottom: 10 },
       }
     );
+    this.editor.onDidChangeModelContent(() => {
+      const code = this.editor.getValue();
+      this.changeListeners.forEach(listener => listener(code));
+    });
   }
 
   getCode() {
@@ -58,7 +65,10 @@ class EditorManager {
   }
 
   setCode(code) {
-    if (this.editor) this.editor.setValue(code);
+    this.pendingCode = String(code ?? '');
+    if (this.editor && this.editor.getValue() !== this.pendingCode) {
+      this.editor.setValue(this.pendingCode);
+    }
   }
 
   setLanguage(langId) {
@@ -71,6 +81,15 @@ class EditorManager {
 
   setTheme(theme) {
     if (this.editor) monaco.editor.setTheme(theme);
+  }
+
+  setFontSize(size) {
+    this.fontSize = size;
+    if (this.editor) this.editor.updateOptions({ fontSize: size });
+  }
+
+  onChange(listener) {
+    if (typeof listener === 'function') this.changeListeners.push(listener);
   }
 
   focus() {

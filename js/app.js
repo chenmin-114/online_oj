@@ -11,9 +11,13 @@ class App {
     this.currentProblem = null;
     this.problemList = [];
     this.problemLoadSequence = 0;
+    this.problemRequestSequence = 0;
     const requestedGroup = new URLSearchParams(location.search).get('group');
     this.group = ['control', 'vision'].includes(requestedGroup) ? requestedGroup : 'control';
     this.username = localStorage.getItem('oj_username') || '';
+    this.editorFontSize = this._loadEditorFontSize();
+    this.codeSaveTimer = null;
+    this.isRestoringCode = false;
   }
 
   async init() {
@@ -23,6 +27,8 @@ class App {
     // 编辑器来自海外 CDN，不能阻塞题目列表和导航的首次显示。
     // 即使 Monaco 暂时加载较慢，学生仍应当能立即浏览题目。
     this.editor = new EditorManager('editor-container');
+    this.editor.setFontSize(this.editorFontSize);
+    this.editor.onChange(code => this._scheduleCodeSave(code));
     const editorInitialization = this.editor.init().catch(err => {
       console.error('代码编辑器加载失败:', err);
       const container = document.getElementById('editor-container');
@@ -33,6 +39,8 @@ class App {
 
     // 绑定事件
     this._bindEvents();
+    this._updateFontSizeDisplay();
+    this._initSolveResizer();
     this._renderGroupSwitcher();
 
     // 检查用户名
@@ -98,6 +106,9 @@ class App {
 
   async switchGroup(group) {
     if (!['control', 'vision'].includes(group) || group === this.group) return;
+    this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
+    clearTimeout(this.codeSaveTimer);
+    this.problemRequestSequence += 1;
     this.group = group;
     this.currentProblem = null;
     this.problemList = [];
@@ -150,6 +161,9 @@ class App {
   }
 
   async loadProblem(file) {
+    this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
+    clearTimeout(this.codeSaveTimer);
+    const requestSequence = ++this.problemRequestSequence;
     const requestedGroup = this.group;
     try {
       const workerUrl = window.OJ_CONFIG.WORKER_URL;
@@ -159,12 +173,14 @@ class App {
       const response = await fetch(problemUrl, { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const problem = await response.json();
-      if (requestedGroup !== this.group) return;
+      if (requestSequence !== this.problemRequestSequence || requestedGroup !== this.group) return;
+      this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
+      clearTimeout(this.codeSaveTimer);
       this.currentProblem = problem;
       this._renderProblem();
       this.views.show('solve');
     } catch (err) {
-      if (requestedGroup !== this.group) return;
+      if (requestSequence !== this.problemRequestSequence || requestedGroup !== this.group) return;
       alert('题目加载失败: ' + err.message);
     }
   }
@@ -206,12 +222,15 @@ class App {
     
     this._renderSamples(p);
 
-    // 重置编辑器
+    // 每次进入题目恢复默认的左右占比。
+    document.querySelector('.solve-layout')?.style.removeProperty('--problem-pane-width');
+
+    // 优先恢复当前用户在这道题、这个语言下保存的代码。
     const defaultLanguage = this.group === 'vision' ? 'python' : window.OJ_CONFIG.DEFAULT_LANGUAGE;
     const lang = getLanguageById(defaultLanguage);
     document.getElementById('language-select').value = lang.id;
     this.editor.setLanguage(lang.id);
-    this.editor.setCode(lang.template);
+    this._restoreCode(lang.id);
   }
 
   _formatMarkdown(text) {
@@ -249,12 +268,20 @@ class App {
     container.innerHTML = samples.length ? samples.map((sample, index) => `
       <div class="sample-group">
         <div class="sample">
-          <div><strong>输入 #${index + 1}</strong><pre data-sample-input>${this._escapeHtml(sample.input || '')}</pre></div>
+          <div><div class="sample-heading"><strong>输入 #${index + 1}</strong><button type="button" class="btn-small sample-fill-btn" data-sample-index="${index}">自动填充</button></div><pre data-sample-input>${this._escapeHtml(sample.input || '')}</pre></div>
           <div><strong>输出 #${index + 1}</strong><pre>${this._escapeHtml(sample.output || '')}</pre></div>
         </div>
       </div>
     `).join('') : '';
     if (samples.length) this._enhanceMarkdown(container);
+
+    container.querySelectorAll('.sample-fill-btn').forEach(button => {
+      button.addEventListener('click', () => {
+        const input = samples[Number(button.dataset.sampleIndex)]?.input || '';
+        document.getElementById('custom-input').value = input;
+        document.getElementById('custom-input').focus();
+      });
+    });
   }
 
   _enhanceMarkdown(container) {
@@ -294,10 +321,10 @@ class App {
 
     // 语言切换
     document.getElementById('language-select').addEventListener('change', (e) => {
+      this._saveCurrentCode(this.editor.getCode(), this.editor.currentLanguage);
       const langId = e.target.value;
       this.editor.setLanguage(langId);
-      const lang = getLanguageById(langId);
-      this.editor.setCode(lang.template);
+      this._restoreCode(langId);
     });
 
     // 运行代码
@@ -335,20 +362,126 @@ class App {
       this._promptUsername();
     });
 
-    // 填充示例输入
-    document.getElementById('fill-sample-btn').addEventListener('click', () => {
-      const sample = document.querySelector('[data-sample-input]')?.textContent || '';
-      document.getElementById('custom-input').value = sample;
+    document.getElementById('clear-input-btn').addEventListener('click', () => {
+      const input = document.getElementById('custom-input');
+      input.value = '';
+      input.focus();
+    });
+
+    document.getElementById('font-size-decrease').addEventListener('click', () => {
+      this._setEditorFontSize(this.editorFontSize - 1);
+    });
+    document.getElementById('font-size-increase').addEventListener('click', () => {
+      this._setEditorFontSize(this.editorFontSize + 1);
+    });
+
+    window.addEventListener('beforeunload', () => {
+      this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
     });
   }
 
   _promptUsername() {
     const name = prompt('请输入你的用户名（用于排行榜显示）:', this.username);
     if (name && name.trim()) {
+      this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
+      clearTimeout(this.codeSaveTimer);
       this.username = name.trim();
       localStorage.setItem('oj_username', this.username);
       document.getElementById('username-display').textContent = this.username;
+      if (this.currentProblem) this._restoreCode(document.getElementById('language-select').value);
     }
+  }
+
+  _codeCacheKey(languageId = document.getElementById('language-select')?.value) {
+    if (!this.username || !this.currentProblem || !languageId) return '';
+    return `oj_code_v1:${encodeURIComponent(this.username)}:${this.group}:${this.currentProblem.id}:${languageId}`;
+  }
+
+  _saveCurrentCode(code = this.editor?.getCode(), languageId = document.getElementById('language-select')?.value) {
+    const key = this._codeCacheKey(languageId);
+    if (!key || this.isRestoringCode || typeof code !== 'string') return;
+    try {
+      localStorage.setItem(key, code);
+    } catch (error) {
+      console.warn('代码本地缓存失败:', error);
+    }
+  }
+
+  _scheduleCodeSave(code) {
+    if (this.isRestoringCode) return;
+    clearTimeout(this.codeSaveTimer);
+    this.codeSaveTimer = setTimeout(() => this._saveCurrentCode(code), 250);
+  }
+
+  _restoreCode(languageId) {
+    clearTimeout(this.codeSaveTimer);
+    const lang = getLanguageById(languageId);
+    const key = this._codeCacheKey(languageId);
+    let cachedCode = null;
+    try {
+      if (key) cachedCode = localStorage.getItem(key);
+    } catch (error) {
+      console.warn('读取代码本地缓存失败:', error);
+    }
+    this.isRestoringCode = true;
+    this.editor.setCode(cachedCode === null ? lang.template : cachedCode);
+    this.isRestoringCode = false;
+  }
+
+  _loadEditorFontSize() {
+    const saved = Number(localStorage.getItem('oj_editor_font_size'));
+    return Number.isFinite(saved) && saved >= 12 && saved <= 24
+      ? saved
+      : window.OJ_CONFIG.EDITOR_FONT_SIZE;
+  }
+
+  _setEditorFontSize(size) {
+    this.editorFontSize = Math.min(24, Math.max(12, size));
+    this.editor.setFontSize(this.editorFontSize);
+    localStorage.setItem('oj_editor_font_size', String(this.editorFontSize));
+    this._updateFontSizeDisplay();
+  }
+
+  _updateFontSizeDisplay() {
+    const display = document.getElementById('font-size-value');
+    if (display) display.textContent = `${this.editorFontSize}px`;
+  }
+
+  _initSolveResizer() {
+    const layout = document.querySelector('.solve-layout');
+    const resizer = document.getElementById('solve-resizer');
+    if (!layout || !resizer) return;
+
+    const resizeTo = clientX => {
+      const rect = layout.getBoundingClientRect();
+      const dividerWidth = resizer.getBoundingClientRect().width;
+      const minimum = 300;
+      const maximum = Math.max(minimum, rect.width - dividerWidth - 380);
+      const width = Math.min(maximum, Math.max(minimum, clientX - rect.left));
+      layout.style.setProperty('--problem-pane-width', `${width}px`);
+    };
+
+    resizer.addEventListener('pointerdown', event => {
+      if (window.matchMedia('(max-width: 1024px)').matches) return;
+      resizer.setPointerCapture(event.pointerId);
+      layout.classList.add('is-resizing');
+      event.preventDefault();
+    });
+    resizer.addEventListener('pointermove', event => {
+      if (resizer.hasPointerCapture(event.pointerId)) resizeTo(event.clientX);
+    });
+    const stopResizing = event => {
+      if (resizer.hasPointerCapture(event.pointerId)) resizer.releasePointerCapture(event.pointerId);
+      layout.classList.remove('is-resizing');
+    };
+    resizer.addEventListener('pointerup', stopResizing);
+    resizer.addEventListener('pointercancel', stopResizing);
+    resizer.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      const currentWidth = document.querySelector('.problem-panel').getBoundingClientRect().width;
+      resizeTo(layout.getBoundingClientRect().left + currentWidth + (event.key === 'ArrowLeft' ? -24 : 24));
+      event.preventDefault();
+    });
   }
 
   async runCode() {

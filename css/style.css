@@ -265,11 +265,32 @@ body {
 /* ========== 解题界面 ========== */
 .solve-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  grid-template-columns: minmax(300px, var(--problem-pane-width, 1fr)) 20px minmax(380px, 1fr);
+  gap: 0;
   margin-top: 20px;
   height: calc(100vh - 140px);
 }
+
+.solve-resizer {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.solve-resizer::before {
+  content: '';
+  position: absolute;
+  inset: 0 8px;
+  border-radius: 2px;
+  background: var(--border-color);
+  transition: background .15s;
+}
+
+.solve-resizer:hover::before,
+.solve-resizer:focus-visible::before,
+.solve-layout.is-resizing .solve-resizer::before { background: var(--accent-primary); }
+.solve-resizer:focus-visible { outline: none; }
+.solve-layout.is-resizing { cursor: col-resize; user-select: none; }
 
 .problem-panel {
   background: var(--bg-secondary);
@@ -374,8 +395,29 @@ body {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.font-size-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.font-size-control .btn-small { min-width: 31px; }
+
+.sample-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
 .editor {
@@ -545,6 +587,8 @@ body {
     grid-template-columns: 1fr;
     height: auto;
   }
+
+  .solve-resizer { display: none; }
 
   .problem-panel {
     max-height: 400px;
