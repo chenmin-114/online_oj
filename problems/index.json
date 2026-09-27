@@ -61,7 +61,8 @@
     "difficulty": "easy",
     "file": "p008.json",
     "acceptRate": "49%",
-    "submitCount": 131
+    "submitCount": 131,
+    "status": "published"
   },
   {
     "id": "P009",
