@@ -185,6 +185,16 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamPreviewGrade(body, env);
+      } else if (body.type === 'admin_exam_preview_get') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamPreviewGet(body, env);
+      } else if (body.type === 'admin_exam_preview_submit') {
+        const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
+        if (rateLimitError) return rateLimitError;
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamPreviewSubmit(body, env);
       } else if (body.type === 'admin_exam_submissions') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -850,8 +860,8 @@ async function handleAdminExamList(body, env) {
   const result = await env.OJ_DB.prepare(`
     SELECT p.id, p.title, p.description, p.status, p.result_policy, p.total_score,
            p.version, p.updated_at,
-           COUNT(CASE WHEN s.is_final = 1 THEN 1 END) AS submitted_students,
-           SUM(CASE WHEN s.is_final = 1 AND s.grading_status = 'completed' THEN 1 ELSE 0 END) AS completed_students
+           COUNT(CASE WHEN s.is_final = 1 AND s.is_preview = 0 THEN 1 END) AS submitted_students,
+           SUM(CASE WHEN s.is_final = 1 AND s.is_preview = 0 AND s.grading_status = 'completed' THEN 1 ELSE 0 END) AS completed_students
     FROM exam_papers p
     LEFT JOIN exam_submissions s ON s.exam_id = p.id
     WHERE p.group_name = ?1
@@ -952,7 +962,7 @@ async function handleStudentExamList(body, env) {
            s.graded_count, s.total_parts, s.released, s.submitted_at
     FROM exam_papers p
     LEFT JOIN exam_submissions s
-      ON s.exam_id = p.id AND s.username = ?1 AND s.is_final = 1
+      ON s.exam_id = p.id AND s.username = ?1 AND s.is_preview = 0 AND s.is_final = 1
     WHERE p.group_name = ?2 AND p.status = 'published'
     ORDER BY p.updated_at DESC
   `).bind(username, group).all();
@@ -987,7 +997,7 @@ async function handleStudentExamGet(body, env) {
   await enrichExamProgrammingParts(paper, env, record.group_name);
   const submission = await env.OJ_DB.prepare(`
     SELECT * FROM exam_submissions
-    WHERE exam_id = ?1 AND username = ?2 AND is_final = 1
+    WHERE exam_id = ?1 AND username = ?2 AND is_preview = 0 AND is_final = 1
   `).bind(examId, username).first();
   let mySubmission = null;
   if (submission) {
@@ -1007,6 +1017,38 @@ async function handleStudentExamGet(body, env) {
     };
   }
   return jsonResponse({ paper: publicExamPaper(paper), mySubmission });
+}
+
+async function handleAdminExamPreviewGet(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  const record = await readExamRecord(env, examId);
+  if (!record) return jsonResponse({ error: '试卷不存在' }, 404);
+  const paper = parseExamRecord(record);
+  await enrichExamProgrammingParts(paper, env, record.group_name);
+  const submission = await env.OJ_DB.prepare(`
+    SELECT * FROM exam_submissions
+    WHERE exam_id = ?1 AND username = 'admin' AND is_preview = 1 AND is_final = 1
+  `).bind(examId).first();
+  let mySubmission = null;
+  if (submission) {
+    const visible = isExamResultVisible(record.result_policy, submission.grading_status, Number(submission.released));
+    mySubmission = {
+      id: Number(submission.id),
+      answers: JSON.parse(submission.answers_json),
+      submittedAt: Number(submission.submitted_at),
+      gradingStatus: submission.grading_status,
+      gradedCount: Number(submission.graded_count),
+      totalParts: Number(submission.total_parts),
+      resultVisible: visible,
+      ...(visible ? {
+        totalScore: Number(submission.total_score),
+        grading: JSON.parse(submission.grading_json),
+      } : {}),
+    };
+  }
+  return jsonResponse({ paper: publicExamPaper(paper), mySubmission, preview: true });
 }
 
 function normalizedAnswer(value, caseSensitive = false) {
@@ -1138,6 +1180,63 @@ async function handleAdminExamPreviewGrade(body, env) {
   });
 }
 
+async function handleAdminExamPreviewSubmit(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  const answers = body.answers && typeof body.answers === 'object' && !Array.isArray(body.answers) ? body.answers : null;
+  if (!examId || !answers) return jsonResponse({ error: '试卷提交内容不正确' }, 400);
+  const answersJson = JSON.stringify(answers);
+  if (answersJson.length > 600000) return jsonResponse({ error: '整张试卷答案不能超过 600 KB' }, 413);
+  const record = await readExamRecord(env, examId);
+  if (!record) return jsonResponse({ error: '试卷不存在' }, 404);
+  const group = record.group_name;
+  if (body.group && normalizeGroup(body.group) !== group) return jsonResponse({ error: '试卷组别不正确' }, 400);
+  const paper = parseExamRecord(record);
+  const validPartIds = new Set(paper.questions.flatMap(question => question.parts.map(part => part.id)));
+  for (const key of Object.keys(answers)) {
+    if (!validPartIds.has(key)) delete answers[key];
+  }
+  const compactAnswersJson = JSON.stringify(answers);
+  const partResults = await gradeExamAnswers(paper, answers, 'admin', group, env);
+  const scores = calculateExamScores(paper, partResults);
+  const gradingJson = JSON.stringify({ partResults });
+  const previous = await env.OJ_DB.prepare(`
+    SELECT COALESCE(MAX(attempt_no), 0) AS attempts
+    FROM exam_submissions WHERE exam_id = ?1 AND username = 'admin' AND is_preview = 1
+  `).bind(examId).first();
+  const attemptNo = Number(previous?.attempts || 0) + 1;
+  const now = Date.now();
+  const statements = [
+    env.OJ_DB.prepare(`
+      UPDATE exam_submissions SET is_final = 0, updated_at = ?2
+      WHERE exam_id = ?1 AND username = 'admin' AND is_preview = 1 AND is_final = 1
+    `).bind(examId, now),
+    env.OJ_DB.prepare(`
+      INSERT INTO exam_submissions (
+        exam_id, exam_version, username, attempt_no, answers_json, grading_json,
+        auto_score, manual_score, total_score, graded_count, total_parts,
+        grading_status, released, is_preview, is_final, submitted_at, updated_at
+      ) VALUES (?1, ?2, 'admin', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, 1, 1, ?12, ?12)
+    `).bind(
+      examId, paper.version, attemptNo, compactAnswersJson, gradingJson,
+      scores.autoScore, scores.manualScore, scores.totalScore, scores.gradedCount,
+      scores.totalParts, scores.gradingStatus, now,
+    ),
+  ];
+  await env.OJ_DB.batch(statements);
+  const visible = isExamResultVisible(paper.resultPolicy, scores.gradingStatus, 0);
+  return jsonResponse({
+    success: true,
+    preview: true,
+    attemptNo,
+    gradingStatus: scores.gradingStatus,
+    gradedCount: scores.gradedCount,
+    totalParts: scores.totalParts,
+    resultVisible: visible,
+    ...(visible ? { totalScore: scores.totalScore, grading: { partResults } } : {}),
+  });
+}
+
 async function handleStudentExamSubmit(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
   const examId = normalizeExamId(body.examId);
@@ -1161,14 +1260,14 @@ async function handleStudentExamSubmit(body, env) {
   const gradingJson = JSON.stringify({ partResults });
   const previous = await env.OJ_DB.prepare(`
     SELECT COALESCE(MAX(attempt_no), 0) AS attempts
-    FROM exam_submissions WHERE exam_id = ?1 AND username = ?2
+    FROM exam_submissions WHERE exam_id = ?1 AND username = ?2 AND is_preview = 0
   `).bind(examId, username).first();
   const attemptNo = Number(previous?.attempts || 0) + 1;
   const now = Date.now();
   const statements = [
     env.OJ_DB.prepare(`
       UPDATE exam_submissions SET is_final = 0, updated_at = ?3
-      WHERE exam_id = ?1 AND username = ?2 AND is_final = 1
+      WHERE exam_id = ?1 AND username = ?2 AND is_preview = 0 AND is_final = 1
     `).bind(examId, username, now),
     env.OJ_DB.prepare(`
       INSERT INTO exam_submissions (
@@ -1202,7 +1301,7 @@ async function handleAdminExamSubmissions(body, env) {
   const result = await env.OJ_DB.prepare(`
     SELECT id, exam_id, exam_version, username, attempt_no,
            auto_score, manual_score, total_score, graded_count, total_parts,
-           grading_status, released, is_final, submitted_at, updated_at
+           grading_status, released, is_preview, is_final, submitted_at, updated_at
     FROM exam_submissions
     WHERE exam_id = ?1 AND is_final = 1
     ORDER BY submitted_at ASC
@@ -1220,6 +1319,7 @@ async function handleAdminExamSubmissions(body, env) {
     totalParts: Number(row.total_parts),
     gradingStatus: row.grading_status,
     released: Number(row.released) === 1,
+    preview: Number(row.is_preview) === 1,
     submittedAt: Number(row.submitted_at),
   })));
 }
@@ -1231,7 +1331,7 @@ async function handleAdminExamSubmissionGet(body, env) {
   const row = await env.OJ_DB.prepare(`
     SELECT id, exam_id, exam_version, username, attempt_no, answers_json, grading_json,
            auto_score, manual_score, total_score, graded_count, total_parts,
-           grading_status, released, is_final, submitted_at, updated_at
+           grading_status, released, is_preview, is_final, submitted_at, updated_at
     FROM exam_submissions WHERE id = ?1
   `).bind(submissionId).first();
   if (!row || Number(row.is_final) !== 1) return jsonResponse({ error: '最终提交不存在或已经被新提交替代' }, 404);
@@ -1242,7 +1342,8 @@ async function handleAdminExamSubmissionGet(body, env) {
     autoScore: Number(row.auto_score), manualScore: Number(row.manual_score),
     totalScore: Number(row.total_score), gradedCount: Number(row.graded_count),
     totalParts: Number(row.total_parts), gradingStatus: row.grading_status,
-    released: Number(row.released) === 1, submittedAt: Number(row.submitted_at),
+    released: Number(row.released) === 1, preview: Number(row.is_preview) === 1,
+    submittedAt: Number(row.submitted_at),
   });
 }
 

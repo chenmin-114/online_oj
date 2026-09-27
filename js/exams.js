@@ -12,6 +12,11 @@ class ExamUI {
     document.querySelector('[data-view="exams"]').addEventListener('click', () => this.loadList());
     document.getElementById('back-to-exam-list').addEventListener('click', () => {
       this.saveDraft();
+      if (this.app.adminExamPreview) {
+        window.close();
+        if (!window.closed) location.href = 'admin.html';
+        return;
+      }
       this.app.views.show('exams');
       this.loadList(true);
     });
@@ -37,12 +42,17 @@ class ExamUI {
   }
 
   async request(type, payload = {}) {
+    const previewTypes = {
+      exam_get: 'admin_exam_preview_get',
+      exam_submit: 'admin_exam_preview_submit',
+    };
+    const requestType = this.app.adminExamPreview ? (previewTypes[type] || type) : type;
     const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type,
+        type: requestType,
         username: this.app.username,
         group: this.app.group,
         ...payload,
@@ -58,6 +68,7 @@ class ExamUI {
   }
 
   async loadList(force = false) {
+    if (this.app.adminExamPreview) return this.openExam(this.app.adminExamPreview);
     const key = `${this.app.username}:${this.app.group}`;
     if (!force && this.loadedKey === key) return;
     const container = document.getElementById('exam-list');
@@ -107,7 +118,9 @@ class ExamUI {
       this.renderPaper();
       status.textContent = this.submission
         ? `已于 ${new Date(this.submission.submittedAt).toLocaleString()} 提交；再次提交将以新答案作为最终评分依据`
-        : '答案会自动保存在本机；提交整张试卷后才会进入批改';
+        : this.app.adminExamPreview
+          ? '当前以 admin 身份预览；答案会自动保存在本机，提交后可在管理端批改页查看'
+          : '答案会自动保存在本机；提交整张试卷后才会进入批改';
       this.renderResult(this.submission);
     } catch (error) {
       status.textContent = `读取失败：${error.message}`;

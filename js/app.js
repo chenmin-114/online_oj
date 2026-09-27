@@ -12,9 +12,12 @@ class App {
     this.problemList = [];
     this.problemLoadSequence = 0;
     this.problemRequestSequence = 0;
-    const requestedGroup = new URLSearchParams(location.search).get('group');
+    const searchParams = new URLSearchParams(location.search);
+    const requestedGroup = searchParams.get('group');
+    const previewExam = String(searchParams.get('adminPreviewExam') || '').trim().toUpperCase();
+    this.adminExamPreview = /^[A-Z][A-Z0-9_-]{1,31}$/.test(previewExam) ? previewExam : '';
     this.group = ['control', 'vision'].includes(requestedGroup) ? requestedGroup : 'control';
-    this.username = (localStorage.getItem('oj_username') || '').trim();
+    this.username = this.adminExamPreview ? 'admin' : (localStorage.getItem('oj_username') || '').trim();
     this.editorFontSize = this._loadEditorFontSize();
     this.codeSaveTimer = null;
     this.isRestoringCode = false;
@@ -26,6 +29,17 @@ class App {
     this.views.init();
     this.examUI = new ExamUI(this);
     this.examUI.init();
+
+    // 管理员套卷预览直接复用学生端真实页面和交互，但只访问管理员鉴权接口。
+    if (this.adminExamPreview) {
+      document.body.classList.remove('username-gate-pending');
+      document.getElementById('username-display').textContent = 'admin';
+      document.getElementById('change-username-btn').hidden = true;
+      document.querySelectorAll('.group-switch').forEach(button => { button.disabled = true; });
+      this._renderGroupSwitcher();
+      await this.examUI.openExam(this.adminExamPreview);
+      return;
+    }
 
     // 编辑器来自海外 CDN，不能阻塞题目列表和导航的首次显示。
     // 即使 Monaco 暂时加载较慢，学生仍应当能立即浏览题目。

@@ -290,19 +290,11 @@ class ExamAdmin {
   }
 
   async previewExam(id) {
-    try {
-      const paper = await this.request('admin_exam_get', { examId: id });
-      this.previewPaper = paper;
-      const typeNames = { single_choice: '单选', multiple_choice: '多选', fill_blank: '填空', short_answer: '简答', programming: '编程' };
-      const html = `<div class="preview-status-row"><span class="result-pill ${paper.status === 'draft' ? 'failed' : 'accepted'}">${paper.status === 'draft' ? '草稿 · 学生不可见' : '已发布'}</span><span>总分 ${this.escape(paper.totalScore)} · 第 ${this.escape(paper.version)} 版</span></div>
-        <h2>${this.escape(paper.id)} · ${this.escape(paper.title)}</h2>
-        ${paper.description ? `<div class="problem-content">${this.admin.renderMarkdown(paper.description)}</div>` : ''}
-        <div class="preview-exam-questions">${paper.questions.map((question, questionIndex) => `<article class="preview-exam-question"><header><h3>第 ${questionIndex + 1} 题 · ${this.escape(question.title)}</h3><strong>${question.parts.reduce((sum, part) => sum + Number(part.points || 0), 0)} 分</strong></header>${question.scoringMode === 'programming_required' ? '<p class="exam-rule-warning">编程部分未通过时，本大题计 0 分。</p>' : ''}${question.description ? `<div class="problem-content">${this.admin.renderMarkdown(question.description)}</div>` : ''}${question.parts.map((part, partIndex) => this.previewPartHtml(part, partIndex, typeNames)).join('')}</article>`).join('')}</div>
-        <div class="preview-exam-submit"><span>沙盒提交不会产生学生成绩或提交记录</span><button type="button" class="admin-button primary" data-exam-preview-submit>提交整张试卷</button></div><div data-exam-preview-result></div>`;
-      this.admin.showPreview(`${paper.id} · ${paper.title}`, html);
-    } catch (error) {
-      this.admin.toast(`预览失败：${error.message}`);
-    }
+    const url = new URL('index.html', location.href);
+    url.searchParams.set('adminPreviewExam', id);
+    url.searchParams.set('group', this.group);
+    const preview = window.open(url.href, '_blank', 'noopener');
+    if (!preview) this.admin.toast('浏览器拦截了预览窗口，请允许本站打开新窗口');
   }
 
   previewPartHtml(part, partIndex, typeNames) {
@@ -405,13 +397,14 @@ class ExamAdmin {
   renderGrading() {
     const mode = document.getElementById('grading-mode').value;
     document.getElementById('grading-part').hidden = mode !== 'part';
-    const completed = this.submissions.filter(item => item.gradingStatus === 'completed').length;
+    const formalSubmissions = this.submissions.filter(item => !item.preview);
+    const completed = formalSubmissions.filter(item => item.gradingStatus === 'completed').length;
     document.getElementById('grading-summary').textContent = this.paper
-      ? `${this.submissions.length} 人提交 · ${completed} 人完成批改`
+      ? `${formalSubmissions.length} 人正式提交 · ${completed} 人完成批改${this.submissions.some(item => item.preview) ? ' · 含管理员预览记录' : ''}`
       : '请选择试卷';
     document.getElementById('grading-student-list').innerHTML = this.submissions.length ? this.submissions.map((submission, index) => `
       <button type="button" class="grading-student ${index === this.studentIndex ? 'active' : ''}" data-grading-student="${index}">
-        <strong>${this.escape(submission.username)}</strong><span>${submission.gradedCount}/${submission.totalParts} 题 · ${submission.totalScore}/${this.paper.totalScore} 分</span>
+        <strong>${this.escape(submission.username)}${submission.preview ? '（管理员预览）' : ''}</strong><span>${submission.gradedCount}/${submission.totalParts} 题 · ${submission.totalScore}/${this.paper.totalScore} 分</span>
       </button>`).join('') : '<p class="empty-cell">还没有学生提交</p>';
     this.renderWorkspace();
   }
@@ -454,7 +447,7 @@ class ExamAdmin {
       return;
     }
     document.getElementById('grading-work-title').textContent = submission.username;
-    document.getElementById('grading-work-meta').textContent = `第 ${submission.attemptNo} 次提交（最终提交） · ${new Date(submission.submittedAt).toLocaleString()}`;
+    document.getElementById('grading-work-meta').textContent = `第 ${submission.attemptNo} 次提交（${submission.preview ? '管理员预览' : '最终提交'}） · ${new Date(submission.submittedAt).toLocaleString()}`;
     const mode = document.getElementById('grading-mode').value;
     const selectedPart = document.getElementById('grading-part').value;
     if (!submission.grading || !submission.answers) {

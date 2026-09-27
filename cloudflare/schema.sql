@@ -130,6 +130,8 @@ CREATE TABLE IF NOT EXISTS exam_submissions (
   total_parts INTEGER NOT NULL DEFAULT 0,
   grading_status TEXT NOT NULL CHECK (grading_status IN ('pending', 'completed')),
   released INTEGER NOT NULL DEFAULT 0 CHECK (released IN (0, 1)),
+  -- 管理员使用学生端原界面试做时保留提交，但不计入正式统计。
+  is_preview INTEGER NOT NULL DEFAULT 0 CHECK (is_preview IN (0, 1)),
   is_final INTEGER NOT NULL DEFAULT 1 CHECK (is_final IN (0, 1)),
   submitted_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
@@ -137,7 +139,7 @@ CREATE TABLE IF NOT EXISTS exam_submissions (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_exam_submissions_one_final
-  ON exam_submissions(exam_id, username) WHERE is_final = 1;
+  ON exam_submissions(exam_id, username, is_preview) WHERE is_final = 1;
 
 CREATE INDEX IF NOT EXISTS idx_exam_submissions_exam_final
   ON exam_submissions(exam_id, is_final, submitted_at DESC);
