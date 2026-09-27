@@ -68,8 +68,12 @@ body.username-locked { overflow: hidden; }
   font: inherit;
 }
 .username-login-card input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(14, 99, 156, .2); }
+.username-login-card label[hidden] { display: none; }
 .username-login-status { min-height: 19px; color: var(--error); font-size: 12px; text-align: left; }
 .username-login-card .btn { min-height: 42px; }
+.username-login-actions { display: flex; gap: 9px; }
+.username-login-actions .btn { flex: 1; }
+.username-login-actions .btn[hidden] { display: none; }
 
 .container {
   max-width: 1400px;

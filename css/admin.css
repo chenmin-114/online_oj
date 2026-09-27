@@ -274,6 +274,22 @@
 input.admin-input { min-width: 240px; }
 .filter-count { margin-left: auto; color: var(--admin-muted); font-size: 11px; }
 
+.account-import-body { padding: 22px; display: grid; gap: 18px; }
+.account-file-picker { min-height: 120px; padding: 22px; display: grid; place-items: center; gap: 8px; border: 1px dashed #40547d; border-radius: 11px; background: rgba(91,140,255,.035); color: var(--admin-text); cursor: pointer; text-align: center; }
+.account-file-picker:hover { border-color: var(--admin-blue); background: rgba(91,140,255,.06); }
+.account-file-picker > span { font-size: 13px; font-weight: 700; }
+.account-file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.account-file-picker strong { max-width: 100%; overflow: hidden; color: var(--admin-muted); font-size: 11px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.account-import-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.account-import-status { min-height: 20px; color: var(--admin-muted); font-size: 11px; line-height: 1.7; }
+.account-import-status.error { color: #ff7b8b; }
+.account-import-status.success { color: var(--admin-green); }
+.account-import-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.account-import-summary[hidden] { display: none; }
+.account-import-summary > div { padding: 15px; display: grid; gap: 4px; border: 1px solid var(--admin-border); border-radius: 9px; background: #0e1526; }
+.account-import-summary span { color: var(--admin-muted); font-size: 10px; }
+.account-import-summary strong { color: var(--admin-text); font-size: 21px; }
+
 .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
 .status-card { gap: 14px; min-height: 94px; padding: 18px; border: 1px solid var(--admin-border); border-radius: 12px; background: var(--admin-panel); }
 .status-card h3 { font-size: 13px; }
@@ -320,4 +336,5 @@ input.admin-input { min-width: 240px; }
   .problem-importer summary,
   .problem-importer-actions { align-items: flex-start; flex-direction: column; }
   .problem-importer summary small { margin-left: 0; }
+  .account-import-summary { grid-template-columns: 1fr; }
 }

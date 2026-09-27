@@ -438,14 +438,35 @@ class App {
     const dialog = document.getElementById('username-login');
     const form = document.getElementById('username-login-form');
     const input = document.getElementById('username-login-input');
+    const nameField = document.getElementById('username-login-name-field');
+    const passwordField = document.getElementById('username-login-password-field');
+    const passwordInput = document.getElementById('username-login-password');
+    const confirmField = document.getElementById('username-login-confirm-field');
+    const confirmInput = document.getElementById('username-login-confirm');
     const status = document.getElementById('username-login-status');
     const title = document.getElementById('username-login-title');
+    const description = document.getElementById('username-login-description');
     const submit = document.getElementById('username-login-submit');
+    const skip = document.getElementById('username-login-skip');
+    const back = document.getElementById('username-login-back');
     const changing = Boolean(this.username);
+    let step = 'username';
+    let pendingUsername = '';
 
     title.textContent = changing ? '修改用户名' : '登录机创 OJ';
-    submit.textContent = changing ? '确认修改' : '进入平台';
+    description.textContent = '请输入用户名，用于提交记录显示';
+    submit.textContent = '下一步';
     input.value = this.username;
+    input.disabled = false;
+    nameField.hidden = false;
+    passwordField.hidden = true;
+    confirmField.hidden = true;
+    passwordInput.value = '';
+    confirmInput.value = '';
+    passwordInput.required = false;
+    confirmInput.required = false;
+    skip.hidden = true;
+    back.hidden = true;
     status.textContent = '';
     dialog.hidden = false;
     document.body.classList.add('username-locked');
@@ -454,15 +475,7 @@ class App {
     setTimeout(() => input.focus(), 0);
 
     return new Promise(resolve => {
-      const handleSubmit = event => {
-        event.preventDefault();
-        const name = input.value.trim();
-        if (!name) {
-          status.textContent = '请输入用户名后才能进入平台';
-          input.focus();
-          return;
-        }
-
+      const finishLogin = name => {
         this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
         clearTimeout(this.codeSaveTimer);
         this.username = name;
@@ -472,13 +485,140 @@ class App {
         this._trackView(this.currentProblem?.id || '');
 
         form.removeEventListener('submit', handleSubmit);
+        skip.removeEventListener('click', handleSkip);
+        back.removeEventListener('click', handleBack);
         dialog.hidden = true;
         document.body.classList.remove('username-locked');
         lockedPageElements.forEach(element => { element.inert = false; });
         resolve(this.username);
       };
+
+      const showPasswordStep = (name, hasPassword, serviceUnavailable = false) => {
+        pendingUsername = name;
+        step = hasPassword ? 'login-password' : 'set-password';
+        nameField.hidden = true;
+        input.disabled = true;
+        passwordField.hidden = false;
+        confirmField.hidden = hasPassword;
+        passwordInput.required = true;
+        passwordInput.minLength = hasPassword ? 1 : 8;
+        passwordInput.autocomplete = hasPassword ? 'current-password' : 'new-password';
+        confirmInput.required = !hasPassword;
+        skip.hidden = hasPassword;
+        back.hidden = false;
+        title.textContent = hasPassword ? '输入账号密码' : '设置账号密码';
+        description.textContent = hasPassword
+          ? `账号“${name}”已设置密码，请验证后进入`
+          : serviceUnavailable
+            ? '账号服务暂时无法连接，你可以稍后重试或暂时跳过'
+            : '该账号还没有密码，可以现在设置，也可以暂时跳过';
+        submit.textContent = hasPassword ? '登录' : '设置密码并进入';
+        status.textContent = '';
+        setTimeout(() => passwordInput.focus(), 0);
+      };
+
+      const handleSubmit = async event => {
+        event.preventDefault();
+        submit.disabled = true;
+        status.textContent = '';
+        try {
+          if (step === 'username') {
+            const name = input.value.trim().normalize('NFC');
+            if (!name) {
+              status.textContent = '请输入用户名后才能进入平台';
+              input.focus();
+              return;
+            }
+            if (name.length > 50) {
+              status.textContent = '用户名不能超过 50 个字符';
+              return;
+            }
+            status.textContent = '正在检查账号...';
+            try {
+              const account = await this._studentAccountRequest('student_account_status', { username: name });
+              showPasswordStep(name, account.hasPassword);
+            } catch (error) {
+              showPasswordStep(name, false, true);
+              status.textContent = error.message;
+            }
+            return;
+          }
+
+          const password = passwordInput.value;
+          if (step === 'login-password') {
+            if (!password) {
+              status.textContent = '请输入密码';
+              passwordInput.focus();
+              return;
+            }
+            status.textContent = '正在验证密码...';
+            await this._studentAccountRequest('student_login', { username: pendingUsername, password });
+            finishLogin(pendingUsername);
+            return;
+          }
+
+          if (password.length < 8) {
+            status.textContent = '新密码至少需要 8 个字符，或者选择暂不设置';
+            passwordInput.focus();
+            return;
+          }
+          if (password !== confirmInput.value) {
+            status.textContent = '两次输入的密码不一致';
+            confirmInput.focus();
+            return;
+          }
+          status.textContent = '正在设置密码...';
+          await this._studentAccountRequest('student_set_password', {
+            username: pendingUsername,
+            password,
+          });
+          finishLogin(pendingUsername);
+        } catch (error) {
+          status.textContent = error.message || '账号操作失败，请稍后重试';
+        } finally {
+          submit.disabled = false;
+        }
+      };
+
+      const handleSkip = () => {
+        if (step === 'set-password' && pendingUsername) finishLogin(pendingUsername);
+      };
+
+      const handleBack = () => {
+        step = 'username';
+        pendingUsername = '';
+        title.textContent = changing ? '修改用户名' : '登录机创 OJ';
+        description.textContent = '请输入用户名，用于提交记录显示';
+        submit.textContent = '下一步';
+        nameField.hidden = false;
+        input.disabled = false;
+        passwordField.hidden = true;
+        confirmField.hidden = true;
+        passwordInput.required = false;
+        confirmInput.required = false;
+        passwordInput.value = '';
+        confirmInput.value = '';
+        skip.hidden = true;
+        back.hidden = true;
+        status.textContent = '';
+        input.focus();
+      };
+
       form.addEventListener('submit', handleSubmit);
+      skip.addEventListener('click', handleSkip);
+      back.addEventListener('click', handleBack);
     });
+  }
+
+  async _studentAccountRequest(type, payload) {
+    const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, ...payload }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `账号服务请求失败 (${response.status})`);
+    return result;
   }
 
   _codeCacheKey(languageId = document.getElementById('language-select')?.value) {

@@ -9,20 +9,32 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260926-13">
+  <link rel="stylesheet" href="css/style.css?v=20260927-14">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
     <form id="username-login-form" class="username-login-card">
       <img src="assets/logo-circle.png?v=20260920-2" alt="">
       <h2 id="username-login-title">登录机创 OJ</h2>
-      <p>请输入用户名，用于提交记录显示</p>
-      <label>
+      <p id="username-login-description">请输入用户名，用于提交记录显示</p>
+      <label id="username-login-name-field">
         <span>用户名</span>
         <input id="username-login-input" type="text" maxlength="50" autocomplete="username" required placeholder="请输入用户名">
       </label>
+      <label id="username-login-password-field" hidden>
+        <span>密码</span>
+        <input id="username-login-password" type="password" maxlength="128" autocomplete="current-password" placeholder="请输入密码">
+      </label>
+      <label id="username-login-confirm-field" hidden>
+        <span>确认密码</span>
+        <input id="username-login-confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="请再次输入密码">
+      </label>
       <p id="username-login-status" class="username-login-status" role="alert"></p>
-      <button id="username-login-submit" class="btn btn-primary" type="submit">进入平台</button>
+      <div class="username-login-actions">
+        <button id="username-login-back" class="btn" type="button" hidden>返回</button>
+        <button id="username-login-skip" class="btn" type="button" hidden>暂不设置</button>
+        <button id="username-login-submit" class="btn btn-primary" type="submit">下一步</button>
+      </div>
     </form>
   </section>
   <!-- 顶部导航 -->
@@ -148,6 +160,6 @@
   <script src="vendor/katex/katex.min.js?v=0.18.7"></script>
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
-  <script src="js/app.js?v=20260926-07"></script>
+  <script src="js/app.js?v=20260927-08"></script>
 </body>
 </html>

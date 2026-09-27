@@ -54,3 +54,19 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires
   ON admin_sessions(expires_at);
+
+-- 学生账号保持轻量：用户名唯一，密码只保存带盐 PBKDF2 摘要。
+-- password_hash 为空表示该学生选择了无密码方式。
+CREATE TABLE IF NOT EXISTS student_accounts (
+  username TEXT PRIMARY KEY,
+  password_salt TEXT,
+  password_hash TEXT,
+  password_iterations INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  CHECK (
+    (password_salt IS NULL AND password_hash IS NULL AND password_iterations IS NULL)
+    OR
+    (password_salt IS NOT NULL AND password_hash IS NOT NULL AND password_iterations IS NOT NULL)
+  )
+);

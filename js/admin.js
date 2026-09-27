@@ -19,6 +19,9 @@ class OJAdmin {
     this.filteredSubmissions = [];
     this.problemImages = [];
     this.editingProblem = null;
+    this.studentAccountFile = null;
+    this.studentAccountWorkbook = null;
+    this.studentAccountExportName = '';
     this.controlsBound = false;
   }
 
@@ -131,6 +134,11 @@ class OJAdmin {
     document.getElementById('submission-problem').addEventListener('change', () => this.renderSubmissions());
     document.getElementById('submission-result').addEventListener('change', () => this.renderSubmissions());
     document.getElementById('export-submissions').addEventListener('click', () => this.exportSubmissions());
+    document.getElementById('student-account-file').addEventListener('change', event => {
+      this.selectStudentAccountFile(event.target.files?.[0] || null);
+    });
+    document.getElementById('import-student-accounts').addEventListener('click', () => this.importStudentAccounts());
+    document.getElementById('download-student-accounts').addEventListener('click', () => this.downloadStudentAccounts());
     document.getElementById('admin-ranking-scope').addEventListener('change', event => {
       this.renderLeaderboard(event.target.value);
     });
@@ -280,6 +288,241 @@ class OJAdmin {
     clearTimeout(timeoutId);
     if (!response.ok) throw new Error(`Worker: HTTP ${response.status}`);
     return response.json();
+  }
+
+  selectStudentAccountFile(file) {
+    const status = document.getElementById('student-account-status');
+    this.studentAccountFile = file;
+    this.studentAccountWorkbook = null;
+    this.studentAccountExportName = '';
+    document.getElementById('student-account-file-name').textContent = file
+      ? `${file.name} · ${this.formatFileSize(file.size)}`
+      : '尚未选择文件';
+    document.getElementById('import-student-accounts').disabled = !file;
+    document.getElementById('download-student-accounts').disabled = true;
+    document.getElementById('student-account-summary').hidden = true;
+    status.className = 'account-import-status';
+    status.textContent = file
+      ? '文件已选择。点击“生成密码并注册账号”开始处理。'
+      : '已有密码会保留；密码为空时会生成 16 位高随机密码。账号密码只以带盐哈希保存到服务器。';
+  }
+
+  async importStudentAccounts() {
+    const file = this.studentAccountFile;
+    const button = document.getElementById('import-student-accounts');
+    const downloadButton = document.getElementById('download-student-accounts');
+    const status = document.getElementById('student-account-status');
+    if (!file) return;
+    if (!window.XLSX) {
+      status.className = 'account-import-status error';
+      status.textContent = 'Excel 组件加载失败，请刷新管理页面后重试。';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      status.className = 'account-import-status error';
+      status.textContent = 'Excel 文件不能超过 10 MB。';
+      return;
+    }
+
+    button.disabled = true;
+    downloadButton.disabled = true;
+    status.className = 'account-import-status';
+    status.textContent = '正在读取 Excel 并识别姓名、密码列...';
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), {
+        type: 'array',
+        cellDates: true,
+        cellStyles: true,
+      });
+      const prepared = this.prepareStudentAccountWorkbook(workbook);
+      if (!prepared.accounts.length) throw new Error('没有找到可注册的姓名，请检查表头和名单内容');
+
+      const hashedAccounts = [];
+      for (let index = 0; index < prepared.accounts.length; index++) {
+        if (index === 0 || index % 10 === 0) {
+          status.textContent = `正在本机加密账号密码 ${index + 1}/${prepared.accounts.length}...`;
+        }
+        const account = prepared.accounts[index];
+        hashedAccounts.push({
+          username: account.username,
+          ...await this.hashStudentPassword(account.password),
+        });
+      }
+
+      status.textContent = `正在注册 ${hashedAccounts.length} 个账号...`;
+      const response = await fetch(this.config.workerUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'admin_import_students', accounts: hashedAccounts }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 401) this.lockExpiredSession();
+      if (!response.ok) throw new Error(result.error || `账号注册失败 (${response.status})`);
+
+      this.studentAccountWorkbook = workbook;
+      this.studentAccountExportName = `${file.name.replace(/\.[^.]+$/, '')}-已更新账号.xlsx`;
+      document.getElementById('account-summary-total').textContent = prepared.accounts.length;
+      document.getElementById('account-summary-existing').textContent = prepared.existingCount;
+      document.getElementById('account-summary-generated').textContent = prepared.generatedCount;
+      document.getElementById('student-account-summary').hidden = false;
+      downloadButton.disabled = false;
+      status.className = 'account-import-status success';
+      status.textContent = `注册完成：${result.imported} 个账号已更新。请导出并妥善保存新 Excel，服务器不保存明文密码。`;
+    } catch (error) {
+      this.studentAccountWorkbook = null;
+      this.studentAccountExportName = '';
+      status.className = 'account-import-status error';
+      status.textContent = error.message || 'Excel 处理失败';
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  prepareStudentAccountWorkbook(workbook) {
+    const nameHeaders = new Set(['姓名', '学生姓名', '名字', '用户名', 'name', 'username']);
+    const passwordHeaders = new Set(['密码', '登录密码', '初始密码', 'password']);
+    const occurrences = [];
+
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet?.['!ref']) continue;
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+      let section = null;
+      for (let row = range.s.r; row <= Math.min(range.e.r, range.s.r + 29); row++) {
+        let nameColumn = -1;
+        let passwordColumn = -1;
+        for (let column = range.s.c; column <= range.e.c; column++) {
+          const text = this.accountCellText(sheet[XLSX.utils.encode_cell({ r: row, c: column })]);
+          const normalized = text.toLowerCase().replace(/[\s:：]/g, '');
+          if (nameHeaders.has(normalized)) nameColumn = column;
+          if (passwordHeaders.has(normalized)) passwordColumn = column;
+        }
+        if (nameColumn !== -1) {
+          section = {
+            sheet,
+            range,
+            headerRow: row,
+            nameColumn,
+            passwordColumn: passwordColumn === -1 ? range.e.c + 1 : passwordColumn,
+          };
+          break;
+        }
+      }
+      if (!section) continue;
+
+      const passwordHeaderAddress = XLSX.utils.encode_cell({
+        r: section.headerRow,
+        c: section.passwordColumn,
+      });
+      if (!section.sheet[passwordHeaderAddress]) {
+        section.sheet[passwordHeaderAddress] = { t: 's', v: '密码' };
+        section.range.e.c = Math.max(section.range.e.c, section.passwordColumn);
+        section.sheet['!ref'] = XLSX.utils.encode_range(section.range);
+      }
+
+      for (let row = section.headerRow + 1; row <= section.range.e.r; row++) {
+        const nameAddress = XLSX.utils.encode_cell({ r: row, c: section.nameColumn });
+        const passwordAddress = XLSX.utils.encode_cell({ r: row, c: section.passwordColumn });
+        const username = this.accountCellText(section.sheet[nameAddress]).trim().normalize('NFC');
+        if (!username) continue;
+        if (username.length > 50 || /[\u0000-\u001f\u007f]/.test(username)) {
+          throw new Error(`工作表“${sheetName}”第 ${row + 1} 行姓名格式不正确`);
+        }
+        occurrences.push({
+          sheet: section.sheet,
+          passwordAddress,
+          username,
+          password: this.accountCellText(section.sheet[passwordAddress]),
+        });
+      }
+    }
+
+    if (!occurrences.length) return { accounts: [], existingCount: 0, generatedCount: 0 };
+    const passwords = new Map();
+    const existingUsers = new Set();
+    for (const occurrence of occurrences) {
+      if (!occurrence.password) continue;
+      if (occurrence.password.length > 128) throw new Error(`“${occurrence.username}”的密码超过 128 个字符`);
+      const known = passwords.get(occurrence.username);
+      if (known && known !== occurrence.password) {
+        throw new Error(`姓名“${occurrence.username}”在表格中出现了不同密码，请先统一`);
+      }
+      passwords.set(occurrence.username, occurrence.password);
+      existingUsers.add(occurrence.username);
+    }
+
+    const generatedUsers = new Set();
+    const usedPasswords = new Set(passwords.values());
+    for (const occurrence of occurrences) {
+      let password = passwords.get(occurrence.username);
+      if (!password) {
+        do { password = this.generateStudentPassword(); } while (usedPasswords.has(password));
+        passwords.set(occurrence.username, password);
+        usedPasswords.add(password);
+        generatedUsers.add(occurrence.username);
+      }
+      if (!occurrence.password) occurrence.sheet[occurrence.passwordAddress] = { t: 's', v: password };
+    }
+
+    return {
+      accounts: Array.from(passwords, ([username, password]) => ({ username, password })),
+      existingCount: existingUsers.size,
+      generatedCount: generatedUsers.size,
+    };
+  }
+
+  accountCellText(cell) {
+    if (!cell || cell.v == null) return '';
+    return String(cell.v).trim();
+  }
+
+  generateStudentPassword() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%_-';
+    const limit = Math.floor(256 / alphabet.length) * alphabet.length;
+    let password = '';
+    while (password.length < 16) {
+      const bytes = new Uint8Array(24);
+      crypto.getRandomValues(bytes);
+      for (const byte of bytes) {
+        if (byte < limit) password += alphabet[byte % alphabet.length];
+        if (password.length === 16) break;
+      }
+    }
+    return password;
+  }
+
+  async hashStudentPassword(password) {
+    const saltBytes = new Uint8Array(16);
+    crypto.getRandomValues(saltBytes);
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits'],
+    );
+    const bits = await crypto.subtle.deriveBits({
+      name: 'PBKDF2',
+      hash: 'SHA-256',
+      salt: saltBytes,
+      iterations: 100000,
+    }, key, 256);
+    return {
+      salt: this.bytesToBase64Url(saltBytes),
+      hash: this.bytesToBase64Url(new Uint8Array(bits)),
+    };
+  }
+
+  bytesToBase64Url(bytes) {
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  downloadStudentAccounts() {
+    if (!this.studentAccountWorkbook || !this.studentAccountExportName) return;
+    XLSX.writeFile(this.studentAccountWorkbook, this.studentAccountExportName, { compression: true });
   }
 
   renderAll() {

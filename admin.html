@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="assets/logo-circle.png?v=20260920-2">
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260926-03">
+  <link rel="stylesheet" href="css/admin.css?v=20260927-04">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -48,6 +48,7 @@
     <aside class="admin-sidebar">
       <nav>
         <button class="admin-nav-item active" data-panel="overview"><span>▦</span> 数据总览</button>
+        <button class="admin-nav-item" data-panel="accounts"><span>♙</span> 账号管理</button>
         <button class="admin-nav-item" data-panel="problems"><span>◇</span> 题目管理</button>
         <button class="admin-nav-item" data-panel="submissions"><span>☷</span> 提交记录</button>
         <button class="admin-nav-item" data-panel="leaderboards"><span>♛</span> 排行榜</button>
@@ -55,7 +56,7 @@
       </nav>
       <div class="admin-sidebar-note">
         <strong>安全模式</strong>
-        <p>新增和编辑操作均由 Worker 验证管理员密码。</p>
+        <p>高权限操作均由 Worker 验证短期管理会话。</p>
       </div>
     </aside>
 
@@ -90,6 +91,34 @@
             <div class="table-wrap"><table class="admin-table"><thead><tr><th>题号</th><th>题目</th><th>浏览人数</th></tr></thead><tbody id="problem-visitors"></tbody></table></div>
           </article>
         </div>
+      </section>
+
+      <section id="panel-accounts" class="admin-panel">
+        <div class="admin-page-title">
+          <div><p class="eyebrow">ACCOUNTS</p><h2>学生账号管理</h2><p>从 Excel 的姓名列批量注册账号，并补全空白密码</p></div>
+        </div>
+        <article class="admin-card account-import-card">
+          <div class="card-heading">
+            <div><h3>导入学生名单</h3><p>自动识别“姓名/名字/用户名”和“密码”表头，其他工作表及列保持不变</p></div>
+          </div>
+          <div class="account-import-body">
+            <label class="account-file-picker">
+              <span>选择 Excel 文件</span>
+              <input id="student-account-file" type="file" accept=".xlsx,.xls,.xlsm,.xlsb">
+              <strong id="student-account-file-name">尚未选择文件</strong>
+            </label>
+            <div class="account-import-actions">
+              <button id="import-student-accounts" type="button" class="admin-button primary" disabled>生成密码并注册账号</button>
+              <button id="download-student-accounts" type="button" class="admin-button secondary" disabled>⇩ 导出更新后的 Excel</button>
+            </div>
+            <p id="student-account-status" class="account-import-status" role="status">已有密码会保留；密码为空时会生成 16 位高随机密码。账号密码只以带盐哈希保存到服务器。</p>
+            <div id="student-account-summary" class="account-import-summary" hidden>
+              <div><span>识别账号</span><strong id="account-summary-total">0</strong></div>
+              <div><span>保留密码</span><strong id="account-summary-existing">0</strong></div>
+              <div><span>生成密码</span><strong id="account-summary-generated">0</strong></div>
+            </div>
+          </div>
+        </article>
       </section>
 
       <section id="panel-problems" class="admin-panel">
@@ -212,6 +241,7 @@
   </div>
 
   <div id="admin-toast" class="admin-toast" role="status"></div>
-  <script src="js/admin.js?v=20260927-02"></script>
+  <script src="vendor/xlsx/xlsx.full.min.js?v=0.20.3"></script>
+  <script src="js/admin.js?v=20260927-03"></script>
 </body>
 </html>

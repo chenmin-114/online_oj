@@ -25,6 +25,7 @@ const SECURITY_HEADERS = {
 const ALLOWED_ORIGIN = 'https://jc-oj.online';
 const ADMIN_SESSION_COOKIE = '__Host-oj_admin_session';
 const ADMIN_SESSION_TTL_SECONDS = 2 * 60 * 60;
+const STUDENT_PASSWORD_ITERATIONS = 100000;
 
 const CORS_HEADERS = {
   ...SECURITY_HEADERS,
@@ -160,6 +161,22 @@ export default {
         return jsonResponse({ success: true }, 200, {
           'Set-Cookie': buildAdminSessionCookie('', 0),
         });
+      } else if (body.type === 'admin_import_students') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminImportStudents(body, env);
+      } else if (body.type === 'student_account_status') {
+        const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
+        if (rateLimitError) return rateLimitError;
+        return await handleStudentAccountStatus(body, env);
+      } else if (body.type === 'student_login') {
+        const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
+        if (rateLimitError) return rateLimitError;
+        return await handleStudentLogin(body, env);
+      } else if (body.type === 'student_set_password') {
+        const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
+        if (rateLimitError) return rateLimitError;
+        return await handleStudentSetPassword(body, env);
       } else if (body.type === 'analytics_view') {
         const rateLimitError = await enforceRateLimit(env.ANALYTICS_RATE_LIMITER, request, 'analytics');
         if (rateLimitError) return rateLimitError;
@@ -213,6 +230,8 @@ async function enforceRateLimit(limiter, request, scope) {
   const response = jsonResponse({
     error: scope === 'admin-login'
       ? '登录尝试过于频繁，请一分钟后再试'
+      : scope === 'student-auth'
+        ? '账号操作过于频繁，请一分钟后再试'
       : '请求过于频繁，请稍后再试',
     code: 'RATE_LIMITED',
   }, 429);
@@ -313,6 +332,145 @@ function bytesToBase64Url(bytes) {
 async function sha256Hex(value) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function normalizeStudentUsername(value) {
+  const username = String(value || '').trim().normalize('NFC');
+  if (!username || username.length > 50 || /[\u0000-\u001f\u007f]/.test(username)) return '';
+  return username;
+}
+
+async function handleStudentAccountStatus(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const username = normalizeStudentUsername(body.username);
+  if (!username) return jsonResponse({ error: '用户名格式不正确' }, 400);
+  const account = await env.OJ_DB.prepare(`
+    SELECT password_hash
+    FROM student_accounts
+    WHERE username = ?1
+  `).bind(username).first();
+  return jsonResponse({ registered: Boolean(account), hasPassword: Boolean(account?.password_hash) });
+}
+
+async function handleStudentLogin(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const username = normalizeStudentUsername(body.username);
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!username || !password || password.length > 128) {
+    return jsonResponse({ error: '用户名或密码错误' }, 401);
+  }
+  const account = await env.OJ_DB.prepare(`
+    SELECT password_salt, password_hash, password_iterations
+    FROM student_accounts
+    WHERE username = ?1
+  `).bind(username).first();
+  if (!account?.password_hash || !account.password_salt) {
+    return jsonResponse({ error: '用户名或密码错误' }, 401);
+  }
+  const iterations = Number(account.password_iterations);
+  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 1000000) {
+    return jsonResponse({ error: '账号密码数据异常，请联系管理员' }, 503);
+  }
+  const candidateHash = await deriveStudentPasswordHash(password, account.password_salt, iterations);
+  if (!await secureTextEqual(candidateHash, account.password_hash)) {
+    return jsonResponse({ error: '用户名或密码错误' }, 401);
+  }
+  return jsonResponse({ success: true });
+}
+
+async function handleStudentSetPassword(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const username = normalizeStudentUsername(body.username);
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!username) return jsonResponse({ error: '用户名格式不正确' }, 400);
+  if (password.length < 8 || password.length > 128) {
+    return jsonResponse({ error: '密码长度需要为 8 到 128 个字符' }, 400);
+  }
+
+  const saltBytes = new Uint8Array(16);
+  crypto.getRandomValues(saltBytes);
+  const salt = bytesToBase64Url(saltBytes);
+  const hash = await deriveStudentPasswordHash(password, salt, STUDENT_PASSWORD_ITERATIONS);
+  const now = Date.now();
+  const result = await env.OJ_DB.prepare(`
+    INSERT INTO student_accounts (
+      username, password_salt, password_hash, password_iterations, created_at, updated_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+    ON CONFLICT(username) DO UPDATE SET
+      password_salt = excluded.password_salt,
+      password_hash = excluded.password_hash,
+      password_iterations = excluded.password_iterations,
+      updated_at = excluded.updated_at
+    WHERE student_accounts.password_hash IS NULL
+  `).bind(username, salt, hash, STUDENT_PASSWORD_ITERATIONS, now).run();
+  if (!Number(result.meta?.changes)) {
+    return jsonResponse({ error: '该账号已经设置密码，请返回后输入原密码' }, 409);
+  }
+  return jsonResponse({ success: true });
+}
+
+async function handleAdminImportStudents(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  if (!Array.isArray(body.accounts) || body.accounts.length < 1 || body.accounts.length > 2000) {
+    return jsonResponse({ error: '账号数量必须在 1 到 2000 之间' }, 400);
+  }
+
+  const accounts = new Map();
+  for (const item of body.accounts) {
+    const username = normalizeStudentUsername(item?.username);
+    const salt = String(item?.salt || '');
+    const hash = String(item?.hash || '');
+    if (!username || !/^[A-Za-z0-9_-]{22}$/.test(salt) || !/^[A-Za-z0-9_-]{43}$/.test(hash)) {
+      return jsonResponse({ error: '账号数据格式不正确' }, 400);
+    }
+    accounts.set(username, { username, salt, hash });
+  }
+
+  const now = Date.now();
+  const statements = Array.from(accounts.values()).map(account => env.OJ_DB.prepare(`
+    INSERT INTO student_accounts (
+      username, password_salt, password_hash, password_iterations, created_at, updated_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+    ON CONFLICT(username) DO UPDATE SET
+      password_salt = excluded.password_salt,
+      password_hash = excluded.password_hash,
+      password_iterations = excluded.password_iterations,
+      updated_at = excluded.updated_at
+  `).bind(
+    account.username,
+    account.salt,
+    account.hash,
+    STUDENT_PASSWORD_ITERATIONS,
+    now,
+  ));
+  for (let index = 0; index < statements.length; index += 100) {
+    await env.OJ_DB.batch(statements.slice(index, index + 100));
+  }
+  return jsonResponse({ success: true, imported: statements.length });
+}
+
+async function deriveStudentPasswordHash(password, salt, iterations) {
+  const passwordKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  const bits = await crypto.subtle.deriveBits({
+    name: 'PBKDF2',
+    hash: 'SHA-256',
+    salt: base64UrlToBytes(salt),
+    iterations,
+  }, passwordKey, 256);
+  return bytesToBase64Url(new Uint8Array(bits));
+}
+
+function base64UrlToBytes(value) {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+  const binary = atob(padded);
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
 }
 
 async function secureTextEqual(left, right) {
