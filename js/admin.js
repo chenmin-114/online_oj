@@ -19,14 +19,14 @@ class OJAdmin {
     this.filteredSubmissions = [];
     this.problemImages = [];
     this.editingProblem = null;
-    this.adminPassword = '';
     this.controlsBound = false;
   }
 
   async init() {
     this.bindLogin();
-    const savedPassword = sessionStorage.getItem('oj_admin_password');
-    if (savedPassword) await this.login(savedPassword, true);
+    // 清除旧版本曾保存的管理员原始密码。
+    sessionStorage.removeItem('oj_admin_password');
+    await this.restoreSession();
   }
 
   bindLogin() {
@@ -36,7 +36,42 @@ class OJAdmin {
     });
   }
 
-  async login(password, silent = false) {
+  async restoreSession() {
+    try {
+      const response = await fetch(this.config.workerUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'admin_session' }),
+      });
+      if (!response.ok) return;
+      await this.activateSession();
+    } catch {
+      // 首次访问或网络暂不可用时保留登录界面。
+    }
+  }
+
+  async activateSession() {
+    document.body.classList.remove('auth-locked');
+    document.getElementById('admin-login').hidden = true;
+    document.getElementById('admin-password').value = '';
+    if (!this.controlsBound) {
+      this.bindNavigation();
+      this.bindControls();
+      this.controlsBound = true;
+    }
+    this.renderGroupSwitcher();
+    await this.loadAll();
+  }
+
+  lockExpiredSession() {
+    document.body.classList.add('auth-locked');
+    document.getElementById('admin-login').hidden = false;
+    document.getElementById('admin-login-status').textContent = '登录已过期，请重新输入密码';
+    document.getElementById('admin-password').focus();
+  }
+
+  async login(password) {
     const button = document.getElementById('admin-login-button');
     const status = document.getElementById('admin-login-status');
     button.disabled = true;
@@ -46,42 +81,35 @@ class OJAdmin {
     try {
       const response = await fetch(this.config.workerUrl, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'admin_login', password }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || `登录失败 (${response.status})`);
 
-      this.adminPassword = password;
-      sessionStorage.setItem('oj_admin_password', password);
-      document.body.classList.remove('auth-locked');
-      document.getElementById('admin-login').hidden = true;
-      if (!this.controlsBound) {
-        this.bindNavigation();
-        this.bindControls();
-        this.controlsBound = true;
-      }
-      this.renderGroupSwitcher();
-      await this.loadAll();
+      await this.activateSession();
     } catch (error) {
-      sessionStorage.removeItem('oj_admin_password');
-      this.adminPassword = '';
       document.body.classList.add('auth-locked');
       document.getElementById('admin-login').hidden = false;
-      status.textContent = silent ? '登录已失效，请重新输入密码' : error.message;
+      status.textContent = error.message;
     } finally {
       button.disabled = false;
       button.textContent = '登录';
     }
   }
 
-  adminHeaders(extra = {}) {
-    return { ...extra, 'X-Admin-Password': this.adminPassword };
-  }
-
-  logout() {
-    sessionStorage.removeItem('oj_admin_password');
-    location.reload();
+  async logout() {
+    try {
+      await fetch(this.config.workerUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'admin_logout' }),
+      });
+    } finally {
+      location.reload();
+    }
   }
 
   bindNavigation() {
@@ -228,8 +256,9 @@ class OJAdmin {
     const separator = url.includes('?') ? '&' : '?';
     const response = await fetch(`${url}${separator}group=${encodeURIComponent(this.group)}&t=${Date.now()}`, {
       cache: 'no-store',
-      headers: this.adminHeaders(),
+      credentials: 'include',
     });
+    if (response.status === 401) this.lockExpiredSession();
     if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
     return response.json();
   }
@@ -243,7 +272,8 @@ class OJAdmin {
     const timeoutId = setTimeout(() => controller.abort(), 6000);
     const response = await fetch(this.config.workerUrl, {
       method: 'POST',
-      headers: this.adminHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'health' }),
       signal: controller.signal,
     });
@@ -991,7 +1021,8 @@ class OJAdmin {
       if (images.length) status.textContent = '正在上传图片并发布题目';
       const response = await fetch(this.config.workerUrl, {
         method: 'POST',
-        headers: this.adminHeaders({ 'Content-Type': 'application/json' }),
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: isEditing ? 'update_problem' : 'create_problem',
           group: this.group,
@@ -1001,6 +1032,7 @@ class OJAdmin {
         }),
       });
       const result = await response.json().catch(() => ({}));
+      if (response.status === 401) this.lockExpiredSession();
       if (!response.ok) throw new Error(result.error || `发布失败 (${response.status})`);
 
       if (isEditing) {

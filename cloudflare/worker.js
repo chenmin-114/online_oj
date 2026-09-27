@@ -23,13 +23,17 @@ const SECURITY_HEADERS = {
 };
 
 const ALLOWED_ORIGIN = 'https://jc-oj.online';
+const ADMIN_SESSION_COOKIE = '__Host-oj_admin_session';
+const ADMIN_SESSION_TTL_SECONDS = 2 * 60 * 60;
 
 const CORS_HEADERS = {
   ...SECURITY_HEADERS,
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Credentials': 'true',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Password',
+  'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Max-Age': '86400',
+  'Vary': 'Origin',
 };
 
 // 允许读取的数据文件白名单：查询参数不能直接拼进 GitHub 路径
@@ -142,7 +146,20 @@ export default {
         if (!await secureTextEqual(body.password, env.ADMIN_PASSWORD)) {
           return await failedAdminAuthResponse(request, env, '管理员密码错误');
         }
+        const session = await createAdminSession(env);
+        if (session.error) return session.error;
+        return jsonResponse({ success: true, expiresIn: ADMIN_SESSION_TTL_SECONDS }, 200, {
+          'Set-Cookie': buildAdminSessionCookie(session.token, ADMIN_SESSION_TTL_SECONDS),
+        });
+      } else if (body.type === 'admin_session') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
         return jsonResponse({ success: true });
+      } else if (body.type === 'admin_logout') {
+        await revokeAdminSession(request, env);
+        return jsonResponse({ success: true }, 200, {
+          'Set-Cookie': buildAdminSessionCookie('', 0),
+        });
       } else if (body.type === 'analytics_view') {
         const rateLimitError = await enforceRateLimit(env.ANALYTICS_RATE_LIMITER, request, 'analytics');
         if (rateLimitError) return rateLimitError;
@@ -212,11 +229,90 @@ async function requireAdmin(request, env) {
   if (!env.ADMIN_PASSWORD) {
     return jsonResponse({ error: '管理员密码尚未配置' }, 503);
   }
-  const password = request.headers.get('X-Admin-Password') || '';
-  if (!await secureTextEqual(password, env.ADMIN_PASSWORD)) {
-    return await failedAdminAuthResponse(request, env, '管理员身份验证失败，请重新登录');
+  if (!env.OJ_DB) {
+    return jsonResponse({ error: '管理员会话数据库尚未配置' }, 503);
+  }
+  const token = readCookie(request, ADMIN_SESSION_COOKIE);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    return adminSessionErrorResponse();
+  }
+
+  const sessionHash = await sha256Hex(token);
+  const now = Date.now();
+  const session = await env.OJ_DB.prepare(`
+    SELECT expires_at
+    FROM admin_sessions
+    WHERE session_hash = ?1
+  `).bind(sessionHash).first();
+  if (!session || Number(session.expires_at) <= now) {
+    if (session) {
+      await env.OJ_DB.prepare('DELETE FROM admin_sessions WHERE session_hash = ?1')
+        .bind(sessionHash).run();
+    }
+    return adminSessionErrorResponse();
   }
   return null;
+}
+
+function adminSessionErrorResponse() {
+  return jsonResponse({ error: '管理员登录已失效，请重新登录' }, 401, {
+    'Set-Cookie': buildAdminSessionCookie('', 0),
+  });
+}
+
+async function createAdminSession(env) {
+  if (!env.OJ_DB) {
+    return { error: jsonResponse({ error: '管理员会话数据库尚未配置' }, 503) };
+  }
+  const randomBytes = new Uint8Array(32);
+  crypto.getRandomValues(randomBytes);
+  const token = bytesToBase64Url(randomBytes);
+  const sessionHash = await sha256Hex(token);
+  const createdAt = Date.now();
+  const expiresAt = createdAt + ADMIN_SESSION_TTL_SECONDS * 1000;
+  await env.OJ_DB.batch([
+    env.OJ_DB.prepare('DELETE FROM admin_sessions WHERE expires_at <= ?1').bind(createdAt),
+    env.OJ_DB.prepare(`
+      INSERT INTO admin_sessions (session_hash, created_at, expires_at)
+      VALUES (?1, ?2, ?3)
+    `).bind(sessionHash, createdAt, expiresAt),
+  ]);
+  return { token };
+}
+
+async function revokeAdminSession(request, env) {
+  if (!env.OJ_DB) return;
+  const token = readCookie(request, ADMIN_SESSION_COOKIE);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return;
+  await env.OJ_DB.prepare('DELETE FROM admin_sessions WHERE session_hash = ?1')
+    .bind(await sha256Hex(token)).run();
+}
+
+function readCookie(request, name) {
+  const cookieHeader = request.headers.get('Cookie') || '';
+  for (const item of cookieHeader.split(';')) {
+    const separator = item.indexOf('=');
+    if (separator === -1) continue;
+    if (item.slice(0, separator).trim() === name) {
+      return item.slice(separator + 1).trim();
+    }
+  }
+  return '';
+}
+
+function buildAdminSessionCookie(token, maxAge) {
+  return `${ADMIN_SESSION_COOKIE}=${token}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Strict`;
+}
+
+function bytesToBase64Url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 async function secureTextEqual(left, right) {
@@ -332,11 +428,10 @@ async function handleData(request, env) {
       return jsonResponse({ error: '题目文件格式不正确' }, 500);
     }
 
-    const suppliedPassword = request.headers.get('X-Admin-Password');
-    if (suppliedPassword) {
-      if (!env.ADMIN_PASSWORD || !await secureTextEqual(suppliedPassword, env.ADMIN_PASSWORD)) {
-        return await failedAdminAuthResponse(request, env, '管理员身份验证失败，请重新登录');
-      }
+    const hasAdminSession = Boolean(readCookie(request, ADMIN_SESSION_COOKIE));
+    if (hasAdminSession) {
+      const authError = await requireAdmin(request, env);
+      if (authError) return authError;
       const hiddenProblem = await readHiddenProblem(problem.id, env, group);
       if (!hiddenProblem || !Array.isArray(hiddenProblem.testCases)) {
         return jsonResponse({ error: '隐藏测试数据不存在' }, 503);
@@ -502,11 +597,10 @@ async function handleD1Submissions(request, env, params) {
   const groupCondition = group === 'control'
     ? "problem_id NOT LIKE 'vision:%'"
     : "problem_id LIKE 'vision:%'";
-  const suppliedPassword = request.headers.get('X-Admin-Password');
-  if (suppliedPassword) {
-    if (!env.ADMIN_PASSWORD || !await secureTextEqual(suppliedPassword, env.ADMIN_PASSWORD)) {
-      return await failedAdminAuthResponse(request, env, '管理员身份验证失败，请重新登录');
-    }
+  const hasAdminSession = Boolean(readCookie(request, ADMIN_SESSION_COOKIE));
+  if (hasAdminSession) {
+    const authError = await requireAdmin(request, env);
+    if (authError) return authError;
     const result = await env.OJ_DB.prepare(`
       SELECT username, problem_id, passed, passed_tests, total_tests,
              total_time, language, timestamp
@@ -1620,12 +1714,13 @@ async function persistSubmission(body, env) {
 /**
  * 统一 JSON 响应（带 CORS 头）
  */
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       ...CORS_HEADERS,
+      ...extraHeaders,
     },
   });
 }

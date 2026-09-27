@@ -43,3 +43,14 @@ CREATE TABLE IF NOT EXISTS analytics_problem_visitors (
 
 CREATE INDEX IF NOT EXISTS idx_analytics_problem_group
   ON analytics_problem_visitors(group_name, problem_id);
+
+-- 管理员短期会话：数据库只保存随机令牌的 SHA-256 摘要，
+-- 浏览器中的原始令牌通过 HttpOnly Cookie 保存。
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  session_hash TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires
+  ON admin_sessions(expires_at);
