@@ -161,7 +161,7 @@ class ExamUI {
       control = `<textarea class="exam-text-answer" data-answer-part="${this.escape(part.id)}" maxlength="30000" rows="6" placeholder="请输入你的回答">${this.escape(answer || '')}</textarea>`;
     } else if (part.type === 'programming') {
       const language = answer?.language || 'c';
-      const code = answer?.code || this.languageTemplate(language);
+      const code = answer?.code || this.languageTemplate(language, part);
       control = `<div class="exam-programming"><div><span>关联题目 ${this.escape(part.problemId)}</span><select data-program-language data-answer-part="${this.escape(part.id)}">${window.LANGUAGES.map(item => `<option value="${this.escape(item.id)}" ${item.id === language ? 'selected' : ''}>${this.escape(item.name)}</option>`).join('')}</select></div><textarea data-program-code="${this.escape(part.id)}" rows="16" spellcheck="false">${this.escape(code)}</textarea></div>`;
     }
     return `<section class="student-exam-part" data-part-id="${this.escape(part.id)}"><div class="exam-part-label"><strong>${label}</strong><span>${this.partTypeName(part.type)} · ${this.escape(part.points)} 分</span></div>${prompt}${control}</section>`;
@@ -171,14 +171,19 @@ class ExamUI {
     return { single_choice: '单选', multiple_choice: '多选', fill_blank: '填空', short_answer: '简答', programming: '编程' }[type] || '小题';
   }
 
-  languageTemplate(language) {
+  languageTemplate(language, part = null) {
+    if (typeof window.getProblemLanguageTemplate === 'function') {
+      return window.getProblemLanguageTemplate(language, part || {});
+    }
     return window.LANGUAGES.find(item => item.id === language)?.template || '';
   }
 
   setDefaultProgram(select) {
     const textarea = select.closest('.exam-programming').querySelector('textarea');
     if (!textarea.value.trim() || window.LANGUAGES.some(item => item.template.trim() === textarea.value.trim())) {
-      textarea.value = this.languageTemplate(select.value);
+      const partId = select.dataset.answerPart;
+      const part = this.paper.questions.flatMap(question => question.parts).find(item => item.id === partId);
+      textarea.value = this.languageTemplate(select.value, part);
     }
   }
 

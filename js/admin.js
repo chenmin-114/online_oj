@@ -166,6 +166,12 @@ class OJAdmin {
     document.getElementById('admin-preview').addEventListener('click', event => {
       if (event.target.id === 'admin-preview') this.closePreview();
     });
+    document.getElementById('admin-preview-body').addEventListener('click', event => this.handlePreviewAction(event));
+    document.getElementById('admin-preview-body').addEventListener('change', event => {
+      if (!event.target.matches('[data-preview-language]')) return;
+      const code = document.querySelector('[data-preview-code]');
+      if (code && !code.value.trim()) code.value = this.problemTemplate(event.target.value, this.previewProblemData);
+    });
     document.getElementById('problem-id').addEventListener('input', event => {
       const fileInput = document.getElementById('problem-file');
       if (!fileInput.value || /^p\d+\.json$/i.test(fileInput.value)) {
@@ -1333,14 +1339,96 @@ class OJAdmin {
       const samples = Array.isArray(problem.samples) && problem.samples.length
         ? problem.samples
         : ((problem.sampleInput || problem.sampleOutput) ? [{ input: problem.sampleInput || '', output: problem.sampleOutput || '' }] : []);
-      const html = `<div class="preview-status-row"><span class="result-pill ${problem.status === 'draft' ? 'failed' : 'accepted'}">${problem.status === 'draft' ? '草稿 · 学生不可见' : '已发布'}</span><span>${this.escape(this.groupLabel())}</span></div>
+      this.previewProblemData = problem;
+      const defaultLanguage = this.group === 'vision' ? 'python' : 'c';
+      const html = `<div class="preview-status-row"><span class="result-pill ${problem.status === 'draft' ? 'failed' : 'accepted'}">${problem.status === 'draft' ? '草稿 · 学生不可见' : '已发布'}</span><span>${this.escape(this.groupLabel())} · 预览提交不会保存记录</span></div>
         <h2>${this.escape(problem.id)}. ${this.escape(problem.title)}</h2>
         ${sections.map(([title, content]) => `<h3 class="problem-section-title">${title}</h3><div class="problem-content">${this.renderMarkdown(content)}</div>`).join('')}
-        ${samples.length ? `<h3 class="problem-section-title">样例</h3><div class="problem-samples">${samples.map((sample, index) => `<div class="sample"><div><strong>输入 #${index + 1}</strong><pre>${this.escape(sample.input)}</pre></div><div><strong>输出 #${index + 1}</strong><pre>${this.escape(sample.output)}</pre></div></div>`).join('')}</div>` : ''}
-        ${String(problem.sampleExplanation || '').trim() ? `<h3 class="problem-section-title">样例解释</h3><div class="problem-content">${this.renderMarkdown(problem.sampleExplanation)}</div>` : ''}`;
+        ${samples.length ? `<h3 class="problem-section-title">样例</h3><div class="problem-samples">${samples.map((sample, index) => `<div class="sample"><div><div class="sample-heading"><strong>输入 #${index + 1}</strong><button type="button" class="btn-small" data-preview-sample="${index}">自动填充</button></div><pre>${this.escape(sample.input)}</pre></div><div><strong>输出 #${index + 1}</strong><pre>${this.escape(sample.output)}</pre></div></div>`).join('')}</div>` : ''}
+        ${String(problem.sampleExplanation || '').trim() ? `<h3 class="problem-section-title">样例解释</h3><div class="problem-content">${this.renderMarkdown(problem.sampleExplanation)}</div>` : ''}
+        <section class="preview-solve-area">
+          <div class="preview-solve-toolbar"><select class="admin-input" data-preview-language>${window.LANGUAGES.map(language => `<option value="${this.escape(language.id)}" ${language.id === defaultLanguage ? 'selected' : ''}>${this.escape(language.name)}</option>`).join('')}</select><button type="button" class="admin-button secondary" data-preview-run>运行代码</button><button type="button" class="admin-button primary" data-preview-submit>提交判题</button></div>
+          <textarea class="admin-input preview-code-editor" data-preview-code rows="18" spellcheck="false">${this.escape(this.problemTemplate(defaultLanguage, problem))}</textarea>
+          <div class="preview-io-grid"><label class="form-field"><span>自定义输入</span><textarea class="admin-input code-input" data-preview-input rows="6"></textarea></label><div class="form-field"><span>运行输出 / 判题结果</span><pre class="preview-run-output" data-preview-output></pre></div></div>
+          <div data-preview-judge-detail></div>
+        </section>`;
       this.showPreview(`${problem.id} · ${problem.title}`, html);
     } catch (error) {
       this.toast(`预览失败：${error.message}`);
+    }
+  }
+
+  problemTemplate(languageId, problem) {
+    return typeof window.getProblemLanguageTemplate === 'function'
+      ? window.getProblemLanguageTemplate(languageId, problem)
+      : (window.LANGUAGES?.find(language => language.id === languageId)?.template || '');
+  }
+
+  async handlePreviewAction(event) {
+    const sampleButton = event.target.closest('[data-preview-sample]');
+    if (sampleButton) {
+      const samples = Array.isArray(this.previewProblemData?.samples) && this.previewProblemData.samples.length
+        ? this.previewProblemData.samples
+        : [{ input: this.previewProblemData?.sampleInput || '' }];
+      const input = document.querySelector('[data-preview-input]');
+      if (input) input.value = samples[Number(sampleButton.dataset.previewSample)]?.input || '';
+      return;
+    }
+    const runButton = event.target.closest('[data-preview-run]');
+    const submitButton = event.target.closest('[data-preview-submit]');
+    if (!runButton && !submitButton) return;
+    const problem = this.previewProblemData;
+    if (!problem) return;
+    const body = document.getElementById('admin-preview-body');
+    const language = body.querySelector('[data-preview-language]').value;
+    const code = body.querySelector('[data-preview-code]').value;
+    const input = body.querySelector('[data-preview-input]').value;
+    const output = body.querySelector('[data-preview-output]');
+    const detail = body.querySelector('[data-preview-judge-detail]');
+    const button = runButton || submitButton;
+    if (!code.trim()) {
+      output.textContent = '请先填写代码';
+      return;
+    }
+    button.disabled = true;
+    output.textContent = runButton ? '正在运行...' : '正在判题...';
+    detail.innerHTML = '';
+    try {
+      const payload = runButton
+        ? {
+          type: 'admin_execute',
+          script: code,
+          stdin: input,
+          languageId: window.LANGUAGES.find(item => item.id === language)?.judge0LanguageId,
+        }
+        : {
+          type: 'judge_preview',
+          username: '管理员预览',
+          problemId: problem.id,
+          group: this.group,
+          language,
+          code,
+        };
+      const response = await fetch(this.config.workerUrl, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 401) this.lockExpiredSession();
+      if (!response.ok) throw new Error(result.error || `请求失败 (${response.status})`);
+      if (runButton) {
+        output.textContent = result.compileError || result.exitCode !== 0
+          ? (result.error || result.status || '运行失败')
+          : (result.output || '（程序没有输出）');
+      } else {
+        output.textContent = result.passed
+          ? `✅ 全部通过（${result.passedTests}/${result.totalTests}）`
+          : `❌ 未通过（${result.passedTests}/${result.totalTests}）`;
+        detail.innerHTML = `<div class="preview-judge-list">${(result.results || []).map(item => `<div class="${item.passed ? 'success' : 'error'}"><strong>测试点 ${this.escape(item.index)}：${item.passed ? '通过' : '未通过'}</strong><span>${this.escape(item.time ?? '—')}ms</span>${item.message ? `<p>${this.escape(item.message)}</p>` : ''}${typeof item.input === 'string' ? `<pre>输入：\n${this.escape(item.input)}</pre>` : ''}${typeof item.actualOutput === 'string' ? `<pre>实际输出：\n${this.escape(item.actualOutput)}</pre>` : ''}</div>`).join('')}</div>`;
+      }
+    } catch (error) {
+      output.textContent = `失败：${error.message}`;
+    } finally {
+      button.disabled = false;
     }
   }
 
@@ -1398,6 +1486,7 @@ class OJAdmin {
     document.getElementById('admin-preview').hidden = true;
     document.getElementById('admin-preview-body').innerHTML = '';
     document.body.classList.remove('preview-open');
+    this.previewProblemData = null;
   }
 
   populateFilters() {

@@ -28,6 +28,16 @@ class ExamAdmin {
     document.getElementById('grading-workspace').addEventListener('click', event => this.handleGradingClick(event));
     document.getElementById('grading-prev').addEventListener('click', () => this.selectStudent(this.studentIndex - 1));
     document.getElementById('grading-next').addEventListener('click', () => this.selectStudent(this.studentIndex + 1));
+    document.getElementById('admin-preview-body').addEventListener('click', event => {
+      if (event.target.closest('[data-exam-preview-submit]')) this.submitExamPreview();
+    });
+    document.getElementById('admin-preview-body').addEventListener('change', event => {
+      if (!event.target.matches('[data-exam-preview-language]')) return;
+      const code = event.target.closest('.exam-programming')?.querySelector('[data-exam-preview-code]');
+      const partId = event.target.dataset.examPreviewAnswer;
+      const part = this.previewPaper?.questions.flatMap(question => question.parts).find(item => item.id === partId);
+      if (code && !code.value.trim()) code.value = this.languageTemplate(event.target.value, part);
+    });
     document.querySelector('[data-panel="exams"]').addEventListener('click', () => this.ensureLoaded());
   }
 
@@ -282,14 +292,81 @@ class ExamAdmin {
   async previewExam(id) {
     try {
       const paper = await this.request('admin_exam_get', { examId: id });
+      this.previewPaper = paper;
       const typeNames = { single_choice: '单选', multiple_choice: '多选', fill_blank: '填空', short_answer: '简答', programming: '编程' };
       const html = `<div class="preview-status-row"><span class="result-pill ${paper.status === 'draft' ? 'failed' : 'accepted'}">${paper.status === 'draft' ? '草稿 · 学生不可见' : '已发布'}</span><span>总分 ${this.escape(paper.totalScore)} · 第 ${this.escape(paper.version)} 版</span></div>
         <h2>${this.escape(paper.id)} · ${this.escape(paper.title)}</h2>
         ${paper.description ? `<div class="problem-content">${this.admin.renderMarkdown(paper.description)}</div>` : ''}
-        <div class="preview-exam-questions">${paper.questions.map((question, questionIndex) => `<article class="preview-exam-question"><header><h3>第 ${questionIndex + 1} 题 · ${this.escape(question.title)}</h3><strong>${question.parts.reduce((sum, part) => sum + Number(part.points || 0), 0)} 分</strong></header>${question.scoringMode === 'programming_required' ? '<p class="exam-rule-warning">编程部分未通过时，本大题计 0 分。</p>' : ''}${question.description ? `<div class="problem-content">${this.admin.renderMarkdown(question.description)}</div>` : ''}${question.parts.map((part, partIndex) => `<section class="preview-exam-part"><div><strong>${partIndex + 1}. ${typeNames[part.type] || '小题'}</strong><span>${this.escape(part.points)} 分</span></div><div class="problem-content">${this.admin.renderMarkdown(part.prompt || '')}</div>${part.options ? `<div class="preview-options">${part.options.map(option => `<label><input type="${part.type === 'single_choice' ? 'radio' : 'checkbox'}" disabled> ${this.escape(option)}</label>`).join('')}</div>` : ''}${part.type === 'fill_blank' ? '<input class="admin-input" disabled placeholder="学生填写答案">' : ''}${part.type === 'short_answer' ? '<textarea class="admin-input" rows="4" disabled placeholder="学生填写回答"></textarea>' : ''}${part.type === 'programming' ? `<div class="preview-code-box">关联题目 ${this.escape(part.problemId)} · 学生代码编辑区</div>` : ''}</section>`).join('')}</article>`).join('')}</div>`;
+        <div class="preview-exam-questions">${paper.questions.map((question, questionIndex) => `<article class="preview-exam-question"><header><h3>第 ${questionIndex + 1} 题 · ${this.escape(question.title)}</h3><strong>${question.parts.reduce((sum, part) => sum + Number(part.points || 0), 0)} 分</strong></header>${question.scoringMode === 'programming_required' ? '<p class="exam-rule-warning">编程部分未通过时，本大题计 0 分。</p>' : ''}${question.description ? `<div class="problem-content">${this.admin.renderMarkdown(question.description)}</div>` : ''}${question.parts.map((part, partIndex) => this.previewPartHtml(part, partIndex, typeNames)).join('')}</article>`).join('')}</div>
+        <div class="preview-exam-submit"><span>沙盒提交不会产生学生成绩或提交记录</span><button type="button" class="admin-button primary" data-exam-preview-submit>提交整张试卷</button></div><div data-exam-preview-result></div>`;
       this.admin.showPreview(`${paper.id} · ${paper.title}`, html);
     } catch (error) {
       this.admin.toast(`预览失败：${error.message}`);
+    }
+  }
+
+  previewPartHtml(part, partIndex, typeNames) {
+    let answer = '';
+    if (part.type === 'single_choice' || part.type === 'multiple_choice') {
+      answer = `<div class="preview-options">${part.options.map(option => `<label><input type="${part.type === 'single_choice' ? 'radio' : 'checkbox'}" name="preview-${this.escape(part.id)}" data-exam-preview-answer="${this.escape(part.id)}" value="${this.escape(option)}"> ${this.escape(option)}</label>`).join('')}</div>`;
+    } else if (part.type === 'fill_blank') {
+      answer = `<input class="admin-input" data-exam-preview-answer="${this.escape(part.id)}" maxlength="2000" placeholder="填写答案">`;
+    } else if (part.type === 'short_answer') {
+      answer = `<textarea class="admin-input" data-exam-preview-answer="${this.escape(part.id)}" rows="5" maxlength="30000" placeholder="填写回答"></textarea>`;
+    } else if (part.type === 'programming') {
+      const language = this.group === 'vision' ? 'python' : 'c';
+      answer = `<div class="exam-programming"><div><span>关联题目 ${this.escape(part.problemId)}</span><select data-exam-preview-language data-exam-preview-answer="${this.escape(part.id)}">${window.LANGUAGES.map(item => `<option value="${this.escape(item.id)}" ${item.id === language ? 'selected' : ''}>${this.escape(item.name)}</option>`).join('')}</select></div><textarea data-exam-preview-code="${this.escape(part.id)}" rows="16" spellcheck="false">${this.escape(this.languageTemplate(language, part))}</textarea></div>`;
+    }
+    return `<section class="preview-exam-part"><div><strong>${partIndex + 1}. ${typeNames[part.type] || '小题'}</strong><span>${this.escape(part.points)} 分</span></div><div class="problem-content">${this.admin.renderMarkdown(part.prompt || '')}</div>${answer}</section>`;
+  }
+
+  languageTemplate(languageId, part = null) {
+    if (typeof window.getProblemLanguageTemplate === 'function') {
+      return window.getProblemLanguageTemplate(languageId, part || {});
+    }
+    return window.LANGUAGES?.find(language => language.id === languageId)?.template || '';
+  }
+
+  collectPreviewAnswers() {
+    const answers = {};
+    for (const question of this.previewPaper.questions) {
+      for (const part of question.parts) {
+        const selector = `[data-exam-preview-answer="${CSS.escape(part.id)}"]`;
+        if (part.type === 'single_choice') {
+          answers[part.id] = document.querySelector(`${selector}:checked`)?.value || '';
+        } else if (part.type === 'multiple_choice') {
+          answers[part.id] = [...document.querySelectorAll(`${selector}:checked`)].map(input => input.value);
+        } else if (part.type === 'programming') {
+          answers[part.id] = {
+            language: document.querySelector(selector)?.value || 'c',
+            code: document.querySelector(`[data-exam-preview-code="${CSS.escape(part.id)}"]`)?.value || '',
+          };
+        } else {
+          answers[part.id] = document.querySelector(selector)?.value || '';
+        }
+      }
+    }
+    return answers;
+  }
+
+  async submitExamPreview() {
+    if (!this.previewPaper) return;
+    const button = document.querySelector('[data-exam-preview-submit]');
+    const resultNode = document.querySelector('[data-exam-preview-result]');
+    button.disabled = true;
+    button.textContent = '正在自动批改...';
+    resultNode.innerHTML = '<p class="empty-cell">正在批改选择、填空和编程部分...</p>';
+    try {
+      const result = await this.request('admin_exam_preview_grade', {
+        examId: this.previewPaper.id,
+        answers: this.collectPreviewAnswers(),
+      });
+      resultNode.innerHTML = `<div class="preview-exam-result"><h3>预览得分：${this.escape(result.totalScore)} / ${this.escape(this.previewPaper.totalScore)}</h3><p>已自动批改 ${this.escape(result.gradedCount)}/${this.escape(result.totalParts)} 个小题；简答和未命中的填空仍显示待人工批改。</p>${result.grading.partResults.map(item => `<div><span>${this.escape(item.partId)}</span><strong class="${item.status === 'correct' ? 'success' : item.status === 'pending' ? 'warning' : 'error'}">${this.escape({ correct: '正确', incorrect: '错误', pending: '待人工批改', graded: '已评分' }[item.status] || item.status)}</strong><b>${this.escape(item.effectiveScore || 0)} / ${this.escape(item.maxScore)}</b>${item.judge ? `<small>测试点 ${this.escape(item.judge.passedTests)}/${this.escape(item.judge.totalTests)}</small>` : ''}</div>`).join('')}</div>`;
+    } catch (error) {
+      resultNode.innerHTML = `<p class="empty-cell error">提交失败：${this.escape(error.message)}</p>`;
+    } finally {
+      button.disabled = false;
+      button.textContent = '提交整张试卷';
     }
   }
 

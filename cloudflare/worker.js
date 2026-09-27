@@ -179,6 +179,12 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamSave(body, env);
+      } else if (body.type === 'admin_exam_preview_grade') {
+        const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
+        if (rateLimitError) return rateLimitError;
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamPreviewGrade(body, env);
       } else if (body.type === 'admin_exam_submissions') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -250,6 +256,12 @@ export default {
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
         return await handleExecute(body, env);
+      } else if (body.type === 'admin_execute') {
+        const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
+        if (rateLimitError) return rateLimitError;
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleExecute(body, env);
       } else if (body.type === 'create_problem') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -271,6 +283,8 @@ export default {
         if (authError) return authError;
         return await handleJudgeSubmitStream(body, env);
       } else if (body.type === 'judge_preview') {
+        const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
+        if (rateLimitError) return rateLimitError;
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleJudgeSubmit(body, env, false, true);
@@ -812,6 +826,24 @@ function parseExamRecord(record) {
   };
 }
 
+async function enrichExamProgrammingParts(paper, env, group) {
+  const programmingParts = paper.questions.flatMap(question => question.parts)
+    .filter(part => part.type === 'programming');
+  const problemIds = [...new Set(programmingParts.map(part => part.problemId))];
+  const referencedProblems = new Map(await Promise.all(problemIds.map(async problemId => [
+    problemId,
+    await readHiddenProblem(problemId, env, group),
+  ])));
+  for (const part of programmingParts) {
+    const problem = referencedProblems.get(part.problemId);
+    if (problem?.pythonJudgeMode === 'function' && problem.pythonFunction) {
+      part.pythonJudgeMode = 'function';
+      part.pythonFunction = problem.pythonFunction;
+    }
+  }
+  return paper;
+}
+
 async function handleAdminExamList(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
   const group = normalizeGroup(body.group);
@@ -834,7 +866,7 @@ async function handleAdminExamGet(body, env) {
   if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
   const record = await readExamRecord(env, examId);
   if (!record) return jsonResponse({ error: '试卷不存在' }, 404);
-  return jsonResponse(parseExamRecord(record));
+  return jsonResponse(await enrichExamProgrammingParts(parseExamRecord(record), env, record.group_name));
 }
 
 async function handleAdminExamSave(body, env) {
@@ -952,6 +984,7 @@ async function handleStudentExamGet(body, env) {
   const record = await readExamRecord(env, examId);
   if (!record || record.status !== 'published') return jsonResponse({ error: '试卷不存在或尚未发布' }, 404);
   const paper = parseExamRecord(record);
+  await enrichExamProgrammingParts(paper, env, record.group_name);
   const submission = await env.OJ_DB.prepare(`
     SELECT * FROM exam_submissions
     WHERE exam_id = ?1 AND username = ?2 AND is_final = 1
@@ -1077,6 +1110,32 @@ async function gradeExamAnswers(paper, answers, username, group, env) {
     }
   }
   return partResults;
+}
+
+async function handleAdminExamPreviewGrade(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  const answers = body.answers && typeof body.answers === 'object' && !Array.isArray(body.answers) ? body.answers : null;
+  if (!examId || !answers) return jsonResponse({ error: '预览答案格式不正确' }, 400);
+  const answersJson = JSON.stringify(answers);
+  if (answersJson.length > 600000) return jsonResponse({ error: '整张试卷答案不能超过 600 KB' }, 413);
+  const record = await readExamRecord(env, examId);
+  if (!record) return jsonResponse({ error: '试卷不存在' }, 404);
+  const paper = parseExamRecord(record);
+  const validPartIds = new Set(paper.questions.flatMap(question => question.parts.map(part => part.id)));
+  for (const key of Object.keys(answers)) {
+    if (!validPartIds.has(key)) delete answers[key];
+  }
+  const partResults = await gradeExamAnswers(paper, answers, '管理员预览', record.group_name, env);
+  const scores = calculateExamScores(paper, partResults);
+  return jsonResponse({
+    preview: true,
+    totalScore: scores.totalScore,
+    gradedCount: scores.gradedCount,
+    totalParts: scores.totalParts,
+    gradingStatus: scores.gradingStatus,
+    grading: { partResults },
+  });
 }
 
 async function handleStudentExamSubmit(body, env) {
