@@ -51,7 +51,12 @@ class App {
     if (!this.username) {
       await this._promptUsername();
     } else {
-      document.getElementById('username-display').textContent = this.username;
+      const sessionValid = await this._restoreStudentSession();
+      if (sessionValid) {
+        document.getElementById('username-display').textContent = this.username;
+      } else {
+        await this._promptUsername({ autoCheck: true });
+      }
     }
     this._trackView();
 
@@ -420,6 +425,7 @@ class App {
     this.analyticsPending.add(viewKey);
     fetch(workerUrl, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'analytics_view',
@@ -434,7 +440,7 @@ class App {
     }).catch(() => {}).finally(() => this.analyticsPending.delete(viewKey));
   }
 
-  _promptUsername() {
+  _promptUsername(options = {}) {
     const dialog = document.getElementById('username-login');
     const form = document.getElementById('username-login-form');
     const input = document.getElementById('username-login-input');
@@ -493,7 +499,7 @@ class App {
         resolve(this.username);
       };
 
-      const showPasswordStep = (name, hasPassword, serviceUnavailable = false) => {
+      const showPasswordStep = (name, hasPassword) => {
         pendingUsername = name;
         step = hasPassword ? 'login-password' : 'set-password';
         nameField.hidden = true;
@@ -509,9 +515,7 @@ class App {
         title.textContent = hasPassword ? '输入账号密码' : '设置账号密码';
         description.textContent = hasPassword
           ? `账号“${name}”已设置密码，请验证后进入`
-          : serviceUnavailable
-            ? '账号服务暂时无法连接，你可以稍后重试或暂时跳过'
-            : '该账号还没有密码，可以现在设置，也可以暂时跳过';
+          : '该账号还没有密码，可以现在设置，也可以暂时跳过';
         submit.textContent = hasPassword ? '登录' : '设置密码并进入';
         status.textContent = '';
         setTimeout(() => passwordInput.focus(), 0);
@@ -538,7 +542,6 @@ class App {
               const account = await this._studentAccountRequest('student_account_status', { username: name });
               showPasswordStep(name, account.hasPassword);
             } catch (error) {
-              showPasswordStep(name, false, true);
               status.textContent = error.message;
             }
             return;
@@ -580,8 +583,18 @@ class App {
         }
       };
 
-      const handleSkip = () => {
-        if (step === 'set-password' && pendingUsername) finishLogin(pendingUsername);
+      const handleSkip = async () => {
+        if (step !== 'set-password' || !pendingUsername) return;
+        skip.disabled = true;
+        status.textContent = '正在建立登录状态...';
+        try {
+          await this._studentAccountRequest('student_skip_login', { username: pendingUsername });
+          finishLogin(pendingUsername);
+        } catch (error) {
+          status.textContent = error.message || '暂时无法跳过，请稍后重试';
+        } finally {
+          skip.disabled = false;
+        }
       };
 
       const handleBack = () => {
@@ -607,18 +620,38 @@ class App {
       form.addEventListener('submit', handleSubmit);
       skip.addEventListener('click', handleSkip);
       back.addEventListener('click', handleBack);
+      if (options.verifyCurrent && this.username) {
+        showPasswordStep(this.username, true);
+      } else if (options.autoCheck && input.value.trim()) {
+        setTimeout(() => form.requestSubmit(), 0);
+      }
     });
   }
 
   async _studentAccountRequest(type, payload) {
     const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type, ...payload }),
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || `账号服务请求失败 (${response.status})`);
+    if (!response.ok) {
+      const error = new Error(result.error || `账号服务请求失败 (${response.status})`);
+      error.code = result.code || '';
+      error.status = response.status;
+      throw error;
+    }
     return result;
+  }
+
+  async _restoreStudentSession() {
+    try {
+      await this._studentAccountRequest('student_session', { username: this.username });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   _codeCacheKey(languageId = document.getElementById('language-select')?.value) {
@@ -758,7 +791,7 @@ class App {
     }
   }
 
-  async submitCode() {
+  async submitCode(authRetried = false) {
     if (!this.currentProblem) {
       alert('请先选择一道题目');
       return;
@@ -791,6 +824,10 @@ class App {
       );
       this._renderJudgeResult(result);
     } catch (err) {
+      if (err.code === 'STUDENT_AUTH_REQUIRED' && !authRetried) {
+        await this._promptUsername({ verifyCurrent: true });
+        return this.submitCode(true);
+      }
       resultEl.innerHTML = `<span class="error">❌ 判题失败: ${this._escapeHtml(err.message)}</span>`;
     }
   }
@@ -843,7 +880,7 @@ class App {
     `).join('');
   }
 
-  async loadSubmissions() {
+  async loadSubmissions(authRetried = false) {
     const container = document.getElementById('submission-list');
 
     if (!this.username) {
@@ -889,6 +926,10 @@ class App {
         </table>
       `;
     } catch (err) {
+      if (err.code === 'STUDENT_AUTH_REQUIRED' && !authRetried) {
+        await this._promptUsername({ verifyCurrent: true });
+        return this.loadSubmissions(true);
+      }
       container.innerHTML = `<p class="error">提交记录加载失败: ${this._escapeHtml(err.message)}</p>`;
     }
   }

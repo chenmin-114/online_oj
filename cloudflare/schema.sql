@@ -70,3 +70,16 @@ CREATE TABLE IF NOT EXISTS student_accounts (
     (password_salt IS NOT NULL AND password_hash IS NOT NULL AND password_iterations IS NOT NULL)
   )
 );
+
+CREATE TABLE IF NOT EXISTS student_sessions (
+  session_hash TEXT PRIMARY KEY,
+  username TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_sessions_username
+  ON student_sessions(username);
+
+CREATE INDEX IF NOT EXISTS idx_student_sessions_expires
+  ON student_sessions(expires_at);

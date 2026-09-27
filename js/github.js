@@ -33,6 +33,7 @@ class GitHubStore {
     try {
       response = await fetch(this.workerUrl, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -41,8 +42,11 @@ class GitHubStore {
     }
 
     if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`提交失败 (${response.status}): ${errText}`);
+      const result = await response.json().catch(() => ({}));
+      const error = new Error(result.error || `提交失败 (${response.status})`);
+      error.code = result.code || '';
+      error.status = response.status;
+      throw error;
     }
 
     if (!response.body) throw new Error('判题服务未返回进度数据');
@@ -123,11 +127,16 @@ class GitHubStore {
       `${url}${separator}username=${encodeURIComponent(normalizedUsername)}&group=${encodeURIComponent(group)}&t=${Date.now()}`,
       {
       cache: 'no-store',
+      credentials: 'include',
       }
     );
 
     if (!response.ok) {
-      throw new Error(`无法读取提交记录 (${response.status})`);
+      const result = await response.json().catch(() => ({}));
+      const error = new Error(result.error || `无法读取提交记录 (${response.status})`);
+      error.code = result.code || '';
+      error.status = response.status;
+      throw error;
     }
 
     const submissions = await response.json();

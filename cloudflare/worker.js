@@ -25,6 +25,8 @@ const SECURITY_HEADERS = {
 const ALLOWED_ORIGIN = 'https://jc-oj.online';
 const ADMIN_SESSION_COOKIE = '__Host-oj_admin_session';
 const ADMIN_SESSION_TTL_SECONDS = 2 * 60 * 60;
+const STUDENT_SESSION_COOKIE = '__Host-oj_student_session';
+const STUDENT_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 const STUDENT_PASSWORD_ITERATIONS = 100000;
 
 const CORS_HEADERS = {
@@ -177,9 +179,26 @@ export default {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
         if (rateLimitError) return rateLimitError;
         return await handleStudentSetPassword(body, env);
+      } else if (body.type === 'student_session') {
+        const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
+        if (rateLimitError) return rateLimitError;
+        const authError = await requireStudentSession(request, env, body.username);
+        if (authError) return authError;
+        return jsonResponse({ success: true });
+      } else if (body.type === 'student_skip_login') {
+        const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
+        if (rateLimitError) return rateLimitError;
+        return await handleStudentSkipLogin(body, env);
+      } else if (body.type === 'student_logout') {
+        await revokeStudentSession(request, env);
+        return jsonResponse({ success: true }, 200, {
+          'Set-Cookie': buildStudentSessionCookie('', 0),
+        });
       } else if (body.type === 'analytics_view') {
         const rateLimitError = await enforceRateLimit(env.ANALYTICS_RATE_LIMITER, request, 'analytics');
         if (rateLimitError) return rateLimitError;
+        const authError = await requireStudentAccess(request, env, body.visitorId);
+        if (authError) return authError;
         return await handleAnalyticsView(body, env);
       } else if (body.type === 'execute') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
@@ -196,10 +215,14 @@ export default {
       } else if (body.type === 'judge_submit') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
         if (rateLimitError) return rateLimitError;
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
         return await handleJudgeSubmit(body, env);
       } else if (body.type === 'judge_submit_stream') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
         if (rateLimitError) return rateLimitError;
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
         return await handleJudgeSubmitStream(body, env);
       } else if (body.type === 'judge_preview') {
         const authError = await requireAdmin(request, env);
@@ -375,7 +398,7 @@ async function handleStudentLogin(body, env) {
   if (!await secureTextEqual(candidateHash, account.password_hash)) {
     return jsonResponse({ error: '用户名或密码错误' }, 401);
   }
-  return jsonResponse({ success: true });
+  return await studentSessionSuccessResponse(username, env);
 }
 
 async function handleStudentSetPassword(body, env) {
@@ -406,7 +429,106 @@ async function handleStudentSetPassword(body, env) {
   if (!Number(result.meta?.changes)) {
     return jsonResponse({ error: '该账号已经设置密码，请返回后输入原密码' }, 409);
   }
-  return jsonResponse({ success: true });
+  await env.OJ_DB.prepare('DELETE FROM student_sessions WHERE username = ?1').bind(username).run();
+  return await studentSessionSuccessResponse(username, env);
+}
+
+async function handleStudentSkipLogin(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const username = normalizeStudentUsername(body.username);
+  if (!username) return jsonResponse({ error: '用户名格式不正确' }, 400);
+  const account = await env.OJ_DB.prepare(`
+    SELECT password_hash
+    FROM student_accounts
+    WHERE username = ?1
+  `).bind(username).first();
+  if (account?.password_hash) {
+    return jsonResponse({
+      error: '该账号已经设置密码，不能跳过验证',
+      code: 'STUDENT_AUTH_REQUIRED',
+    }, 409);
+  }
+  if (!account) {
+    const now = Date.now();
+    await env.OJ_DB.prepare(`
+      INSERT OR IGNORE INTO student_accounts (
+        username, password_salt, password_hash, password_iterations, created_at, updated_at
+      ) VALUES (?1, NULL, NULL, NULL, ?2, ?2)
+    `).bind(username, now).run();
+  }
+  return await studentSessionSuccessResponse(username, env);
+}
+
+async function studentSessionSuccessResponse(username, env) {
+  const session = await createStudentSession(username, env);
+  return jsonResponse({ success: true, expiresIn: STUDENT_SESSION_TTL_SECONDS }, 200, {
+    'Set-Cookie': buildStudentSessionCookie(session.token, STUDENT_SESSION_TTL_SECONDS),
+  });
+}
+
+async function createStudentSession(username, env) {
+  const randomBytes = new Uint8Array(32);
+  crypto.getRandomValues(randomBytes);
+  const token = bytesToBase64Url(randomBytes);
+  const sessionHash = await sha256Hex(token);
+  const createdAt = Date.now();
+  const expiresAt = createdAt + STUDENT_SESSION_TTL_SECONDS * 1000;
+  await env.OJ_DB.batch([
+    env.OJ_DB.prepare('DELETE FROM student_sessions WHERE expires_at <= ?1').bind(createdAt),
+    env.OJ_DB.prepare(`
+      INSERT INTO student_sessions (session_hash, username, created_at, expires_at)
+      VALUES (?1, ?2, ?3, ?4)
+    `).bind(sessionHash, username, createdAt, expiresAt),
+  ]);
+  return { token };
+}
+
+async function revokeStudentSession(request, env) {
+  if (!env.OJ_DB) return;
+  const token = readCookie(request, STUDENT_SESSION_COOKIE);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return;
+  await env.OJ_DB.prepare('DELETE FROM student_sessions WHERE session_hash = ?1')
+    .bind(await sha256Hex(token)).run();
+}
+
+function buildStudentSessionCookie(token, maxAge) {
+  return `${STUDENT_SESSION_COOKIE}=${token}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Strict`;
+}
+
+async function requireStudentAccess(request, env, suppliedUsername) {
+  return await requireStudentSession(request, env, suppliedUsername);
+}
+
+async function requireStudentSession(request, env, suppliedUsername) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const username = normalizeStudentUsername(suppliedUsername);
+  if (!username) return jsonResponse({ error: '用户名格式不正确' }, 400);
+  const token = readCookie(request, STUDENT_SESSION_COOKIE);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return studentAuthRequiredResponse();
+  const sessionHash = await sha256Hex(token);
+  const now = Date.now();
+  const session = await env.OJ_DB.prepare(`
+    SELECT username, expires_at
+    FROM student_sessions
+    WHERE session_hash = ?1
+  `).bind(sessionHash).first();
+  if (!session || Number(session.expires_at) <= now || session.username !== username) {
+    if (session && Number(session.expires_at) <= now) {
+      await env.OJ_DB.prepare('DELETE FROM student_sessions WHERE session_hash = ?1')
+        .bind(sessionHash).run();
+    }
+    return studentAuthRequiredResponse();
+  }
+  return null;
+}
+
+function studentAuthRequiredResponse() {
+  return jsonResponse({
+    error: '该账号需要重新验证密码',
+    code: 'STUDENT_AUTH_REQUIRED',
+  }, 401, {
+    'Set-Cookie': buildStudentSessionCookie('', 0),
+  });
 }
 
 async function handleAdminImportStudents(body, env) {
@@ -427,26 +549,29 @@ async function handleAdminImportStudents(body, env) {
   }
 
   const now = Date.now();
-  const statements = Array.from(accounts.values()).map(account => env.OJ_DB.prepare(`
-    INSERT INTO student_accounts (
-      username, password_salt, password_hash, password_iterations, created_at, updated_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
-    ON CONFLICT(username) DO UPDATE SET
-      password_salt = excluded.password_salt,
-      password_hash = excluded.password_hash,
-      password_iterations = excluded.password_iterations,
-      updated_at = excluded.updated_at
-  `).bind(
-    account.username,
-    account.salt,
-    account.hash,
-    STUDENT_PASSWORD_ITERATIONS,
-    now,
-  ));
+  const statements = Array.from(accounts.values()).flatMap(account => [
+    env.OJ_DB.prepare(`
+      INSERT INTO student_accounts (
+        username, password_salt, password_hash, password_iterations, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+      ON CONFLICT(username) DO UPDATE SET
+        password_salt = excluded.password_salt,
+        password_hash = excluded.password_hash,
+        password_iterations = excluded.password_iterations,
+        updated_at = excluded.updated_at
+    `).bind(
+      account.username,
+      account.salt,
+      account.hash,
+      STUDENT_PASSWORD_ITERATIONS,
+      now,
+    ),
+    env.OJ_DB.prepare('DELETE FROM student_sessions WHERE username = ?1').bind(account.username),
+  ]);
   for (let index = 0; index < statements.length; index += 100) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
   }
-  return jsonResponse({ success: true, imported: statements.length });
+  return jsonResponse({ success: true, imported: accounts.size });
 }
 
 async function deriveStudentPasswordHash(password, salt, iterations) {
@@ -777,6 +902,8 @@ async function handleD1Submissions(request, env, params) {
   if (username.length > 50) {
     return jsonResponse({ error: '读取个人提交记录时必须提供用户名' }, 400);
   }
+  const authError = await requireStudentAccess(request, env, username);
+  if (authError) return authError;
   const result = await env.OJ_DB.prepare(`
     SELECT username, problem_id, passed, passed_tests, total_tests,
            total_time, language, timestamp
