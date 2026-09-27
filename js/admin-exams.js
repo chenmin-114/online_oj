@@ -293,8 +293,9 @@ class ExamAdmin {
     const url = new URL('index.html', location.href);
     url.searchParams.set('adminPreviewExam', id);
     url.searchParams.set('group', this.group);
-    const preview = window.open(url.href, '_blank', 'noopener');
-    if (!preview) this.admin.toast('浏览器拦截了预览窗口，请允许本站打开新窗口');
+    const preview = window.open(url.href, '_blank');
+    if (preview) preview.opener = null;
+    else this.admin.toast('浏览器拦截了预览窗口，请允许本站打开新窗口');
   }
 
   previewPartHtml(part, partIndex, typeNames) {
