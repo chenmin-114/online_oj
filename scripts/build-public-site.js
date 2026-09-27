@@ -37,14 +37,32 @@ for (const directory of publicDirectories) {
   fs.cpSync(source, path.join(outputDirectory, directory), { recursive: true });
 }
 
-// GitHub Pages only receives public problem statements. Hidden tests remain in Worker KV.
+// GitHub Pages only receives published problem statements. Drafts remain available
+// to the authenticated admin through the Worker/GitHub API, and hidden tests stay in KV.
 const publicProblemsDirectory = path.join(outputDirectory, 'problems');
-for (const filePath of walkFiles(publicProblemsDirectory)) {
-  const file = path.basename(filePath);
-  if (!/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/i.test(file)) continue;
-  const problem = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  delete problem.testCases;
-  fs.writeFileSync(filePath, `${JSON.stringify(problem, null, 2)}\n`);
+sanitizeProblemDirectory(publicProblemsDirectory);
+sanitizeProblemDirectory(path.join(publicProblemsDirectory, 'vision'));
+
+function sanitizeProblemDirectory(directory) {
+  const indexPath = path.join(directory, 'index.json');
+  if (!fs.existsSync(indexPath)) return;
+  const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+  if (!Array.isArray(index)) throw new Error(`Problem index must be an array: ${indexPath}`);
+  const published = index.filter(problem => problem.status !== 'draft');
+  const publishedFiles = new Set(published.map(problem => problem.file));
+  fs.writeFileSync(indexPath, `${JSON.stringify(published, null, 2)}\n`);
+
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isFile() || !/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/i.test(entry.name)) continue;
+    const filePath = path.join(directory, entry.name);
+    if (!publishedFiles.has(entry.name)) {
+      fs.unlinkSync(filePath);
+      continue;
+    }
+    const problem = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    delete problem.testCases;
+    fs.writeFileSync(filePath, `${JSON.stringify(problem, null, 2)}\n`);
+  }
 }
 
 function walkFiles(directory) {

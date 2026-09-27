@@ -82,7 +82,7 @@ class ExamAdmin {
         <td>${this.escape(exam.total_score)}</td>
         <td>${this.escape(exam.submitted_students || 0)}</td>
         <td>${this.escape(exam.completed_students || 0)}</td>
-        <td><button type="button" class="table-link table-link-button" data-edit-exam="${this.escape(exam.id)}">编辑</button> · <button type="button" class="table-link table-link-button" data-grade-exam="${this.escape(exam.id)}">批改</button></td>
+        <td><button type="button" class="table-link table-link-button" data-preview-exam="${this.escape(exam.id)}">预览</button> · <button type="button" class="table-link table-link-button" data-edit-exam="${this.escape(exam.id)}">编辑</button> · <button type="button" class="table-link table-link-button" data-grade-exam="${this.escape(exam.id)}">批改</button></td>
       </tr>`).join('') : '<tr><td colspan="7" class="empty-cell">当前组别还没有套卷</td></tr>';
   }
 
@@ -173,7 +173,7 @@ class ExamAdmin {
   partHtml(part, questionIndex, partIndex) {
     const isChoice = part.type === 'single_choice' || part.type === 'multiple_choice';
     const typeNames = { single_choice: '单选题', multiple_choice: '多选题', fill_blank: '填空题', short_answer: '简答题', programming: '编程题' };
-    const problemOptions = this.admin.problems.map(problem => `<option value="${this.escape(problem.id)}" ${problem.id === part.problemId ? 'selected' : ''}>${this.escape(problem.id)} · ${this.escape(problem.title)}</option>`).join('');
+    const problemOptions = this.admin.problems.map(problem => `<option value="${this.escape(problem.id)}" ${problem.id === part.problemId ? 'selected' : ''}>${this.escape(problem.id)} · ${this.escape(problem.title)}${problem.status === 'draft' ? '（草稿）' : ''}</option>`).join('');
     return `<section class="exam-part-card" data-part-index="${partIndex}">
       <div class="exam-part-heading"><strong>小题 ${partIndex + 1} · ${typeNames[part.type] || '简答题'}</strong><button type="button" class="remove-test-case" data-remove-part="${questionIndex}:${partIndex}" title="删除小题">×</button></div>
       <div class="form-grid three-columns">
@@ -267,13 +267,29 @@ class ExamAdmin {
   }
 
   async handleListClick(event) {
+    const preview = event.target.closest('[data-preview-exam]');
     const edit = event.target.closest('[data-edit-exam]');
     const grade = event.target.closest('[data-grade-exam]');
+    if (preview) this.previewExam(preview.dataset.previewExam);
     if (edit) this.editExam(edit.dataset.editExam);
     if (grade) {
       this.showGrading();
       document.getElementById('grading-exam').value = grade.dataset.gradeExam;
       await this.loadGrading(grade.dataset.gradeExam);
+    }
+  }
+
+  async previewExam(id) {
+    try {
+      const paper = await this.request('admin_exam_get', { examId: id });
+      const typeNames = { single_choice: '单选', multiple_choice: '多选', fill_blank: '填空', short_answer: '简答', programming: '编程' };
+      const html = `<div class="preview-status-row"><span class="result-pill ${paper.status === 'draft' ? 'failed' : 'accepted'}">${paper.status === 'draft' ? '草稿 · 学生不可见' : '已发布'}</span><span>总分 ${this.escape(paper.totalScore)} · 第 ${this.escape(paper.version)} 版</span></div>
+        <h2>${this.escape(paper.id)} · ${this.escape(paper.title)}</h2>
+        ${paper.description ? `<div class="problem-content">${this.admin.renderMarkdown(paper.description)}</div>` : ''}
+        <div class="preview-exam-questions">${paper.questions.map((question, questionIndex) => `<article class="preview-exam-question"><header><h3>第 ${questionIndex + 1} 题 · ${this.escape(question.title)}</h3><strong>${question.parts.reduce((sum, part) => sum + Number(part.points || 0), 0)} 分</strong></header>${question.scoringMode === 'programming_required' ? '<p class="exam-rule-warning">编程部分未通过时，本大题计 0 分。</p>' : ''}${question.description ? `<div class="problem-content">${this.admin.renderMarkdown(question.description)}</div>` : ''}${question.parts.map((part, partIndex) => `<section class="preview-exam-part"><div><strong>${partIndex + 1}. ${typeNames[part.type] || '小题'}</strong><span>${this.escape(part.points)} 分</span></div><div class="problem-content">${this.admin.renderMarkdown(part.prompt || '')}</div>${part.options ? `<div class="preview-options">${part.options.map(option => `<label><input type="${part.type === 'single_choice' ? 'radio' : 'checkbox'}" disabled> ${this.escape(option)}</label>`).join('')}</div>` : ''}${part.type === 'fill_blank' ? '<input class="admin-input" disabled placeholder="学生填写答案">' : ''}${part.type === 'short_answer' ? '<textarea class="admin-input" rows="4" disabled placeholder="学生填写回答"></textarea>' : ''}${part.type === 'programming' ? `<div class="preview-code-box">关联题目 ${this.escape(part.problemId)} · 学生代码编辑区</div>` : ''}</section>`).join('')}</article>`).join('')}</div>`;
+      this.admin.showPreview(`${paper.id} · ${paper.title}`, html);
+    } catch (error) {
+      this.admin.toast(`预览失败：${error.message}`);
     }
   }
 

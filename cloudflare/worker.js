@@ -273,7 +273,7 @@ export default {
       } else if (body.type === 'judge_preview') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
-        return await handleJudgeSubmit(body, env, false);
+        return await handleJudgeSubmit(body, env, false, true);
       } else if (body.type === 'submit' || typeof body.passed === 'boolean') {
         return jsonResponse({
           error: '旧版成绩上报接口已停用，请刷新页面后重新提交代码',
@@ -843,6 +843,28 @@ async function handleAdminExamSave(body, env) {
   if (validated.error) return jsonResponse({ error: validated.error }, 400);
   const group = normalizeGroup(body.group);
   const { paper, totalScore } = validated;
+  if (paper.status === 'published') {
+    const programmingIds = [...new Set(paper.questions.flatMap(question => question.parts)
+      .filter(part => part.type === 'programming')
+      .map(part => part.problemId))];
+    if (programmingIds.length) {
+      if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) return jsonResponse({ error: 'GitHub 题库尚未配置' }, 503);
+      const indexResponse = await fetch(
+        `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${problemIndexPath(group)}`,
+        { headers: { ...githubHeaders(env.GITHUB_TOKEN), 'Accept': 'application/vnd.github.raw' } },
+      );
+      if (!indexResponse.ok) return githubErrorResponse(indexResponse, '检查试卷关联编程题失败');
+      let problemIndex;
+      try { problemIndex = JSON.parse(await indexResponse.text()); } catch { return jsonResponse({ error: '题目索引格式不正确' }, 500); }
+      const unavailable = programmingIds.filter(problemId => {
+        const item = Array.isArray(problemIndex) ? problemIndex.find(problem => problem.id === problemId) : null;
+        return !item || item.status === 'draft';
+      });
+      if (unavailable.length) {
+        return jsonResponse({ error: `发布试卷前，请先发布关联编程题：${unavailable.join('、')}` }, 409);
+      }
+    }
+  }
   const existing = await readExamRecord(env, paper.id);
   if (existing && existing.group_name !== group) return jsonResponse({ error: '该试卷编号已被其他组别使用' }, 409);
 
@@ -1035,7 +1057,7 @@ async function gradeExamAnswers(paper, answers, username, group, env) {
               group,
               language,
               code,
-            }, env, null, false);
+            }, env, null, false, true);
             result.status = judged.passed ? 'correct' : 'incorrect';
             result.autoScore = judged.passed ? part.points : 0;
             result.judge = {
@@ -1278,30 +1300,41 @@ async function handleData(request, env) {
   }
 
   const rawContent = await githubRes.text();
-  if (fileType === 'problems' && env.OJ_DB) {
+  if (fileType === 'problems') {
     try {
-      const problems = JSON.parse(rawContent);
-      const statsResult = await env.OJ_DB.prepare(`
-        SELECT problem_id, COUNT(*) AS total,
-               SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) AS accepted
-        FROM submissions
-        WHERE ${group === 'control' ? "problem_id NOT LIKE 'vision:%'" : "problem_id LIKE 'vision:%'"}
-        GROUP BY problem_id
-      `).all();
-      const stats = new Map((statsResult.results || []).map(row => {
-        const parsed = publicProblemId(row.problem_id);
-        return [parsed.problemId, row];
-      }));
-      for (const problem of problems) {
-        const problemStats = stats.get(problem.id);
-        const total = Number(problemStats?.total || 0);
-        const accepted = Number(problemStats?.accepted || 0);
-        problem.submitCount = total;
-        problem.acceptRate = total > 0 ? `${Math.round((accepted / total) * 100)}%` : '0%';
+      let problems = JSON.parse(rawContent);
+      if (!Array.isArray(problems)) throw new Error('题目索引必须是数组');
+      const hasAdminSession = Boolean(readCookie(request, ADMIN_SESSION_COOKIE));
+      if (hasAdminSession) {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+      } else {
+        problems = problems.filter(problem => problem.status !== 'draft');
+      }
+      if (env.OJ_DB) {
+        const statsResult = await env.OJ_DB.prepare(`
+          SELECT problem_id, COUNT(*) AS total,
+                 SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) AS accepted
+          FROM submissions
+          WHERE ${group === 'control' ? "problem_id NOT LIKE 'vision:%'" : "problem_id LIKE 'vision:%'"}
+          GROUP BY problem_id
+        `).all();
+        const stats = new Map((statsResult.results || []).map(row => {
+          const parsed = publicProblemId(row.problem_id);
+          return [parsed.problemId, row];
+        }));
+        for (const problem of problems) {
+          const problemStats = stats.get(problem.id);
+          const total = Number(problemStats?.total || 0);
+          const accepted = Number(problemStats?.accepted || 0);
+          problem.submitCount = total;
+          problem.acceptRate = total > 0 ? `${Math.round((accepted / total) * 100)}%` : '0%';
+        }
       }
       return jsonResponse(problems);
     } catch (error) {
-      console.error('D1 题目统计读取失败，使用仓库中的统计快照:', error);
+      console.error('题目列表读取失败:', error);
+      return jsonResponse({ error: '题目列表格式不正确' }, 500);
     }
   }
 
@@ -1323,6 +1356,7 @@ async function handleData(request, env) {
       }
       problem.testCases = hiddenProblem.testCases;
     } else {
+      if (problem.status === 'draft') return jsonResponse({ error: '题目不存在或尚未发布' }, 404);
       // 学生只能读取公开题面，隐藏测试点只保存在 KV 中。
       delete problem.testCases;
     }
@@ -1803,6 +1837,7 @@ async function handleCreateProblem(body, env) {
     id: problem.id,
     title: problem.title,
     difficulty: problem.difficulty,
+    status: problem.status,
     file,
     acceptRate: '0%',
     submitCount: 0,
@@ -1938,6 +1973,7 @@ async function handleUpdateProblem(body, env) {
 
   indexItem.title = problem.title;
   indexItem.difficulty = problem.difficulty;
+  indexItem.status = problem.status;
   const updateIndexRes = await fetch(indexUrl, {
     method: 'PUT',
     headers,
@@ -2018,6 +2054,7 @@ function validateProblem(input, requestedFile) {
     id,
     title: input.title.trim().slice(0, 100),
     difficulty,
+    status: input.status === 'draft' ? 'draft' : 'published',
     description: input.description.trim().slice(0, 20000),
     inputFormat: input.inputFormat.trim().slice(0, 10000),
     outputFormat: input.outputFormat.trim().slice(0, 10000),
@@ -2326,7 +2363,7 @@ async function readHiddenProblem(problemId, env, group = 'control') {
 /**
  * 服务端判题：浏览器只提交源码，最终结果由 Worker 和 Judge0 共同生成。
  */
-async function prepareJudgeSubmission(body, env) {
+async function prepareJudgeSubmission(body, env, allowDraft = false) {
   const username = typeof body.username === 'string' ? body.username.trim() : '';
   const problemId = typeof body.problemId === 'string' ? body.problemId.trim().toUpperCase() : '';
   const language = typeof body.language === 'string' ? body.language.trim() : '';
@@ -2343,6 +2380,9 @@ async function prepareJudgeSubmission(body, env) {
   }
 
   const problem = await readHiddenProblem(problemId, env, group);
+  if (problem?.status === 'draft' && !allowDraft) {
+    throw judgeError('题目不存在或尚未发布', 404, 'PROBLEM_NOT_PUBLISHED');
+  }
   const testCases = problem?.testCases;
   if (!Array.isArray(testCases) || testCases.length === 0 || testCases.length > 50) {
     throw judgeError('题目隐藏测试数据不可用', 503, 'TESTS_UNAVAILABLE');
@@ -2385,8 +2425,8 @@ async function executeWithRetry(payload, env, onRetry) {
   throw lastError || judgeError('代码执行服务暂时不可用', 502, 'JUDGE_UNAVAILABLE');
 }
 
-async function runJudgeSubmission(body, env, onEvent, shouldPersist = true) {
-  const prepared = await prepareJudgeSubmission(body, env);
+async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allowDraft = false) {
+  const prepared = await prepareJudgeSubmission(body, env, allowDraft);
   const { username, problemId, group, language, script, languageId, problem, testCases } = prepared;
   if (onEvent) await onEvent({ type: 'start', totalTests: testCases.length });
 
@@ -2488,9 +2528,9 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true) {
   return result;
 }
 
-async function handleJudgeSubmit(body, env, shouldPersist = true) {
+async function handleJudgeSubmit(body, env, shouldPersist = true, allowDraft = false) {
   try {
-    return jsonResponse(await runJudgeSubmission(body, env, null, shouldPersist));
+    return jsonResponse(await runJudgeSubmission(body, env, null, shouldPersist, allowDraft));
   } catch (error) {
     return jsonResponse({ error: error.message, code: error.code || 'JUDGE_FAILED' }, error.status || 500);
   }

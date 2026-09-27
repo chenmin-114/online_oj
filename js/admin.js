@@ -157,8 +157,14 @@ class OJAdmin {
     });
     document.getElementById('problem-editor').addEventListener('submit', event => this.saveProblem(event));
     document.getElementById('problem-admin-list').addEventListener('click', event => {
-      const button = event.target.closest('[data-edit-problem]');
-      if (button) this.editProblem(button.dataset.editProblem);
+      const editButton = event.target.closest('[data-edit-problem]');
+      const previewButton = event.target.closest('[data-preview-problem]');
+      if (editButton) this.editProblem(editButton.dataset.editProblem);
+      if (previewButton) this.previewProblem(previewButton.dataset.previewProblem);
+    });
+    document.getElementById('close-admin-preview').addEventListener('click', () => this.closePreview());
+    document.getElementById('admin-preview').addEventListener('click', event => {
+      if (event.target.id === 'admin-preview') this.closePreview();
     });
     document.getElementById('problem-id').addEventListener('input', event => {
       const fileInput = document.getElementById('problem-file');
@@ -624,12 +630,13 @@ class OJAdmin {
       <tr>
         <td><strong>${this.escape(problem.id)}</strong></td>
         <td>${this.escape(problem.title)}</td>
+        <td><span class="result-pill ${problem.status === 'draft' ? 'failed' : 'accepted'}">${problem.status === 'draft' ? '草稿' : '已发布'}</span></td>
         <td><span class="difficulty-pill ${this.escape(problem.difficulty)}">${this.escape(this.difficultyText(problem.difficulty))}</span></td>
         <td>${this.escape(counts[problem.id] || 0)}</td>
         <td>${this.escape(acceptedUsers[problem.id]?.size || 0)}</td>
-        <td><button type="button" class="table-link table-link-button" data-edit-problem="${this.escape(problem.file)}">可视化编辑</button></td>
+        <td><button type="button" class="table-link table-link-button" data-preview-problem="${this.escape(problem.file)}">预览</button> · <button type="button" class="table-link table-link-button" data-edit-problem="${this.escape(problem.file)}">可视化编辑</button></td>
       </tr>
-    `).join('') : '<tr><td colspan="6" class="empty-cell">暂无题目</td></tr>';
+    `).join('') : '<tr><td colspan="7" class="empty-cell">暂无题目</td></tr>';
   }
 
   showProblemEditor() {
@@ -646,6 +653,7 @@ class OJAdmin {
 
   resetProblemEditor() {
     document.getElementById('problem-editor').reset();
+    document.getElementById('problem-status').value = 'published';
     document.getElementById('sample-editor').innerHTML = '';
     document.getElementById('test-case-editor').innerHTML = '';
     document.getElementById('problem-save-status').textContent = '';
@@ -680,7 +688,7 @@ class OJAdmin {
     document.getElementById('problem-id').readOnly = isEditing;
     document.getElementById('problem-file').readOnly = isEditing;
     document.getElementById('reset-problem-editor').textContent = isEditing ? '恢复原内容' : '清空';
-    document.getElementById('save-problem').textContent = isEditing ? '保存修改' : '保存并发布题目';
+    document.getElementById('save-problem').textContent = isEditing ? '保存修改' : '保存题目';
   }
 
   async editProblem(file) {
@@ -696,6 +704,7 @@ class OJAdmin {
       document.getElementById('problem-id').value = problem.id || '';
       document.getElementById('problem-title').value = problem.title || '';
       document.getElementById('problem-difficulty').value = problem.difficulty || 'easy';
+      document.getElementById('problem-status').value = problem.status === 'draft' ? 'draft' : 'published';
       document.getElementById('problem-file').value = file;
       document.getElementById('problem-description').value = problem.description || '';
       document.getElementById('problem-input-format').value = problem.inputFormat || '';
@@ -1232,6 +1241,7 @@ class OJAdmin {
       id: document.getElementById('problem-id').value,
       title: document.getElementById('problem-title').value,
       difficulty: document.getElementById('problem-difficulty').value,
+      status: document.getElementById('problem-status').value,
       description: document.getElementById('problem-description').value,
       inputFormat: document.getElementById('problem-input-format').value,
       outputFormat: document.getElementById('problem-output-format').value,
@@ -1252,7 +1262,7 @@ class OJAdmin {
     const status = document.getElementById('problem-save-status');
     const isEditing = Boolean(this.editingProblem);
     saveButton.disabled = true;
-    saveButton.textContent = isEditing ? '正在保存...' : '正在发布...';
+    saveButton.textContent = '正在保存...';
     status.textContent = this.problemImages.length ? '正在处理题目图片' : '正在写入 GitHub 仓库';
 
     try {
@@ -1292,7 +1302,9 @@ class OJAdmin {
       this.populateRankingSelector();
       this.toast(isEditing
         ? `${result.problem.id} 已更新，题目列表也已同步`
-        : `${result.problem.id} 已发布，前台将在 GitHub Pages 更新后显示`);
+        : result.problem.status === 'draft'
+          ? `${result.problem.id} 已保存为草稿，仅管理员可见`
+          : `${result.problem.id} 已发布，前台将在 GitHub Pages 更新后显示`);
       this.editingProblem = null;
       this.setProblemEditorMode(false);
       this.resetProblemEditor();
@@ -1303,8 +1315,89 @@ class OJAdmin {
         : error.message;
     } finally {
       saveButton.disabled = false;
-      saveButton.textContent = this.editingProblem ? '保存修改' : '保存并发布题目';
+      saveButton.textContent = this.editingProblem ? '保存修改' : '保存题目';
     }
+  }
+
+  async previewProblem(file) {
+    try {
+      this.toast('正在生成题目预览...');
+      const problem = await this.fetchJson(`${this.config.workerUrl}/?file=problem&name=${encodeURIComponent(file)}`);
+      const sections = [
+        ['题目描述', problem.description],
+        ['输入格式', problem.inputFormat],
+        ['输出格式', problem.outputFormat],
+        ['数据范围', problem.constraints],
+        ['提示', Array.isArray(problem.hints) ? problem.hints.join('\n') : ''],
+      ].filter(([, content]) => String(content || '').trim());
+      const samples = Array.isArray(problem.samples) && problem.samples.length
+        ? problem.samples
+        : ((problem.sampleInput || problem.sampleOutput) ? [{ input: problem.sampleInput || '', output: problem.sampleOutput || '' }] : []);
+      const html = `<div class="preview-status-row"><span class="result-pill ${problem.status === 'draft' ? 'failed' : 'accepted'}">${problem.status === 'draft' ? '草稿 · 学生不可见' : '已发布'}</span><span>${this.escape(this.groupLabel())}</span></div>
+        <h2>${this.escape(problem.id)}. ${this.escape(problem.title)}</h2>
+        ${sections.map(([title, content]) => `<h3 class="problem-section-title">${title}</h3><div class="problem-content">${this.renderMarkdown(content)}</div>`).join('')}
+        ${samples.length ? `<h3 class="problem-section-title">样例</h3><div class="problem-samples">${samples.map((sample, index) => `<div class="sample"><div><strong>输入 #${index + 1}</strong><pre>${this.escape(sample.input)}</pre></div><div><strong>输出 #${index + 1}</strong><pre>${this.escape(sample.output)}</pre></div></div>`).join('')}</div>` : ''}
+        ${String(problem.sampleExplanation || '').trim() ? `<h3 class="problem-section-title">样例解释</h3><div class="problem-content">${this.renderMarkdown(problem.sampleExplanation)}</div>` : ''}`;
+      this.showPreview(`${problem.id} · ${problem.title}`, html);
+    } catch (error) {
+      this.toast(`预览失败：${error.message}`);
+    }
+  }
+
+  renderMarkdown(value) {
+    const source = String(value || '');
+    if (!window.marked || !window.DOMPurify) return `<p>${this.escape(source).replace(/\n/g, '<br>')}</p>`;
+    try {
+      return window.DOMPurify.sanitize(window.marked.parse(source, { gfm: true, breaks: true }), {
+        USE_PROFILES: { html: true },
+        FORBID_TAGS: ['style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'textarea', 'select', 'option'],
+        FORBID_ATTR: ['style'],
+        ALLOW_DATA_ATTR: false,
+      });
+    } catch {
+      return `<p>${this.escape(source).replace(/\n/g, '<br>')}</p>`;
+    }
+  }
+
+  enhancePreview(container) {
+    container.querySelectorAll('img').forEach(image => {
+      image.classList.add('problem-image');
+      image.loading = 'lazy';
+    });
+    container.querySelectorAll('a').forEach(link => {
+      if (/^https?:\/\//i.test(link.getAttribute('href') || '')) {
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+      }
+    });
+    if (window.hljs) container.querySelectorAll('pre code').forEach(block => window.hljs.highlightElement(block));
+    if (window.renderMathInElement) {
+      window.renderMathInElement(container, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true },
+        ],
+        throwOnError: false,
+      });
+    }
+  }
+
+  showPreview(title, html) {
+    const preview = document.getElementById('admin-preview');
+    const body = document.getElementById('admin-preview-body');
+    document.getElementById('admin-preview-title').textContent = title;
+    body.innerHTML = html;
+    preview.hidden = false;
+    document.body.classList.add('preview-open');
+    this.enhancePreview(body);
+  }
+
+  closePreview() {
+    document.getElementById('admin-preview').hidden = true;
+    document.getElementById('admin-preview-body').innerHTML = '';
+    document.body.classList.remove('preview-open');
   }
 
   populateFilters() {

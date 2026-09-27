@@ -89,7 +89,7 @@ class App {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
       }
 
-      const problems = await response.json();
+      const problems = (await response.json()).filter(problem => problem.status !== 'draft');
       if (loadSequence !== this.problemLoadSequence || requestedGroup !== this.group) return;
       this.problemList = problems;
       this._renderProblemList(problems);
