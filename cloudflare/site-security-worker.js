@@ -14,7 +14,8 @@ const HTML_CSP = [
 ].join('; ');
 
 const RESPONSE_SECURITY_HEADERS = {
-  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  // www 子域名仍由注册商 DNS 直连 GitHub，暂不把 HSTS 强制扩散到子域名。
+  'Strict-Transport-Security': 'max-age=31536000',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
