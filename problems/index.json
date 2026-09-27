@@ -5,7 +5,8 @@
     "difficulty": "easy",
     "file": "p001-aplusb.json",
     "acceptRate": "83%",
-    "submitCount": 101
+    "submitCount": 101,
+    "status": "draft"
   },
   {
     "id": "P002",
