@@ -177,6 +177,7 @@ export default {
           request,
           'student-login',
           normalizeStudentUsername(body.username),
+          false,
         );
         if (rateLimitError) return rateLimitError;
         return await handleStudentLogin(body, env);
@@ -250,13 +251,16 @@ export default {
   },
 };
 
-async function enforceRateLimit(limiter, request, scope, discriminator = '') {
+async function enforceRateLimit(limiter, request, scope, discriminator = '', includeClientIp = true) {
   if (!limiter) {
     return jsonResponse({ error: '请求限速器尚未配置', code: 'RATE_LIMIT_NOT_CONFIGURED' }, 503);
   }
   const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
   const discriminatorHash = discriminator ? (await sha256Hex(discriminator)).slice(0, 16) : '';
-  const result = await limiter.limit({ key: `${scope}:${clientIp}:${discriminatorHash}` });
+  const keyParts = [scope];
+  if (includeClientIp) keyParts.push(clientIp);
+  if (discriminatorHash) keyParts.push(discriminatorHash);
+  const result = await limiter.limit({ key: keyParts.join(':') });
   if (result.success) return null;
   const response = jsonResponse({
     error: scope === 'admin-login'
