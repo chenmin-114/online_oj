@@ -167,6 +167,30 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminImportStudents(body, env);
+      } else if (body.type === 'admin_exam_list') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamList(body, env);
+      } else if (body.type === 'admin_exam_get') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamGet(body, env);
+      } else if (body.type === 'admin_exam_save') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamSave(body, env);
+      } else if (body.type === 'admin_exam_submissions') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamSubmissions(body, env);
+      } else if (body.type === 'admin_exam_submission_get') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamSubmissionGet(body, env);
+      } else if (body.type === 'admin_exam_grade') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamGrade(body, env);
       } else if (body.type === 'student_account_status') {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
         if (rateLimitError) return rateLimitError;
@@ -200,6 +224,20 @@ export default {
         return jsonResponse({ success: true }, 200, {
           'Set-Cookie': buildStudentSessionCookie('', 0),
         });
+      } else if (body.type === 'exam_list') {
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return await handleStudentExamList(body, env);
+      } else if (body.type === 'exam_get') {
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return await handleStudentExamGet(body, env);
+      } else if (body.type === 'exam_submit') {
+        const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
+        if (rateLimitError) return rateLimitError;
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return await handleStudentExamSubmit(body, env);
       } else if (body.type === 'analytics_view') {
         const rateLimitError = await enforceRateLimit(env.ANALYTICS_RATE_LIMITER, request, 'analytics');
         if (rateLimitError) return rateLimitError;
@@ -635,6 +673,547 @@ async function secureTextEqual(left, right) {
     difference |= leftBytes[index] ^ rightBytes[index];
   }
   return difference === 0;
+}
+
+const EXAM_PART_TYPES = new Set(['single_choice', 'multiple_choice', 'fill_blank', 'short_answer', 'programming']);
+const EXAM_RESULT_POLICIES = new Set(['immediate', 'after_graded', 'manual']);
+
+function normalizeExamId(value) {
+  const id = String(value || '').trim().toUpperCase();
+  return /^[A-Z][A-Z0-9_-]{1,31}$/.test(id) ? id : '';
+}
+
+function normalizeExamText(value, maxLength) {
+  return String(value || '').trim().normalize('NFC').slice(0, maxLength);
+}
+
+function validateExamPaper(input) {
+  if (!input || typeof input !== 'object') return { error: '缺少试卷内容' };
+  const id = normalizeExamId(input.id);
+  const title = normalizeExamText(input.title, 120);
+  const description = normalizeExamText(input.description, 10000);
+  const status = input.status === 'published' ? 'published' : 'draft';
+  const resultPolicy = EXAM_RESULT_POLICIES.has(input.resultPolicy) ? input.resultPolicy : 'after_graded';
+  if (!id || !title) return { error: '试卷编号或名称不正确' };
+  if (!Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 100) {
+    return { error: '一张试卷必须包含 1 到 100 道大题' };
+  }
+
+  const ids = new Set();
+  const questions = [];
+  let totalParts = 0;
+  let totalScore = 0;
+  for (const [questionIndex, rawQuestion] of input.questions.entries()) {
+    const questionId = normalizeExamText(rawQuestion?.id || `Q${questionIndex + 1}`, 40);
+    if (!questionId || ids.has(questionId)) return { error: `第 ${questionIndex + 1} 道大题编号重复或为空` };
+    ids.add(questionId);
+    const titleText = normalizeExamText(rawQuestion?.title || `第 ${questionIndex + 1} 题`, 160);
+    const question = {
+      id: questionId,
+      title: titleText,
+      description: normalizeExamText(rawQuestion?.description, 30000),
+      scoringMode: rawQuestion?.scoringMode === 'programming_required' ? 'programming_required' : 'independent',
+      parts: [],
+    };
+    if (!Array.isArray(rawQuestion?.parts) || rawQuestion.parts.length < 1 || rawQuestion.parts.length > 30) {
+      return { error: `${titleText} 必须包含 1 到 30 个小题` };
+    }
+    let hasProgramming = false;
+    for (const [partIndex, rawPart] of rawQuestion.parts.entries()) {
+      totalParts += 1;
+      if (totalParts > 200) return { error: '一张试卷最多包含 200 个小题' };
+      const partId = normalizeExamText(rawPart?.id || `${questionId}_${partIndex + 1}`, 50);
+      const type = String(rawPart?.type || 'short_answer');
+      const points = Number(rawPart?.points);
+      if (!partId || ids.has(partId)) return { error: `${titleText} 的小题编号重复或为空` };
+      if (!EXAM_PART_TYPES.has(type)) return { error: `${titleText} 包含不支持的题型` };
+      if (!Number.isFinite(points) || points < 0 || points > 1000) return { error: `${titleText} 的小题分数不正确` };
+      ids.add(partId);
+      const part = {
+        id: partId,
+        type,
+        prompt: normalizeExamText(rawPart?.prompt, 30000),
+        points: Math.round(points * 100) / 100,
+      };
+      if (type === 'single_choice' || type === 'multiple_choice') {
+        part.options = Array.isArray(rawPart.options)
+          ? rawPart.options.map(option => normalizeExamText(option, 1000)).filter(Boolean).slice(0, 20)
+          : [];
+        part.correctAnswers = Array.isArray(rawPart.correctAnswers)
+          ? [...new Set(rawPart.correctAnswers.map(answer => normalizeExamText(answer, 1000)).filter(answer => part.options.includes(answer)))]
+          : [];
+        if (part.options.length < 2 || part.correctAnswers.length < 1) return { error: `${titleText} 的选择题选项或答案不完整` };
+        if (type === 'single_choice' && part.correctAnswers.length !== 1) return { error: `${titleText} 的单选题只能设置一个答案` };
+      } else if (type === 'fill_blank') {
+        part.correctAnswers = Array.isArray(rawPart.correctAnswers)
+          ? [...new Set(rawPart.correctAnswers.map(answer => normalizeExamText(answer, 2000)).filter(Boolean))].slice(0, 50)
+          : [];
+        part.caseSensitive = rawPart.caseSensitive === true;
+        if (!part.correctAnswers.length) return { error: `${titleText} 的填空题至少需要一个预设答案` };
+      } else if (type === 'programming') {
+        hasProgramming = true;
+        part.problemId = String(rawPart.problemId || '').trim().toUpperCase();
+        if (!/^P\d{3,6}$/.test(part.problemId)) return { error: `${titleText} 的编程小题必须关联有效题号` };
+      }
+      totalScore += part.points;
+      question.parts.push(part);
+    }
+    if (question.scoringMode === 'programming_required' && !hasProgramming) {
+      return { error: `${titleText} 使用“编程正确才得分”模式，但没有编程小题` };
+    }
+    questions.push(question);
+  }
+  if (totalScore > 10000) return { error: '试卷总分不能超过 10000 分' };
+  return {
+    paper: { id, title, description, status, resultPolicy, questions },
+    totalScore: Math.round(totalScore * 100) / 100,
+    totalParts,
+  };
+}
+
+function publicExamPaper(paper) {
+  return {
+    ...paper,
+    questions: paper.questions.map(question => ({
+      ...question,
+      parts: question.parts.map(part => {
+        const publicPart = { ...part };
+        delete publicPart.correctAnswers;
+        delete publicPart.caseSensitive;
+        return publicPart;
+      }),
+    })),
+  };
+}
+
+async function readExamRecord(env, examId) {
+  if (!env.OJ_DB) return null;
+  return await env.OJ_DB.prepare(`
+    SELECT p.*, v.structure_json
+    FROM exam_papers p
+    JOIN exam_versions v ON v.exam_id = p.id AND v.version = p.version
+    WHERE p.id = ?1
+  `).bind(examId).first();
+}
+
+function parseExamRecord(record) {
+  if (!record) return null;
+  const structure = JSON.parse(record.structure_json);
+  return {
+    ...structure,
+    id: record.id,
+    title: record.title,
+    description: record.description,
+    status: record.status,
+    resultPolicy: record.result_policy,
+    version: Number(record.version),
+    totalScore: Number(record.total_score),
+    updatedAt: Number(record.updated_at),
+  };
+}
+
+async function handleAdminExamList(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const group = normalizeGroup(body.group);
+  const result = await env.OJ_DB.prepare(`
+    SELECT p.id, p.title, p.description, p.status, p.result_policy, p.total_score,
+           p.version, p.updated_at,
+           COUNT(CASE WHEN s.is_final = 1 THEN 1 END) AS submitted_students,
+           SUM(CASE WHEN s.is_final = 1 AND s.grading_status = 'completed' THEN 1 ELSE 0 END) AS completed_students
+    FROM exam_papers p
+    LEFT JOIN exam_submissions s ON s.exam_id = p.id
+    WHERE p.group_name = ?1
+    GROUP BY p.id
+    ORDER BY p.updated_at DESC
+  `).bind(group).all();
+  return jsonResponse(result.results || []);
+}
+
+async function handleAdminExamGet(body, env) {
+  const examId = normalizeExamId(body.examId);
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  const record = await readExamRecord(env, examId);
+  if (!record) return jsonResponse({ error: '试卷不存在' }, 404);
+  return jsonResponse(parseExamRecord(record));
+}
+
+async function handleAdminExamSave(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const validated = validateExamPaper(body.paper);
+  if (validated.error) return jsonResponse({ error: validated.error }, 400);
+  const group = normalizeGroup(body.group);
+  const { paper, totalScore } = validated;
+  const existing = await readExamRecord(env, paper.id);
+  if (existing && existing.group_name !== group) return jsonResponse({ error: '该试卷编号已被其他组别使用' }, 409);
+
+  const structure = JSON.stringify({ questions: paper.questions });
+  const structureChanged = !existing || existing.structure_json !== structure;
+  const version = existing ? Number(existing.version) + (structureChanged ? 1 : 0) : 1;
+  const now = Date.now();
+  const statements = [];
+  if (structureChanged) {
+    statements.push(env.OJ_DB.prepare(`
+      INSERT INTO exam_versions (exam_id, version, structure_json, created_at)
+      VALUES (?1, ?2, ?3, ?4)
+    `).bind(paper.id, version, structure, now));
+  }
+  statements.push(env.OJ_DB.prepare(`
+    INSERT INTO exam_papers (
+      id, group_name, title, description, status, result_policy,
+      total_score, version, created_at, updated_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+    ON CONFLICT(id) DO UPDATE SET
+      title = excluded.title,
+      description = excluded.description,
+      status = excluded.status,
+      result_policy = excluded.result_policy,
+      total_score = excluded.total_score,
+      version = excluded.version,
+      updated_at = excluded.updated_at
+  `).bind(
+    paper.id, group, paper.title, paper.description, paper.status,
+    paper.resultPolicy, totalScore, version, existing ? Number(existing.created_at) : now,
+  ));
+  if (structureChanged) {
+    statements.push(env.OJ_DB.prepare(`
+      DELETE FROM exam_versions
+      WHERE exam_id = ?1 AND version <> ?2
+        AND NOT EXISTS (
+          SELECT 1 FROM exam_submissions s
+          WHERE s.exam_id = exam_versions.exam_id AND s.exam_version = exam_versions.version
+        )
+    `).bind(paper.id, version));
+  }
+  await env.OJ_DB.batch(statements);
+  return jsonResponse({ success: true, id: paper.id, version, totalScore });
+}
+
+async function handleStudentExamList(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const username = normalizeStudentUsername(body.username);
+  const group = normalizeGroup(body.group);
+  const result = await env.OJ_DB.prepare(`
+    SELECT p.id, p.title, p.description, p.total_score, p.result_policy, p.updated_at,
+           s.id AS submission_id, s.grading_status, s.total_score AS achieved_score,
+           s.graded_count, s.total_parts, s.released, s.submitted_at
+    FROM exam_papers p
+    LEFT JOIN exam_submissions s
+      ON s.exam_id = p.id AND s.username = ?1 AND s.is_final = 1
+    WHERE p.group_name = ?2 AND p.status = 'published'
+    ORDER BY p.updated_at DESC
+  `).bind(username, group).all();
+  return jsonResponse((result.results || []).map(row => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    totalScore: Number(row.total_score),
+    submittedAt: row.submitted_at ? Number(row.submitted_at) : null,
+    gradingStatus: row.grading_status || null,
+    gradedCount: Number(row.graded_count || 0),
+    totalParts: Number(row.total_parts || 0),
+    resultVisible: isExamResultVisible(row.result_policy, row.grading_status, Number(row.released)),
+    achievedScore: isExamResultVisible(row.result_policy, row.grading_status, Number(row.released))
+      ? Number(row.achieved_score) : null,
+  })));
+}
+
+function isExamResultVisible(policy, gradingStatus, released) {
+  return policy === 'immediate'
+    || (policy === 'after_graded' && gradingStatus === 'completed')
+    || (policy === 'manual' && released === 1);
+}
+
+async function handleStudentExamGet(body, env) {
+  const examId = normalizeExamId(body.examId);
+  const username = normalizeStudentUsername(body.username);
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  const record = await readExamRecord(env, examId);
+  if (!record || record.status !== 'published') return jsonResponse({ error: '试卷不存在或尚未发布' }, 404);
+  const paper = parseExamRecord(record);
+  const submission = await env.OJ_DB.prepare(`
+    SELECT * FROM exam_submissions
+    WHERE exam_id = ?1 AND username = ?2 AND is_final = 1
+  `).bind(examId, username).first();
+  let mySubmission = null;
+  if (submission) {
+    const visible = isExamResultVisible(record.result_policy, submission.grading_status, Number(submission.released));
+    mySubmission = {
+      id: Number(submission.id),
+      answers: JSON.parse(submission.answers_json),
+      submittedAt: Number(submission.submitted_at),
+      gradingStatus: submission.grading_status,
+      gradedCount: Number(submission.graded_count),
+      totalParts: Number(submission.total_parts),
+      resultVisible: visible,
+      ...(visible ? {
+        totalScore: Number(submission.total_score),
+        grading: JSON.parse(submission.grading_json),
+      } : {}),
+    };
+  }
+  return jsonResponse({ paper: publicExamPaper(paper), mySubmission });
+}
+
+function normalizedAnswer(value, caseSensitive = false) {
+  const normalized = String(value ?? '').trim().normalize('NFC').replace(/\r\n/g, '\n');
+  return caseSensitive ? normalized : normalized.toLocaleLowerCase('zh-CN');
+}
+
+function sameChoiceAnswers(actual, expected) {
+  const left = [...new Set((Array.isArray(actual) ? actual : [actual]).map(value => String(value)))].sort();
+  const right = [...new Set(expected.map(value => String(value)))].sort();
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function calculateExamScores(paper, partResults) {
+  const resultMap = new Map(partResults.map(result => [result.partId, result]));
+  let autoScore = 0;
+  let manualScore = 0;
+  let totalScore = 0;
+  let gradedCount = 0;
+  let totalParts = 0;
+  for (const question of paper.questions) {
+    const results = question.parts.map(part => resultMap.get(part.id));
+    const programmingPassed = question.scoringMode !== 'programming_required'
+      || question.parts.filter(part => part.type === 'programming').every(part => resultMap.get(part.id)?.status === 'correct');
+    for (const result of results) {
+      totalParts += 1;
+      if (result.status !== 'pending') gradedCount += 1;
+      const effectiveAuto = programmingPassed ? Number(result.autoScore || 0) : 0;
+      const effectiveManual = programmingPassed ? Number(result.manualScore || 0) : 0;
+      autoScore += effectiveAuto;
+      manualScore += effectiveManual;
+      totalScore += effectiveAuto + effectiveManual;
+      result.effectiveScore = Math.round((effectiveAuto + effectiveManual) * 100) / 100;
+      result.blockedByProgramming = !programmingPassed;
+    }
+  }
+  return {
+    autoScore: Math.round(autoScore * 100) / 100,
+    manualScore: Math.round(manualScore * 100) / 100,
+    totalScore: Math.round(totalScore * 100) / 100,
+    gradedCount,
+    totalParts,
+    gradingStatus: gradedCount === totalParts ? 'completed' : 'pending',
+  };
+}
+
+async function gradeExamAnswers(paper, answers, username, group, env) {
+  const partResults = [];
+  for (const question of paper.questions) {
+    for (const part of question.parts) {
+      const answer = answers[part.id];
+      const result = {
+        questionId: question.id,
+        partId: part.id,
+        type: part.type,
+        maxScore: part.points,
+        status: 'pending',
+        autoScore: 0,
+        manualScore: 0,
+        feedback: '',
+      };
+      if (part.type === 'single_choice' || part.type === 'multiple_choice') {
+        const correct = sameChoiceAnswers(answer, part.correctAnswers);
+        result.status = correct ? 'correct' : 'incorrect';
+        result.autoScore = correct ? part.points : 0;
+      } else if (part.type === 'fill_blank') {
+        const actual = normalizedAnswer(answer, part.caseSensitive);
+        const correct = actual && part.correctAnswers.some(expected => normalizedAnswer(expected, part.caseSensitive) === actual);
+        if (correct) {
+          result.status = 'correct';
+          result.autoScore = part.points;
+        }
+      } else if (part.type === 'programming') {
+        const language = String(answer?.language || 'c');
+        const code = String(answer?.code || '');
+        if (code.trim()) {
+          try {
+            const judged = await runJudgeSubmission({
+              username,
+              problemId: part.problemId,
+              group,
+              language,
+              code,
+            }, env, null, false);
+            result.status = judged.passed ? 'correct' : 'incorrect';
+            result.autoScore = judged.passed ? part.points : 0;
+            result.judge = {
+              passed: judged.passed,
+              passedTests: judged.passedTests,
+              totalTests: judged.totalTests,
+              totalTime: judged.totalTime,
+            };
+          } catch (error) {
+            result.feedback = `自动判题暂时失败：${String(error.message || error).slice(0, 300)}`;
+          }
+        } else {
+          result.status = 'incorrect';
+        }
+      }
+      partResults.push(result);
+    }
+  }
+  return partResults;
+}
+
+async function handleStudentExamSubmit(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  const username = normalizeStudentUsername(body.username);
+  const answers = body.answers && typeof body.answers === 'object' && !Array.isArray(body.answers) ? body.answers : null;
+  if (!examId || !username || !answers) return jsonResponse({ error: '试卷提交内容不正确' }, 400);
+  const answersJson = JSON.stringify(answers);
+  if (answersJson.length > 600000) return jsonResponse({ error: '整张试卷答案不能超过 600 KB' }, 413);
+  const record = await readExamRecord(env, examId);
+  if (!record || record.status !== 'published') return jsonResponse({ error: '试卷不存在或尚未发布' }, 404);
+  const group = record.group_name;
+  if (body.group && normalizeGroup(body.group) !== group) return jsonResponse({ error: '试卷组别不正确' }, 400);
+  const paper = parseExamRecord(record);
+  const validPartIds = new Set(paper.questions.flatMap(question => question.parts.map(part => part.id)));
+  for (const key of Object.keys(answers)) {
+    if (!validPartIds.has(key)) delete answers[key];
+  }
+  const compactAnswersJson = JSON.stringify(answers);
+  const partResults = await gradeExamAnswers(paper, answers, username, group, env);
+  const scores = calculateExamScores(paper, partResults);
+  const gradingJson = JSON.stringify({ partResults });
+  const previous = await env.OJ_DB.prepare(`
+    SELECT COALESCE(MAX(attempt_no), 0) AS attempts
+    FROM exam_submissions WHERE exam_id = ?1 AND username = ?2
+  `).bind(examId, username).first();
+  const attemptNo = Number(previous?.attempts || 0) + 1;
+  const now = Date.now();
+  const statements = [
+    env.OJ_DB.prepare(`
+      UPDATE exam_submissions SET is_final = 0, updated_at = ?3
+      WHERE exam_id = ?1 AND username = ?2 AND is_final = 1
+    `).bind(examId, username, now),
+    env.OJ_DB.prepare(`
+      INSERT INTO exam_submissions (
+        exam_id, exam_version, username, attempt_no, answers_json, grading_json,
+        auto_score, manual_score, total_score, graded_count, total_parts,
+        grading_status, released, is_final, submitted_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, 1, ?13, ?13)
+    `).bind(
+      examId, paper.version, username, attemptNo, compactAnswersJson, gradingJson,
+      scores.autoScore, scores.manualScore, scores.totalScore, scores.gradedCount,
+      scores.totalParts, scores.gradingStatus, now,
+    ),
+  ];
+  await env.OJ_DB.batch(statements);
+  const visible = isExamResultVisible(paper.resultPolicy, scores.gradingStatus, 0);
+  return jsonResponse({
+    success: true,
+    attemptNo,
+    gradingStatus: scores.gradingStatus,
+    gradedCount: scores.gradedCount,
+    totalParts: scores.totalParts,
+    resultVisible: visible,
+    ...(visible ? { totalScore: scores.totalScore, grading: { partResults } } : {}),
+  });
+}
+
+async function handleAdminExamSubmissions(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  const result = await env.OJ_DB.prepare(`
+    SELECT id, exam_id, exam_version, username, attempt_no,
+           auto_score, manual_score, total_score, graded_count, total_parts,
+           grading_status, released, is_final, submitted_at, updated_at
+    FROM exam_submissions
+    WHERE exam_id = ?1 AND is_final = 1
+    ORDER BY submitted_at ASC
+  `).bind(examId).all();
+  return jsonResponse((result.results || []).map(row => ({
+    id: Number(row.id),
+    examId: row.exam_id,
+    examVersion: Number(row.exam_version),
+    username: row.username,
+    attemptNo: Number(row.attempt_no),
+    autoScore: Number(row.auto_score),
+    manualScore: Number(row.manual_score),
+    totalScore: Number(row.total_score),
+    gradedCount: Number(row.graded_count),
+    totalParts: Number(row.total_parts),
+    gradingStatus: row.grading_status,
+    released: Number(row.released) === 1,
+    submittedAt: Number(row.submitted_at),
+  })));
+}
+
+async function handleAdminExamSubmissionGet(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const submissionId = Number(body.submissionId);
+  if (!Number.isInteger(submissionId) || submissionId < 1) return jsonResponse({ error: '提交编号不正确' }, 400);
+  const row = await env.OJ_DB.prepare(`
+    SELECT id, exam_id, exam_version, username, attempt_no, answers_json, grading_json,
+           auto_score, manual_score, total_score, graded_count, total_parts,
+           grading_status, released, is_final, submitted_at, updated_at
+    FROM exam_submissions WHERE id = ?1
+  `).bind(submissionId).first();
+  if (!row || Number(row.is_final) !== 1) return jsonResponse({ error: '最终提交不存在或已经被新提交替代' }, 404);
+  return jsonResponse({
+    id: Number(row.id), examId: row.exam_id, examVersion: Number(row.exam_version),
+    username: row.username, attemptNo: Number(row.attempt_no),
+    answers: JSON.parse(row.answers_json), grading: JSON.parse(row.grading_json),
+    autoScore: Number(row.auto_score), manualScore: Number(row.manual_score),
+    totalScore: Number(row.total_score), gradedCount: Number(row.graded_count),
+    totalParts: Number(row.total_parts), gradingStatus: row.grading_status,
+    released: Number(row.released) === 1, submittedAt: Number(row.submitted_at),
+  });
+}
+
+async function handleAdminExamGrade(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const submissionId = Number(body.submissionId);
+  if (!Number.isInteger(submissionId) || submissionId < 1) return jsonResponse({ error: '提交编号不正确' }, 400);
+  const submission = await env.OJ_DB.prepare('SELECT * FROM exam_submissions WHERE id = ?1').bind(submissionId).first();
+  if (!submission) return jsonResponse({ error: '试卷提交不存在' }, 404);
+  if (Number(submission.is_final) !== 1) return jsonResponse({ error: '该提交已被学生的新提交替代，不能作为最终成绩批改' }, 409);
+  const version = await env.OJ_DB.prepare(`
+    SELECT v.structure_json, p.title, p.description, p.status, p.result_policy,
+           p.total_score, p.group_name, p.updated_at
+    FROM exam_versions v JOIN exam_papers p ON p.id = v.exam_id
+    WHERE v.exam_id = ?1 AND v.version = ?2
+  `).bind(submission.exam_id, submission.exam_version).first();
+  if (!version) return jsonResponse({ error: '试卷历史版本不存在' }, 503);
+  const paper = {
+    ...JSON.parse(version.structure_json),
+    id: submission.exam_id,
+    title: version.title,
+    version: Number(submission.exam_version),
+  };
+  const grading = JSON.parse(submission.grading_json);
+  const partResults = Array.isArray(grading.partResults) ? grading.partResults : [];
+  const result = partResults.find(item => item.partId === body.partId);
+  const part = paper.questions.flatMap(question => question.parts).find(item => item.id === body.partId);
+  if (body.partId) {
+    if (!result || !part) return jsonResponse({ error: '小题不存在' }, 404);
+    const score = Number(body.score);
+    if (!Number.isFinite(score) || score < 0 || score > Number(part.points)) {
+      return jsonResponse({ error: `人工评分必须在 0 到 ${part.points} 之间` }, 400);
+    }
+    result.manualScore = Math.round(score * 100) / 100;
+    result.autoScore = 0;
+    result.status = score >= Number(part.points) ? 'correct' : 'graded';
+    result.feedback = normalizeExamText(body.feedback, 3000);
+  }
+  const scores = calculateExamScores(paper, partResults);
+  const released = typeof body.released === 'boolean' ? (body.released ? 1 : 0) : Number(submission.released);
+  const now = Date.now();
+  await env.OJ_DB.prepare(`
+    UPDATE exam_submissions
+    SET grading_json = ?2, auto_score = ?3, manual_score = ?4, total_score = ?5,
+        graded_count = ?6, total_parts = ?7, grading_status = ?8, released = ?9, updated_at = ?10
+    WHERE id = ?1 AND is_final = 1
+  `).bind(
+    submissionId, JSON.stringify({ partResults }), scores.autoScore, scores.manualScore,
+    scores.totalScore, scores.gradedCount, scores.totalParts, scores.gradingStatus,
+    released, now,
+  ).run();
+  return jsonResponse({ success: true, ...scores, released: released === 1, grading: { partResults } });
 }
 
 /**

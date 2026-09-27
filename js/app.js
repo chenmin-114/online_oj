@@ -24,6 +24,8 @@ class App {
   async init() {
     // 初始化视图
     this.views.init();
+    this.examUI = new ExamUI(this);
+    this.examUI.init();
 
     // 编辑器来自海外 CDN，不能阻塞题目列表和导航的首次显示。
     // 即使 Monaco 暂时加载较慢，学生仍应当能立即浏览题目。
@@ -129,6 +131,7 @@ class App {
     else url.searchParams.set('group', group);
     history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
     this.views.show('problems');
+    this.examUI?.onGroupChange();
     document.getElementById('problem-list').innerHTML = '<p class="info">⏳ 正在加载题目...</p>';
     await this.loadProblemList();
   }
@@ -486,6 +489,7 @@ class App {
         clearTimeout(this.codeSaveTimer);
         this.username = name;
         localStorage.setItem('oj_username', this.username);
+        this.examUI?.onGroupChange();
         document.getElementById('username-display').textContent = this.username;
         if (this.currentProblem) this._restoreCode(document.getElementById('language-select').value);
         this._trackView(this.currentProblem?.id || '');

@@ -305,6 +305,41 @@ input.admin-input { min-width: 240px; }
 .admin-toast { position: fixed; right: 24px; bottom: 24px; padding: 11px 15px; border: 1px solid var(--admin-border); border-radius: 9px; background: #1b2740; color: white; font-size: 12px; opacity: 0; pointer-events: none; transform: translateY(8px); transition: 180ms ease; box-shadow: 0 14px 35px rgba(0,0,0,.35); }
 .admin-toast.show { opacity: 1; transform: translateY(0); }
 
+/* ========== 套卷与批改 ========== */
+.exam-editor { margin-top: 20px; }
+.exam-editor[hidden], #exam-manage-view[hidden], #exam-grading-view[hidden], #grading-part[hidden] { display: none; }
+.exam-question-editor { display: grid; gap: 16px; }
+.exam-question-card { padding: 16px; display: grid; gap: 14px; border: 1px solid #354565; border-radius: 11px; background: rgba(91,140,255,.035); }
+.exam-question-heading, .exam-part-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--admin-text); font-size: 13px; }
+.exam-part-list { display: grid; gap: 11px; }
+.exam-part-card { padding: 14px; display: grid; gap: 12px; border: 1px solid var(--admin-border); border-radius: 9px; background: #0e1526; }
+.exam-add-part { display: flex; justify-content: flex-end; gap: 9px; }
+.exam-add-part .admin-input { min-width: 150px; }
+.test-visibility-option.compact { padding: 9px 11px; }
+.exam-grading-controls { margin-bottom: 18px; }
+.exam-grading-layout { display: grid; grid-template-columns: minmax(240px, .35fr) minmax(0, 1fr); gap: 18px; }
+.grading-student-list { max-height: 720px; overflow-y: auto; }
+.grading-student { width: 100%; padding: 13px 15px; display: grid; gap: 3px; border: 0; border-top: 1px solid var(--admin-border); background: transparent; color: var(--admin-text); text-align: left; cursor: pointer; }
+.grading-student:first-child { border-top: 0; }
+.grading-student:hover, .grading-student.active { background: rgba(91,140,255,.09); }
+.grading-student.active { box-shadow: inset 3px 0 var(--admin-blue); }
+.grading-student strong { font-size: 12px; }
+.grading-student span { color: var(--admin-muted); font-size: 10px; }
+.grading-nav { display: flex; gap: 7px; }
+.grading-workspace { padding: 16px; display: grid; gap: 13px; }
+.grading-score-summary { padding: 13px; display: flex; align-items: center; gap: 16px; border: 1px solid var(--admin-border); border-radius: 9px; background: rgba(91,140,255,.04); color: var(--admin-muted); font-size: 11px; }
+.grading-score-summary strong { color: var(--admin-text); font-size: 18px; }
+.grading-score-summary label { margin-left: auto; cursor: pointer; }
+.grading-part-card { padding: 15px; display: grid; gap: 11px; border: 1px solid var(--admin-border); border-radius: 10px; background: #0e1526; }
+.grading-part-title { display: flex; justify-content: space-between; gap: 16px; }
+.grading-part-title > div { display: grid; gap: 3px; }
+.grading-part-title strong { color: var(--admin-text); font-size: 12px; white-space: normal; }
+.grading-part-title span, .grading-judge { color: var(--admin-muted); font-size: 10px; }
+.grading-part-title b { color: var(--admin-blue); white-space: nowrap; }
+.grading-answer { max-height: 320px; padding: 12px; overflow: auto; border-radius: 7px; background: #080d18; color: #cbd5ea; font: 12px/1.6 Consolas, Monaco, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.grading-form { display: grid; grid-template-columns: 140px minmax(200px, 1fr) auto; gap: 10px; align-items: end; }
+.grading-form input.admin-input { min-width: 0; }
+
 @media (max-width: 1050px) {
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-grid.two-columns { grid-template-columns: 1fr; }
@@ -337,4 +372,8 @@ input.admin-input { min-width: 240px; }
   .problem-importer-actions { align-items: flex-start; flex-direction: column; }
   .problem-importer summary small { margin-left: 0; }
   .account-import-summary { grid-template-columns: 1fr; }
+  .exam-grading-layout { grid-template-columns: 1fr; }
+  .grading-form { grid-template-columns: 1fr; }
+  .grading-score-summary { align-items: flex-start; flex-direction: column; }
+  .grading-score-summary label { margin-left: 0; }
 }

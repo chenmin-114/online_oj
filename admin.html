@@ -50,6 +50,7 @@
         <button class="admin-nav-item active" data-panel="overview"><span>▦</span> 数据总览</button>
         <button class="admin-nav-item" data-panel="accounts"><span>♙</span> 账号管理</button>
         <button class="admin-nav-item" data-panel="problems"><span>◇</span> 题目管理</button>
+        <button class="admin-nav-item" data-panel="exams"><span>▤</span> 套卷与批改</button>
         <button class="admin-nav-item" data-panel="submissions"><span>☷</span> 提交记录</button>
         <button class="admin-nav-item" data-panel="leaderboards"><span>♛</span> 排行榜</button>
         <button class="admin-nav-item" data-panel="system"><span>⚙</span> 系统状态</button>
@@ -196,6 +197,63 @@
         </form>
       </section>
 
+      <section id="panel-exams" class="admin-panel">
+        <div class="admin-page-title row">
+          <div><p class="eyebrow">EXAMS</p><h2>套卷与批改</h2><p>组建混合试卷，集中完成自动判题和人工评分</p></div>
+          <div class="title-actions">
+            <button id="show-exam-grading" type="button" class="admin-button secondary">批改试卷</button>
+            <button id="show-exam-editor" type="button" class="admin-button primary">＋ 新建套卷</button>
+          </div>
+        </div>
+
+        <div id="exam-manage-view">
+          <article class="admin-card">
+            <div class="card-heading"><div><h3>试卷列表</h3><p>草稿不会出现在学生端；已发布试卷可继续生成新版本</p></div></div>
+            <div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>试卷</th><th>状态</th><th>总分</th><th>提交人数</th><th>批改完成</th><th>操作</th></tr></thead><tbody id="exam-admin-list"><tr><td colspan="7" class="empty-cell">正在读取...</td></tr></tbody></table></div>
+          </article>
+
+          <form id="exam-editor" class="admin-card exam-editor" hidden>
+            <div class="card-heading">
+              <div><h3 id="exam-editor-title">新建套卷</h3><p>一道大题可以组合多种小题，编程小题复用现有题库的隐藏测试点</p></div>
+              <button id="close-exam-editor" type="button" class="text-button">关闭 ×</button>
+            </div>
+            <div class="problem-form">
+              <div class="form-grid three-columns">
+                <label class="form-field"><span>试卷编号 *</span><input id="exam-id" class="admin-input" required maxlength="32" placeholder="EXAM01"></label>
+                <label class="form-field"><span>试卷名称 *</span><input id="exam-title" class="admin-input" required maxlength="120" placeholder="第一次综合考核"></label>
+                <label class="form-field"><span>发布状态</span><select id="exam-status" class="admin-input"><option value="draft">草稿</option><option value="published">发布给学生</option></select></label>
+              </div>
+              <label class="form-field"><span>试卷说明</span><textarea id="exam-description" class="admin-input" rows="4" maxlength="10000" placeholder="支持 Markdown，可填写考试说明和注意事项"></textarea></label>
+              <label class="form-field"><span>学生查看批改结果</span><select id="exam-result-policy" class="admin-input"><option value="immediate">提交后立即显示当前批改结果</option><option value="after_graded" selected>全部批改完成后显示</option><option value="manual">管理员手动发布后显示</option></select></label>
+              <div class="testcase-heading"><div><strong>试卷题目</strong><p>大题内可自由组合选择、填空、简答和编程小题</p></div><button id="add-exam-question" type="button" class="admin-button secondary">＋ 添加大题</button></div>
+              <div id="exam-question-editor" class="exam-question-editor"></div>
+            </div>
+            <div class="problem-form-actions"><span id="exam-save-status"></span><button type="submit" class="admin-button primary">保存试卷</button></div>
+          </form>
+        </div>
+
+        <div id="exam-grading-view" hidden>
+          <article class="admin-card exam-grading-controls">
+            <div class="filter-bar">
+              <button id="back-to-exams" type="button" class="admin-button secondary">← 返回试卷管理</button>
+              <select id="grading-exam" class="admin-input"><option value="">选择试卷</option></select>
+              <select id="grading-mode" class="admin-input"><option value="student">按学生批改整卷</option><option value="part">按一道题连续批改</option></select>
+              <select id="grading-part" class="admin-input" hidden><option value="">选择小题</option></select>
+            </div>
+          </article>
+          <div class="exam-grading-layout">
+            <article class="admin-card">
+              <div class="card-heading"><div><h3>学生提交</h3><p id="grading-summary">请选择试卷</p></div></div>
+              <div id="grading-student-list" class="grading-student-list"></div>
+            </article>
+            <article class="admin-card">
+              <div class="card-heading"><div><h3 id="grading-work-title">批改详情</h3><p id="grading-work-meta">选择学生后开始批改</p></div><div class="grading-nav"><button id="grading-prev" type="button" class="admin-button secondary" disabled>上一个</button><button id="grading-next" type="button" class="admin-button secondary" disabled>下一个</button></div></div>
+              <div id="grading-workspace" class="grading-workspace"><p class="empty-cell">暂无批改内容</p></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section id="panel-submissions" class="admin-panel">
         <div class="admin-page-title row">
           <div><p class="eyebrow">JUDGING</p><h2>提交记录</h2><p>筛选、检查并导出全站评测记录</p></div>
@@ -243,5 +301,6 @@
   <div id="admin-toast" class="admin-toast" role="status"></div>
   <script src="vendor/xlsx/xlsx.full.min.js?v=0.20.3"></script>
   <script src="js/admin.js?v=20260927-03"></script>
+  <script src="js/admin-exams.js?v=20260927-01"></script>
 </body>
 </html>

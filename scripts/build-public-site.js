@@ -65,6 +65,8 @@ for (const requiredPath of [
   'admin.html',
   'js/app.js',
   'js/admin.js',
+  'js/exams.js',
+  'js/admin-exams.js',
   'css/style.css',
   'problems/index.json',
   'problems/vision/index.json',

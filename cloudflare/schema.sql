@@ -85,3 +85,62 @@ CREATE INDEX IF NOT EXISTS idx_student_sessions_username
 
 CREATE INDEX IF NOT EXISTS idx_student_sessions_expires
   ON student_sessions(expires_at);
+
+-- 套卷结构只保存一份 JSON；编程小题引用现有题号，不复制隐藏测试点。
+CREATE TABLE IF NOT EXISTS exam_papers (
+  id TEXT PRIMARY KEY,
+  group_name TEXT NOT NULL CHECK (group_name IN ('control', 'vision')),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
+  result_policy TEXT NOT NULL CHECK (result_policy IN ('immediate', 'after_graded', 'manual')),
+  total_score REAL NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_exam_papers_group_status
+  ON exam_papers(group_name, status, updated_at DESC);
+
+-- 试卷每次修改只新增一个共享版本，历史提交按版本读取，
+-- 不需要在每个学生的提交中重复保存整张题面。
+CREATE TABLE IF NOT EXISTS exam_versions (
+  exam_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  structure_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (exam_id, version)
+);
+
+-- 每次整卷提交集中保存答案和评分，避免为每个小题创建多行造成空间膨胀。
+-- is_final=1 的记录才参与学生最终成绩；旧版本只用于追溯。
+CREATE TABLE IF NOT EXISTS exam_submissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  exam_id TEXT NOT NULL,
+  exam_version INTEGER NOT NULL,
+  username TEXT NOT NULL,
+  attempt_no INTEGER NOT NULL,
+  answers_json TEXT NOT NULL,
+  grading_json TEXT NOT NULL,
+  auto_score REAL NOT NULL DEFAULT 0,
+  manual_score REAL NOT NULL DEFAULT 0,
+  total_score REAL NOT NULL DEFAULT 0,
+  graded_count INTEGER NOT NULL DEFAULT 0,
+  total_parts INTEGER NOT NULL DEFAULT 0,
+  grading_status TEXT NOT NULL CHECK (grading_status IN ('pending', 'completed')),
+  released INTEGER NOT NULL DEFAULT 0 CHECK (released IN (0, 1)),
+  is_final INTEGER NOT NULL DEFAULT 1 CHECK (is_final IN (0, 1)),
+  submitted_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(exam_id, username, attempt_no)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_exam_submissions_one_final
+  ON exam_submissions(exam_id, username) WHERE is_final = 1;
+
+CREATE INDEX IF NOT EXISTS idx_exam_submissions_exam_final
+  ON exam_submissions(exam_id, is_final, submitted_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_exam_submissions_user_final
+  ON exam_submissions(username, is_final, submitted_at DESC);

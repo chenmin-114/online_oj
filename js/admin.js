@@ -198,6 +198,7 @@ class OJAdmin {
     this.hideProblemEditor();
     this.resetProblemEditor();
     this.renderGroupSwitcher();
+    window.examAdmin?.onGroupChange();
     document.getElementById('sync-status').textContent = `正在切换到${this.groupLabel()}...`;
     await this.loadAll();
   }
