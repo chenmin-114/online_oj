@@ -83,8 +83,7 @@ class GitHubStore {
   async getRanking() {
     // GitHub Pages 会把 dist/ranking.json 与前端一起发布，优先读取同源文件。
     // 这不需要在浏览器中配置仓库名或暴露 GitHub Token。
-    const url = window.OJ_CONFIG.RANKING_URL ||
-      (this.repo ? `https://raw.githubusercontent.com/${this.repo}/main/dist/ranking.json` : '');
+    const url = window.OJ_CONFIG.RANKING_URL;
 
     if (!url) return { overall: [], problems: {} };
 
@@ -116,8 +115,7 @@ class GitHubStore {
    * 获取用户的提交历史（由 GitHub Actions 生成，不包含源代码）
    */
   async getSubmissions(username, group = 'control') {
-    const url = window.OJ_CONFIG.SUBMISSIONS_URL ||
-      (this.repo ? `https://raw.githubusercontent.com/${this.repo}/main/dist/submissions.json` : '');
+    const url = window.OJ_CONFIG.SUBMISSIONS_URL;
     if (!url) return [];
 
     // Worker 只返回当前用户名的记录，避免把所有学生的提交摘要下载到浏览器。

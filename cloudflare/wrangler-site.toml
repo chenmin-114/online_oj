@@ -1,0 +1,8 @@
+name = "oj-site-security"
+main = "site-security-worker.js"
+compatibility_date = "2026-09-27"
+workers_dev = false
+
+[[routes]]
+pattern = "jc-oj.online/*"
+zone_name = "jc-oj.online"

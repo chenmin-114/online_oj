@@ -755,7 +755,7 @@ class App {
     });
   }
 
-  async runCode() {
+  async runCode(authRetried = false) {
     const code = this.editor.getCode();
     const customInput = document.getElementById('custom-input').value;
     const langId = document.getElementById('language-select').value;
@@ -776,7 +776,8 @@ class App {
       const result = await this.runner.execute(
         lang.judge0LanguageId,
         executionCode,
-        customInput
+        customInput,
+        this.username,
       );
 
       if (result.compileError) {
@@ -787,6 +788,10 @@ class App {
         outputEl.innerHTML = `<span class="success">✅ 执行成功 (${this._escapeHtml(result.time)}ms)\n${this._escapeHtml(result.stdout)}</span>`;
       }
     } catch (err) {
+      if (err.code === 'STUDENT_AUTH_REQUIRED' && !authRetried) {
+        await this._promptUsername({ verifyCurrent: true });
+        return this.runCode(true);
+      }
       outputEl.innerHTML = `<span class="error">❌ ${this._escapeHtml(err.message)}</span>`;
     }
   }

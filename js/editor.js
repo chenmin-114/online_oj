@@ -13,7 +13,7 @@ class EditorManager {
   }
 
   async init() {
-    // 动态加载 Monaco Editor CDN
+    // 从本站加载固定版本 Monaco，避免第三方 CDN 成为脚本供应链入口。
     await this._loadMonaco();
     this._createEditor();
   }
@@ -22,14 +22,14 @@ class EditorManager {
     return new Promise((resolve, reject) => {
       if (window.monaco) { resolve(); return; }
       const loader = document.createElement('script');
-      loader.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
+      loader.src = '/vendor/monaco/vs/loader.js?v=0.45.0';
       loader.onload = () => {
         window.require.config({
-          paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' }
+          paths: { vs: '/vendor/monaco/vs' }
         });
         window.require(['vs/editor/editor.main'], () => resolve());
       };
-      loader.onerror = () => reject(new Error('Monaco Editor 加载失败，请检查网络'));
+      loader.onerror = () => reject(new Error('代码编辑器加载失败，请刷新页面重试'));
       document.head.appendChild(loader);
     });
   }

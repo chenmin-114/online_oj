@@ -172,7 +172,12 @@ export default {
         if (rateLimitError) return rateLimitError;
         return await handleStudentAccountStatus(body, env);
       } else if (body.type === 'student_login') {
-        const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
+        const rateLimitError = await enforceRateLimit(
+          env.STUDENT_LOGIN_RATE_LIMITER,
+          request,
+          'student-login',
+          normalizeStudentUsername(body.username),
+        );
         if (rateLimitError) return rateLimitError;
         return await handleStudentLogin(body, env);
       } else if (body.type === 'student_set_password') {
@@ -203,6 +208,8 @@ export default {
       } else if (body.type === 'execute') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
         if (rateLimitError) return rateLimitError;
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
         return await handleExecute(body, env);
       } else if (body.type === 'create_problem') {
         const authError = await requireAdmin(request, env);
@@ -243,18 +250,21 @@ export default {
   },
 };
 
-async function enforceRateLimit(limiter, request, scope) {
+async function enforceRateLimit(limiter, request, scope, discriminator = '') {
   if (!limiter) {
     return jsonResponse({ error: '请求限速器尚未配置', code: 'RATE_LIMIT_NOT_CONFIGURED' }, 503);
   }
   const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const result = await limiter.limit({ key: `${scope}:${clientIp}` });
+  const discriminatorHash = discriminator ? (await sha256Hex(discriminator)).slice(0, 16) : '';
+  const result = await limiter.limit({ key: `${scope}:${clientIp}:${discriminatorHash}` });
   if (result.success) return null;
   const response = jsonResponse({
     error: scope === 'admin-login'
       ? '登录尝试过于频繁，请一分钟后再试'
       : scope === 'student-auth'
         ? '账号操作过于频繁，请一分钟后再试'
+      : scope === 'student-login'
+        ? '该账号密码尝试过于频繁，请一分钟后再试'
       : '请求过于频繁，请稍后再试',
     code: 'RATE_LIMITED',
   }, 429);
@@ -383,7 +393,7 @@ async function handleStudentLogin(body, env) {
     return jsonResponse({ error: '用户名或密码错误' }, 401);
   }
   const account = await env.OJ_DB.prepare(`
-    SELECT password_salt, password_hash, password_iterations
+    SELECT password_salt, password_hash, password_iterations, auth_version
     FROM student_accounts
     WHERE username = ?1
   `).bind(username).first();
@@ -398,7 +408,7 @@ async function handleStudentLogin(body, env) {
   if (!await secureTextEqual(candidateHash, account.password_hash)) {
     return jsonResponse({ error: '用户名或密码错误' }, 401);
   }
-  return await studentSessionSuccessResponse(username, env);
+  return await studentSessionSuccessResponse(username, Number(account.auth_version), env);
 }
 
 async function handleStudentSetPassword(body, env) {
@@ -417,12 +427,13 @@ async function handleStudentSetPassword(body, env) {
   const now = Date.now();
   const result = await env.OJ_DB.prepare(`
     INSERT INTO student_accounts (
-      username, password_salt, password_hash, password_iterations, created_at, updated_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+      username, password_salt, password_hash, password_iterations, auth_version, created_at, updated_at
+    ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)
     ON CONFLICT(username) DO UPDATE SET
       password_salt = excluded.password_salt,
       password_hash = excluded.password_hash,
       password_iterations = excluded.password_iterations,
+      auth_version = student_accounts.auth_version + 1,
       updated_at = excluded.updated_at
     WHERE student_accounts.password_hash IS NULL
   `).bind(username, salt, hash, STUDENT_PASSWORD_ITERATIONS, now).run();
@@ -430,7 +441,9 @@ async function handleStudentSetPassword(body, env) {
     return jsonResponse({ error: '该账号已经设置密码，请返回后输入原密码' }, 409);
   }
   await env.OJ_DB.prepare('DELETE FROM student_sessions WHERE username = ?1').bind(username).run();
-  return await studentSessionSuccessResponse(username, env);
+  const account = await env.OJ_DB.prepare('SELECT auth_version FROM student_accounts WHERE username = ?1')
+    .bind(username).first();
+  return await studentSessionSuccessResponse(username, Number(account.auth_version), env);
 }
 
 async function handleStudentSkipLogin(body, env) {
@@ -438,7 +451,7 @@ async function handleStudentSkipLogin(body, env) {
   const username = normalizeStudentUsername(body.username);
   if (!username) return jsonResponse({ error: '用户名格式不正确' }, 400);
   const account = await env.OJ_DB.prepare(`
-    SELECT password_hash
+    SELECT password_hash, auth_version
     FROM student_accounts
     WHERE username = ?1
   `).bind(username).first();
@@ -452,21 +465,22 @@ async function handleStudentSkipLogin(body, env) {
     const now = Date.now();
     await env.OJ_DB.prepare(`
       INSERT OR IGNORE INTO student_accounts (
-        username, password_salt, password_hash, password_iterations, created_at, updated_at
-      ) VALUES (?1, NULL, NULL, NULL, ?2, ?2)
+        username, password_salt, password_hash, password_iterations, auth_version, created_at, updated_at
+      ) VALUES (?1, NULL, NULL, NULL, 1, ?2, ?2)
     `).bind(username, now).run();
   }
-  return await studentSessionSuccessResponse(username, env);
+  const authVersion = account ? Number(account.auth_version) : 1;
+  return await studentSessionSuccessResponse(username, authVersion, env);
 }
 
-async function studentSessionSuccessResponse(username, env) {
-  const session = await createStudentSession(username, env);
+async function studentSessionSuccessResponse(username, authVersion, env) {
+  const session = await createStudentSession(username, authVersion, env);
   return jsonResponse({ success: true, expiresIn: STUDENT_SESSION_TTL_SECONDS }, 200, {
     'Set-Cookie': buildStudentSessionCookie(session.token, STUDENT_SESSION_TTL_SECONDS),
   });
 }
 
-async function createStudentSession(username, env) {
+async function createStudentSession(username, authVersion, env) {
   const randomBytes = new Uint8Array(32);
   crypto.getRandomValues(randomBytes);
   const token = bytesToBase64Url(randomBytes);
@@ -476,9 +490,9 @@ async function createStudentSession(username, env) {
   await env.OJ_DB.batch([
     env.OJ_DB.prepare('DELETE FROM student_sessions WHERE expires_at <= ?1').bind(createdAt),
     env.OJ_DB.prepare(`
-      INSERT INTO student_sessions (session_hash, username, created_at, expires_at)
-      VALUES (?1, ?2, ?3, ?4)
-    `).bind(sessionHash, username, createdAt, expiresAt),
+      INSERT INTO student_sessions (session_hash, username, auth_version, created_at, expires_at)
+      VALUES (?1, ?2, ?3, ?4, ?5)
+    `).bind(sessionHash, username, authVersion, createdAt, expiresAt),
   ]);
   return { token };
 }
@@ -508,11 +522,15 @@ async function requireStudentSession(request, env, suppliedUsername) {
   const sessionHash = await sha256Hex(token);
   const now = Date.now();
   const session = await env.OJ_DB.prepare(`
-    SELECT username, expires_at
-    FROM student_sessions
-    WHERE session_hash = ?1
+    SELECT s.username, s.expires_at, s.auth_version, a.auth_version AS current_auth_version
+    FROM student_sessions AS s
+    LEFT JOIN student_accounts AS a ON a.username = s.username
+    WHERE s.session_hash = ?1
   `).bind(sessionHash).first();
-  if (!session || Number(session.expires_at) <= now || session.username !== username) {
+  if (!session
+      || Number(session.expires_at) <= now
+      || session.username !== username
+      || Number(session.auth_version) !== Number(session.current_auth_version)) {
     if (session && Number(session.expires_at) <= now) {
       await env.OJ_DB.prepare('DELETE FROM student_sessions WHERE session_hash = ?1')
         .bind(sessionHash).run();
@@ -552,12 +570,13 @@ async function handleAdminImportStudents(body, env) {
   const statements = Array.from(accounts.values()).flatMap(account => [
     env.OJ_DB.prepare(`
       INSERT INTO student_accounts (
-        username, password_salt, password_hash, password_iterations, created_at, updated_at
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+        username, password_salt, password_hash, password_iterations, auth_version, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)
       ON CONFLICT(username) DO UPDATE SET
         password_salt = excluded.password_salt,
         password_hash = excluded.password_hash,
         password_iterations = excluded.password_iterations,
+        auth_version = student_accounts.auth_version + 1,
         updated_at = excluded.updated_at
     `).bind(
       account.username,
