@@ -113,5 +113,14 @@
     "file": "p014.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P015",
+    "title": "（Day 8）班级图书角的“新书推荐榜”",
+    "difficulty": "easy",
+    "status": "draft",
+    "file": "p015.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
