@@ -1087,6 +1087,43 @@ class OJAdmin {
     const scopedSource = testSectionHeading
       ? normalized.slice(testSectionHeading.index + testSectionHeading[0].length)
       : normalized;
+
+    // 兼容 Markdown 表格测试点。单元格中相邻的行内代码会按多行拼接，
+    // 例如 `6``1 1 1 0 0 0` 会还原为 "6\n1 1 1 0 0 0"。
+    const tableLines = scopedSource.split('\n').map(line => {
+      // 某些聊天软件会把 Markdown 表格的每个竖线都转义成 \|。
+      const escapedPipes = line.match(/\\\|/g)?.length || 0;
+      if (escapedPipes >= 2) return line.replace(/\\\|/g, '|');
+      // 也兼容只有行首竖线被转义、其余分隔符未转义的文本。
+      return line.replace(/^(\s*)\\\|/, '$1|');
+    });
+    for (let index = 0; index < tableLines.length - 2; index += 1) {
+      const headers = this.splitMarkdownTableRow(tableLines[index]);
+      const separators = this.splitMarkdownTableRow(tableLines[index + 1]);
+      if (headers.length < 3 || separators.length !== headers.length
+        || !separators.every(cell => /^:?-{3,}:?$/.test(cell.trim()))) continue;
+
+      const normalizedHeaders = headers.map(cell => this.normalizeSectionTitle(cell));
+      const numberIndex = normalizedHeaders.findIndex(cell => cell === '#' || cell === '序号' || cell === '编号');
+      const inputIndex = normalizedHeaders.findIndex(cell => cell === '输入' || cell === '测试点输入');
+      const outputIndex = normalizedHeaders.findIndex(cell => cell === '输出' || cell === '测试点输出' || cell === '期望输出');
+      if (inputIndex < 0 || outputIndex < 0) continue;
+
+      let fallbackNumber = blocks.size + 1;
+      for (let rowIndex = index + 2; rowIndex < tableLines.length; rowIndex += 1) {
+        if (!tableLines[rowIndex].trim().startsWith('|')) break;
+        const cells = this.splitMarkdownTableRow(tableLines[rowIndex]);
+        if (cells.length !== headers.length) break;
+        const rawNumber = numberIndex >= 0 ? cells[numberIndex].replace(/[`*_\s]/g, '') : '';
+        const number = /^\d+$/.test(rawNumber) ? rawNumber : String(fallbackNumber);
+        fallbackNumber += 1;
+        const input = this.markdownTableCellValue(cells[inputIndex]);
+        const output = this.markdownTableCellValue(cells[outputIndex]);
+        if (input || output) blocks.set(number, { input, output });
+        index = rowIndex;
+      }
+    }
+
     const lines = scopedSource.split('\n');
     const marker = /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?\s*(?:测试点\s*)?(输入|输出)\s*#?\s*(\d+)\s*(?:\*\*|__)?\s*$/i;
     let current = null;
@@ -1117,6 +1154,42 @@ class OJAdmin {
       }
     }
     return Array.from(blocks.values()).filter(testCase => testCase.input || testCase.output);
+  }
+
+  splitMarkdownTableRow(line) {
+    const value = String(line || '').trim();
+    if (!value.startsWith('|')) return [];
+    const cells = [];
+    let cell = '';
+    let inCode = false;
+    for (let index = 1; index < value.length; index += 1) {
+      const character = value[index];
+      if (character === '`' && value[index - 1] !== '\\') inCode = !inCode;
+      if (character === '|' && !inCode) {
+        cells.push(cell.trim());
+        cell = '';
+      } else {
+        cell += character;
+      }
+    }
+    if (cell.trim()) cells.push(cell.trim());
+    return cells;
+  }
+
+  markdownTableCellValue(cell) {
+    const value = String(cell || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .trim();
+    const codeParts = [];
+    const codePattern = /`([^`]*)`/g;
+    let match;
+    while ((match = codePattern.exec(value)) !== null) codeParts.push(match[1].trim());
+    if (codeParts.length) return codeParts.join('\n');
+    return value
+      .replace(/^\s*(?:\*\*|__)/, '')
+      .replace(/(?:\*\*|__)\s*$/, '')
+      .replace(/\\\|/g, '|')
+      .trim();
   }
 
   addProblemImages(fileList) {
