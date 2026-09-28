@@ -104,5 +104,14 @@
     "file": "p013.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P014",
+    "title": "（Day 7）**手柄不“抽风”，连招才带感",
+    "difficulty": "easy",
+    "status": "draft",
+    "file": "p014.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
