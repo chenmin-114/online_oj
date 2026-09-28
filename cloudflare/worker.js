@@ -783,7 +783,6 @@ async function handleAdminExamRosterImport(body, env) {
   const usernames = normalizeRosterUsernames(body.usernames);
   if (!examId || !usernames.length || usernames.length > 2000) return jsonResponse({ error: '试卷编号或名单格式不正确' }, 400);
   const exam = await env.OJ_DB.prepare('SELECT id FROM exam_papers WHERE id = ?1').bind(examId).first();
-  if (!exam) return jsonResponse({ error: '请先保存试卷，再导入额外准入账户' }, 404);
 
   const suppliedAccounts = new Map();
   for (const item of Array.isArray(body.accounts) ? body.accounts : []) {
@@ -818,14 +817,16 @@ async function handleAdminExamRosterImport(body, env) {
       `).bind(username, account.salt, account.hash, STUDENT_PASSWORD_ITERATIONS, now));
       statements.push(env.OJ_DB.prepare('DELETE FROM student_sessions WHERE username = ?1').bind(username));
     }
-    statements.push(env.OJ_DB.prepare(`
-      INSERT OR IGNORE INTO exam_roster (exam_id, username, created_at) VALUES (?1, ?2, ?3)
-    `).bind(examId, username, now));
+    if (exam) {
+      statements.push(env.OJ_DB.prepare(`
+        INSERT OR IGNORE INTO exam_roster (exam_id, username, created_at) VALUES (?1, ?2, ?3)
+      `).bind(examId, username, now));
+    }
   }
   for (let index = 0; index < statements.length; index += 100) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
   }
-  return jsonResponse({ success: true, added: usernames.length });
+  return jsonResponse({ success: true, added: usernames.length, rosterPending: !exam });
 }
 
 async function deriveStudentPasswordHash(password, salt, iterations) {

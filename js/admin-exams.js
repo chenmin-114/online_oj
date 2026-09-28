@@ -255,7 +255,8 @@ class ExamAdmin {
     const download = document.getElementById('download-exam-roster');
     download.disabled = true;
     try {
-      if (!this.editingPaper?.id) throw new Error('请先填写试卷编号并保存一次，再导入额外账户');
+      this.syncEditorState();
+      if (!this.editingPaper?.id) throw new Error('请先填写试卷编号，再导入额外账户');
       if (!window.XLSX) throw new Error('Excel 组件加载失败，请刷新管理页面后重试');
       if (file.size > 10 * 1024 * 1024) throw new Error('Excel 文件不能超过 10 MB');
       status.textContent = '正在读取 Excel 并检查账号状态...';
@@ -291,7 +292,7 @@ class ExamAdmin {
       this.rosterWorkbook = workbook;
       this.rosterExportName = `${file.name.replace(/\.[^.]+$/, '')}-套卷准入账号.xlsx`;
       download.disabled = false;
-      status.textContent = `已追加 ${result.added} 人；${existingPasswordUsers.size} 个原密码保持不变，${generated} 个账号生成了新密码。请保存试卷。`;
+      status.textContent = `已追加 ${result.added} 人；${existingPasswordUsers.size} 个原密码保持不变，${generated} 个账号生成了新密码。${result.rosterPending ? '保存试卷后名单生效。' : '请保存试卷。'}`;
     } catch (error) {
       this.rosterWorkbook = null;
       status.textContent = `导入失败：${error.message}`;
