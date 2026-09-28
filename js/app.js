@@ -30,22 +30,14 @@ class App {
     this.examUI = new ExamUI(this);
     this.examUI.init();
 
-    // 管理员套卷预览直接复用学生端真实页面和交互，但只访问管理员鉴权接口。
-    if (this.adminExamPreview) {
-      document.body.classList.remove('username-gate-pending');
-      document.getElementById('username-display').textContent = 'admin';
-      document.getElementById('change-username-btn').hidden = true;
-      document.querySelectorAll('.group-switch').forEach(button => { button.disabled = true; });
-      this._renderGroupSwitcher();
-      await this.examUI.openExam(this.adminExamPreview);
-      return;
-    }
-
     // 编辑器来自海外 CDN，不能阻塞题目列表和导航的首次显示。
     // 即使 Monaco 暂时加载较慢，学生仍应当能立即浏览题目。
     this.editor = new EditorManager('editor-container');
     this.editor.setFontSize(this.editorFontSize);
-    this.editor.onChange(code => this._scheduleCodeSave(code));
+    this.editor.onChange(code => {
+      if (this.examUI?.programmingContext) this.examUI.captureProgrammingCode(code);
+      else this._scheduleCodeSave(code);
+    });
     const editorInitialization = this.editor.init().catch(err => {
       console.error('代码编辑器加载失败:', err);
       const container = document.getElementById('editor-container');
@@ -59,6 +51,17 @@ class App {
     this._updateFontSizeDisplay();
     this._initSolveResizer();
     this._renderGroupSwitcher();
+
+    // 管理员套卷预览也初始化同一套编辑器，这样可以打开完整编程题并返回试卷。
+    if (this.adminExamPreview) {
+      document.body.classList.remove('username-gate-pending');
+      document.getElementById('username-display').textContent = 'admin';
+      document.getElementById('change-username-btn').hidden = true;
+      document.querySelectorAll('.group-switch').forEach(button => { button.disabled = true; });
+      this.editorInitialization = editorInitialization;
+      await this.examUI.openExam(this.adminExamPreview);
+      return;
+    }
     // 登录弹窗显示期间也加载背景题目列表，但遮罩会阻止任何操作。
     const problemListLoading = this.loadProblemList();
 
@@ -189,7 +192,9 @@ class App {
   }
 
   async loadProblem(file) {
-    this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
+    const leavingExamProblem = Boolean(this.examUI?.programmingContext);
+    this.examUI?.leaveProgrammingProblem();
+    if (!leavingExamProblem) this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
     clearTimeout(this.codeSaveTimer);
     const requestSequence = ++this.problemRequestSequence;
     const requestedGroup = this.group;
@@ -264,6 +269,20 @@ class App {
     document.getElementById('language-select').value = lang.id;
     this.editor.setLanguage(lang.id);
     this._restoreCode(lang.id);
+  }
+
+  openExamProgrammingProblem(part) {
+    if (!part?.problem) return;
+    this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
+    clearTimeout(this.codeSaveTimer);
+    this.currentProblem = part.problem;
+    this._renderProblem();
+    this.examUI.restoreProgrammingAnswer();
+    const context = document.getElementById('exam-problem-context');
+    context.hidden = false;
+    document.getElementById('exam-problem-context-label').textContent = `${this.examUI.paper?.title || '套卷'} · ${part.problemId} ${part.problem.title || ''}`;
+    document.getElementById('submit-btn').textContent = '保存代码并返回套卷';
+    this.views.show('solve');
   }
 
   _formatMarkdown(text) {
@@ -354,8 +373,9 @@ class App {
 
     // 语言切换
     document.getElementById('language-select').addEventListener('change', (e) => {
-      this._saveCurrentCode(this.editor.getCode(), this.editor.currentLanguage);
       const langId = e.target.value;
+      if (this.examUI?.changeProgrammingLanguage(langId)) return;
+      this._saveCurrentCode(this.editor.getCode(), this.editor.currentLanguage);
       this.editor.setLanguage(langId);
       this._restoreCode(langId);
     });
@@ -364,7 +384,14 @@ class App {
     document.getElementById('run-btn').addEventListener('click', () => this.runCode());
 
     // 提交代码
-    document.getElementById('submit-btn').addEventListener('click', () => this.submitCode());
+    document.getElementById('submit-btn').addEventListener('click', () => {
+      if (this.examUI?.programmingContext) this.examUI.returnFromProgrammingProblem();
+      else this.submitCode();
+    });
+
+    document.querySelectorAll('.nav-link').forEach(link => {
+      link.addEventListener('click', () => this.examUI?.leaveProgrammingProblem());
+    });
 
     document.querySelector('[data-view="submissions"]').addEventListener('click', () => {
       this.loadSubmissions();
@@ -413,7 +440,7 @@ class App {
       const languageId = document.getElementById('language-select').value;
       const template = getProblemLanguageTemplate(languageId, this.currentProblem);
       this.editor.setCode(template);
-      this._saveCurrentCode(template, languageId);
+      if (!this.examUI?.programmingContext) this._saveCurrentCode(template, languageId);
       this.editor.focus();
     });
 
@@ -423,7 +450,12 @@ class App {
     });
 
     window.addEventListener('beforeunload', () => {
-      this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
+      if (this.examUI?.programmingContext) {
+        this.examUI.captureProgrammingCode();
+        this.examUI.saveDraft();
+      } else {
+        this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
+      }
     });
   }
 

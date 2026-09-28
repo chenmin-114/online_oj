@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260927-15">
+  <link rel="stylesheet" href="css/style.css?v=20260928-01">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
@@ -91,6 +91,10 @@
 
     <!-- 解题视图 -->
     <section id="view-solve" class="view" style="display: none;">
+      <div id="exam-problem-context" class="exam-problem-context" hidden>
+        <div><strong>正在完成套卷编程题</strong><span id="exam-problem-context-label"></span></div>
+        <button id="back-to-exam-from-problem" type="button" class="btn btn-secondary">← 保存代码并返回套卷</button>
+      </div>
       <div class="solve-layout">
         <!-- 左侧：题目描述 -->
         <div class="problem-panel">
@@ -186,7 +190,7 @@
   <script src="vendor/katex/katex.min.js?v=0.18.7"></script>
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
-  <script src="js/exams.js?v=20260928-01"></script>
-  <script src="js/app.js?v=20260927-13"></script>
+  <script src="js/exams.js?v=20260928-02"></script>
+  <script src="js/app.js?v=20260928-01"></script>
 </body>
 </html>

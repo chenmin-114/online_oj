@@ -5,6 +5,8 @@ class ExamUI {
     this.loadedKey = '';
     this.paper = null;
     this.submission = null;
+    this.answers = {};
+    this.programmingContext = null;
     this.saveTimer = null;
   }
 
@@ -25,10 +27,14 @@ class ExamUI {
       clearTimeout(this.saveTimer);
       this.saveTimer = setTimeout(() => this.saveDraft(), 400);
     });
-    document.getElementById('student-exam-form').addEventListener('change', event => {
-      if (event.target.matches('[data-program-language]')) this.setDefaultProgram(event.target);
+    document.getElementById('student-exam-form').addEventListener('change', () => {
       this.saveDraft();
     });
+    document.getElementById('student-exam-form').addEventListener('click', event => {
+      const button = event.target.closest('[data-open-exam-problem]');
+      if (button) this.openProgrammingProblem(button.dataset.openExamProblem);
+    });
+    document.getElementById('back-to-exam-from-problem').addEventListener('click', () => this.returnFromProgrammingProblem());
   }
 
   onGroupChange() {
@@ -36,6 +42,8 @@ class ExamUI {
     this.exams = [];
     this.paper = null;
     this.submission = null;
+    this.answers = {};
+    this.clearProgrammingContext();
     const list = document.getElementById('exam-list');
     if (list) list.innerHTML = '<p class="info">⏳ 正在加载套卷...</p>';
     if (this.app.views.currentView === 'exams') this.loadList(true);
@@ -140,6 +148,12 @@ class ExamUI {
   renderPaper() {
     const paper = this.paper;
     const answers = this.loadAnswers();
+    for (const part of paper.questions.flatMap(question => question.parts)) {
+      if (part.type !== 'programming' || answers[part.id]?.code !== undefined) continue;
+      const language = this.defaultProgrammingLanguage(part);
+      answers[part.id] = { language, code: this.languageTemplate(language, part) };
+    }
+    this.answers = answers;
     document.getElementById('student-exam-title').textContent = `${paper.id} · ${paper.title}`;
     document.getElementById('student-exam-meta').textContent = `${this.app.group === 'vision' ? '视觉组' : '电控组'} · 总分 ${paper.totalScore} · 第 ${paper.version} 版`;
     const description = document.getElementById('student-exam-description');
@@ -161,9 +175,7 @@ class ExamUI {
 
   partHtml(part, partIndex, answer) {
     const label = `${partIndex + 1}.`;
-    const promptContent = part.type === 'programming' && part.problem
-      ? this.programmingStatement(part)
-      : (part.prompt || '');
+    const promptContent = part.prompt || '';
     const prompt = `<div class="exam-part-prompt problem-content">${this.app._formatMarkdown(promptContent)}</div>`;
     let control = '';
     if (part.type === 'single_choice') {
@@ -176,31 +188,15 @@ class ExamUI {
     } else if (part.type === 'short_answer') {
       control = `<textarea class="exam-text-answer" data-answer-part="${this.escape(part.id)}" maxlength="30000" rows="6" placeholder="请输入你的回答">${this.escape(answer || '')}</textarea>`;
     } else if (part.type === 'programming') {
-      const language = answer?.language || 'c';
-      const code = answer?.code || this.languageTemplate(language, part);
-      control = `<div class="exam-programming"><div><span>关联题目 ${this.escape(part.problemId)}</span><select data-program-language data-answer-part="${this.escape(part.id)}">${window.LANGUAGES.map(item => `<option value="${this.escape(item.id)}" ${item.id === language ? 'selected' : ''}>${this.escape(item.name)}</option>`).join('')}</select></div><textarea data-program-code="${this.escape(part.id)}" rows="16" spellcheck="false">${this.escape(code)}</textarea></div>`;
+      const problemTitle = part.problem?.title || '完整编程题';
+      const hasEditedCode = Boolean(answer?.code && answer.code.trim()
+        && answer.code.trim() !== this.languageTemplate(answer.language || 'c', part).trim());
+      control = `<div class="exam-programming-link-card">
+        <div><span>关联题目 ${this.escape(part.problemId)}</span><strong>${this.escape(problemTitle)}</strong><small>${hasEditedCode ? '代码已保存到本套卷草稿' : '尚未填写代码'}</small></div>
+        <button type="button" class="btn btn-primary" data-open-exam-problem="${this.escape(part.id)}">打开完整编程题 →</button>
+      </div>`;
     }
     return `<section class="student-exam-part" data-part-id="${this.escape(part.id)}"><div class="exam-part-label"><strong>${label}</strong><span>${this.partTypeName(part.type)} · ${this.escape(part.points)} 分</span></div>${prompt}${control}</section>`;
-  }
-
-  programmingStatement(part) {
-    const problem = part.problem;
-    const blocks = [];
-    if (part.prompt) blocks.push(part.prompt);
-    blocks.push(`# ${problem.id} ${problem.title}`, '## 题目描述', problem.description || '');
-    if (problem.inputFormat) blocks.push('## 输入格式', problem.inputFormat);
-    if (problem.outputFormat) blocks.push('## 输出格式', problem.outputFormat);
-    if (problem.constraints) blocks.push('## 数据范围', problem.constraints);
-    const samples = Array.isArray(problem.samples) && problem.samples.length
-      ? problem.samples
-      : ((problem.sampleInput || problem.sampleOutput) ? [{ input: problem.sampleInput || '', output: problem.sampleOutput || '' }] : []);
-    samples.forEach((sample, index) => blocks.push(
-      `## 输入 #${index + 1}`, `\`\`\`text\n${sample.input}\n\`\`\``,
-      `## 输出 #${index + 1}`, `\`\`\`text\n${sample.output}\n\`\`\``,
-    ));
-    if (problem.sampleExplanation) blocks.push('## 样例解释', problem.sampleExplanation);
-    if (Array.isArray(problem.hints) && problem.hints.length) blocks.push('## 提示', problem.hints.join('\n'));
-    return blocks.filter(value => String(value || '').trim()).join('\n\n');
   }
 
   partTypeName(type) {
@@ -214,17 +210,12 @@ class ExamUI {
     return window.LANGUAGES.find(item => item.id === language)?.template || '';
   }
 
-  setDefaultProgram(select) {
-    const textarea = select.closest('.exam-programming').querySelector('textarea');
-    if (!textarea.value.trim() || window.LANGUAGES.some(item => item.template.trim() === textarea.value.trim())) {
-      const partId = select.dataset.answerPart;
-      const part = this.paper.questions.flatMap(question => question.parts).find(item => item.id === partId);
-      textarea.value = this.languageTemplate(select.value, part);
-    }
+  defaultProgrammingLanguage(part) {
+    return part?.pythonJudgeMode === 'function' || this.app.group === 'vision' ? 'python' : 'c';
   }
 
   collectAnswers() {
-    const answers = {};
+    const answers = { ...this.answers };
     for (const question of this.paper.questions) {
       for (const part of question.parts) {
         const selector = `[data-answer-part="${CSS.escape(part.id)}"]`;
@@ -233,16 +224,91 @@ class ExamUI {
         } else if (part.type === 'multiple_choice') {
           answers[part.id] = [...document.querySelectorAll(`${selector}:checked`)].map(input => input.value);
         } else if (part.type === 'programming') {
-          answers[part.id] = {
-            language: document.querySelector(selector)?.value || 'c',
-            code: document.querySelector(`[data-program-code="${CSS.escape(part.id)}"]`)?.value || '',
-          };
+          // 编程代码在完整题目页编辑，这里保留已经写入草稿的答案。
+          const language = this.defaultProgrammingLanguage(part);
+          answers[part.id] = answers[part.id] || { language, code: this.languageTemplate(language, part) };
         } else {
           answers[part.id] = document.querySelector(selector)?.value || '';
         }
       }
     }
+    this.answers = answers;
     return answers;
+  }
+
+  openProgrammingProblem(partId) {
+    const part = this.paper?.questions.flatMap(question => question.parts)
+      .find(item => item.id === partId && item.type === 'programming');
+    if (!part?.problem) {
+      alert('完整题面暂时无法读取，请刷新套卷后重试');
+      return;
+    }
+    this.saveDraft();
+    this.programmingContext = { partId, part };
+    this.app.openExamProgrammingProblem(part);
+  }
+
+  restoreProgrammingAnswer() {
+    if (!this.programmingContext) return;
+    const { partId, part } = this.programmingContext;
+    const defaultLanguage = this.defaultProgrammingLanguage(part);
+    const answer = this.answers[partId] || { language: defaultLanguage, code: this.languageTemplate(defaultLanguage, part) };
+    const language = window.LANGUAGES.some(item => item.id === answer.language) ? answer.language : defaultLanguage;
+    document.getElementById('language-select').value = language;
+    this.app.editor.setLanguage(language);
+    this.app.isRestoringCode = true;
+    this.app.editor.setCode(typeof answer.code === 'string' ? answer.code : this.languageTemplate(language, part));
+    this.app.isRestoringCode = false;
+    this.captureProgrammingCode(this.app.editor.getCode(), language);
+  }
+
+  captureProgrammingCode(code = this.app.editor?.getCode(), language = document.getElementById('language-select')?.value) {
+    if (!this.programmingContext || this.app.isRestoringCode || typeof code !== 'string') return;
+    this.answers[this.programmingContext.partId] = { language: language || 'c', code };
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.saveDraft(), 300);
+  }
+
+  changeProgrammingLanguage(language) {
+    if (!this.programmingContext) return false;
+    const { partId, part } = this.programmingContext;
+    const current = this.answers[partId] || {};
+    const currentTemplate = this.languageTemplate(current.language || 'c', part).trim();
+    const currentCode = String(this.app.editor.getCode() || '');
+    const nextCode = !currentCode.trim() || currentCode.trim() === currentTemplate
+      ? this.languageTemplate(language, part)
+      : currentCode;
+    this.app.editor.setLanguage(language);
+    this.app.isRestoringCode = true;
+    this.app.editor.setCode(nextCode);
+    this.app.isRestoringCode = false;
+    this.answers[partId] = { language, code: nextCode };
+    this.saveDraft();
+    return true;
+  }
+
+  returnFromProgrammingProblem() {
+    if (!this.programmingContext) return;
+    this.captureProgrammingCode();
+    this.saveDraft();
+    this.clearProgrammingContext();
+    this.renderPaper();
+    this.app.views.show('exam');
+  }
+
+  leaveProgrammingProblem() {
+    if (!this.programmingContext) return;
+    this.captureProgrammingCode();
+    this.saveDraft();
+    this.clearProgrammingContext();
+  }
+
+  clearProgrammingContext() {
+    this.programmingContext = null;
+    const context = document.getElementById('exam-problem-context');
+    if (context) context.hidden = true;
+    const submit = document.getElementById('submit-btn');
+    if (submit) submit.textContent = '🏁 提交';
   }
 
   saveDraft() {

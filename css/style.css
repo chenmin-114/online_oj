@@ -683,6 +683,15 @@ body.username-locked { overflow: hidden; }
 .exam-programming select { padding: 6px 9px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); color: var(--text-primary); }
 .exam-programming textarea { width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; outline: none; resize: vertical; background: #181818; color: var(--text-primary); font: 13px/1.6 Consolas, Monaco, monospace; tab-size: 4; }
 .exam-programming textarea:focus { border-color: var(--accent-primary); }
+.exam-programming-link-card { padding: 13px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-primary); }
+.exam-programming-link-card > div { min-width: 0; display: grid; gap: 4px; }
+.exam-programming-link-card span, .exam-programming-link-card small { color: var(--text-secondary); font-size: 11px; }
+.exam-programming-link-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exam-programming-link-card small { color: var(--success); }
+.exam-problem-context { margin: 16px 0 10px; padding: 11px 14px; display: flex; align-items: center; justify-content: space-between; gap: 15px; border: 1px solid var(--accent-primary); border-radius: 7px; background: rgba(79,128,255,.08); }
+.exam-problem-context[hidden] { display: none; }
+.exam-problem-context > div { min-width: 0; display: grid; gap: 3px; }
+.exam-problem-context span { overflow: hidden; color: var(--text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .exam-submit-bar { position: sticky; bottom: 0; z-index: 20; margin-top: 18px; padding: 12px 15px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; border: 1px solid var(--border-color); border-radius: 7px 7px 0 0; background: rgba(37,37,38,.96); backdrop-filter: blur(8px); }
 .exam-submit-bar span { margin-right: auto; color: var(--text-secondary); font-size: 12px; }
 .exam-result { margin: 16px 0 30px; }
@@ -711,6 +720,7 @@ body.username-locked { overflow: hidden; }
   }
 
   .exam-page-heading { align-items: flex-start; flex-direction: column; }
+  .exam-programming-link-card, .exam-problem-context { align-items: stretch; flex-direction: column; }
   .exam-submit-bar { align-items: stretch; flex-direction: column; }
   .exam-submit-bar span { margin-right: 0; }
 }
