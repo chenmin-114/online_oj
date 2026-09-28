@@ -295,7 +295,7 @@ class OJAdmin {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'health' }),
+      body: JSON.stringify({ type: 'admin_health' }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);

@@ -28,6 +28,11 @@ const ADMIN_SESSION_TTL_SECONDS = 2 * 60 * 60;
 const STUDENT_SESSION_COOKIE = '__Host-oj_student_session';
 const STUDENT_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 const STUDENT_PASSWORD_ITERATIONS = 100000;
+// 套卷答案允许最多 600 KB 文本；考虑 UTF-8 中文和 JSON 转义后，普通请求保留 2 MiB 余量。
+const NORMAL_REQUEST_BODY_LIMIT = 2 * 1024 * 1024;
+// 题目图片原文件合计允许 10 MB，Base64 会额外增加约三分之一体积。
+const PROBLEM_UPLOAD_BODY_LIMIT = 16 * 1024 * 1024;
+const LARGE_BODY_REQUEST_TYPES = new Set(['create_problem', 'update_problem']);
 
 const CORS_HEADERS = {
   ...SECURITY_HEADERS,
@@ -131,15 +136,52 @@ export default {
       return new Response('Method Not Allowed', { status: 405 });
     }
 
+    const declaredLength = Number(request.headers.get('Content-Length'));
+    if (Number.isFinite(declaredLength) && declaredLength > PROBLEM_UPLOAD_BODY_LIMIT) {
+      return requestBodyTooLargeResponse(PROBLEM_UPLOAD_BODY_LIMIT);
+    }
+    // 正常浏览器上传图片时会携带 Content-Length。大请求先验证管理员会话，
+    // 避免匿名请求借图片上传额度消耗 Worker 内存。
+    if (Number.isFinite(declaredLength) && declaredLength > NORMAL_REQUEST_BODY_LIMIT) {
+      const adminToken = readCookie(request, ADMIN_SESSION_COOKIE);
+      if (!/^[A-Za-z0-9_-]{43}$/.test(adminToken)) {
+        return requestBodyTooLargeResponse(NORMAL_REQUEST_BODY_LIMIT);
+      }
+      const authError = await requireAdmin(request, env);
+      if (authError) return authError;
+    }
+
+    let parsedBody;
     try {
-      const body = await request.json();
+      parsedBody = await readJsonRequest(request, PROBLEM_UPLOAD_BODY_LIMIT);
+    } catch (error) {
+      if (error?.code === 'REQUEST_BODY_TOO_LARGE') {
+        return requestBodyTooLargeResponse(PROBLEM_UPLOAD_BODY_LIMIT);
+      }
+      return jsonResponse({ error: '请求格式不正确' }, 400);
+    }
+    const body = parsedBody.value;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return jsonResponse({ error: '请求格式不正确' }, 400);
+    }
+    const bodyLimit = LARGE_BODY_REQUEST_TYPES.has(body.type)
+      ? PROBLEM_UPLOAD_BODY_LIMIT
+      : NORMAL_REQUEST_BODY_LIMIT;
+    if (parsedBody.byteLength > bodyLimit) {
+      return requestBodyTooLargeResponse(bodyLimit);
+    }
+
+    try {
 
       // 路由：根据 type 字段分发
       if (body.type === 'health') {
+        return jsonResponse({ ok: true });
+      } else if (body.type === 'admin_health') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
         return jsonResponse({
           ok: true,
           executionProvider: 'Judge0 CE',
-          repository: env.GITHUB_REPO || null,
           githubConfigured: Boolean(env.GITHUB_TOKEN && env.GITHUB_REPO),
         });
       } else if (body.type === 'admin_login') {
@@ -307,11 +349,49 @@ export default {
 
       return jsonResponse({ error: 'Unknown request type' }, 400);
 
-    } catch (err) {
-      return jsonResponse({ error: err.message }, 500);
+    } catch (error) {
+      console.error('API 请求处理失败:', error);
+      return jsonResponse({ error: '服务器内部错误' }, 500);
     }
   },
 };
+
+async function readJsonRequest(request, maxBytes) {
+  if (!request.body) throw new Error('EMPTY_BODY');
+  const reader = request.body.getReader();
+  const chunks = [];
+  let byteLength = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    byteLength += value.byteLength;
+    if (byteLength > maxBytes) {
+      try { await reader.cancel(); } catch { /* 请求流可能已经结束 */ }
+      const error = new Error('REQUEST_BODY_TOO_LARGE');
+      error.code = 'REQUEST_BODY_TOO_LARGE';
+      throw error;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return {
+    value: JSON.parse(new TextDecoder().decode(bytes)),
+    byteLength,
+  };
+}
+
+function requestBodyTooLargeResponse(limit) {
+  const limitMiB = Math.round(limit / (1024 * 1024));
+  return jsonResponse({
+    error: `请求内容过大，最大允许 ${limitMiB} MiB`,
+    code: 'REQUEST_BODY_TOO_LARGE',
+  }, 413);
+}
 
 async function enforceRateLimit(limiter, request, scope, discriminator = '', includeClientIp = true) {
   if (!limiter) {
