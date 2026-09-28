@@ -712,6 +712,11 @@ class OJAdmin {
       this.problemEditorHome.parent.insertBefore(editor, this.problemEditorHome.nextSibling);
     }
     document.body.classList.remove('preview-open');
+    if (!savedProblem) {
+      this.editingProblem = null;
+      this.setProblemEditorMode(false);
+      this.resetProblemEditor();
+    }
     if (savedProblem && typeof context?.onSaved === 'function') context.onSaved(savedProblem);
   }
 
