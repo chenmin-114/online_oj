@@ -318,6 +318,10 @@ input.admin-input { min-width: 240px; }
 .exam-programming-source { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
 .exam-programming-actions { padding-bottom: 1px; display: flex; flex-wrap: wrap; gap: 8px; }
 .exam-importer { margin-bottom: 2px; }
+.exam-access-editor { padding: 14px; display: grid; gap: 12px; border: 1px solid var(--admin-border); border-radius: 10px; background: rgba(91,140,255,.035); }
+.exam-access-editor small { color: var(--admin-muted); font-size: 10px; line-height: 1.6; }
+.exam-roster-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--admin-muted); font-size: 10px; }
+.exam-roster-actions input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .exam-problem-editor-modal[hidden] { display: none; }
 .exam-problem-editor-modal { position: fixed; inset: 0; z-index: 1300; padding: 24px; overflow-y: auto; background: rgba(5,8,15,.82); backdrop-filter: blur(7px); }
 .exam-problem-editor-host { width: min(1180px, 100%); margin: 0 auto; }

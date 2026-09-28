@@ -7,6 +7,8 @@ class ExamAdmin {
     this.studentIndex = -1;
     this.loadedGroup = '';
     this.pendingImportedProblems = [];
+    this.rosterWorkbook = null;
+    this.rosterExportName = '';
   }
 
   init() {
@@ -19,6 +21,8 @@ class ExamAdmin {
     document.getElementById('import-exam-markdown').addEventListener('click', () => this.importExamMarkdown());
     document.getElementById('exam-import-file').addEventListener('change', event => this.readExamMarkdownFile(event.target.files?.[0]));
     document.getElementById('export-current-exam').addEventListener('click', () => this.exportCurrentExam());
+    document.getElementById('exam-roster-file').addEventListener('change', event => this.importRosterAccounts(event.target));
+    document.getElementById('download-exam-roster').addEventListener('click', () => this.downloadRosterWorkbook());
     document.getElementById('exam-admin-list').addEventListener('click', event => this.handleListClick(event));
     document.getElementById('show-exam-grading').addEventListener('click', () => this.showGrading());
     document.getElementById('back-to-exams').addEventListener('click', () => this.showManager());
@@ -112,6 +116,7 @@ class ExamAdmin {
   newExam() {
     this.editingPaper = {
       id: '', title: '', description: '', status: 'draft', resultPolicy: 'after_graded',
+      allowedUsers: [],
       serialNo: this.nextExamSerial(),
       questions: [this.emptyQuestion(1)],
     };
@@ -173,6 +178,12 @@ class ExamAdmin {
     document.getElementById('exam-description').value = paper.description || '';
     document.getElementById('exam-status').value = paper.status || 'draft';
     document.getElementById('exam-result-policy').value = paper.resultPolicy || 'after_graded';
+    document.getElementById('exam-roster-users').value = (paper.allowedUsers || []).join('\n');
+    document.getElementById('exam-roster-status').textContent = paper.allowedUsers?.length
+      ? `当前已额外准入 ${paper.allowedUsers.length} 人，可继续追加导入`
+      : '已有密码保持不变；仅无密码账号生成随机密码；可多次追加导入';
+    document.getElementById('download-exam-roster').disabled = true;
+    this.rosterWorkbook = null;
     document.getElementById('exam-editor-title').dataset.serialNo = String(paper.serialNo || this.nextExamSerial());
     document.getElementById('exam-save-status').textContent = '';
     document.getElementById('exam-question-editor').innerHTML = paper.questions.map((question, index) => this.questionHtml(question, index)).join('');
@@ -217,6 +228,8 @@ class ExamAdmin {
     this.editingPaper.description = document.getElementById('exam-description').value;
     this.editingPaper.status = document.getElementById('exam-status').value;
     this.editingPaper.resultPolicy = document.getElementById('exam-result-policy').value;
+    this.editingPaper.allowedUsers = [...new Set(document.getElementById('exam-roster-users').value
+      .split(/\r?\n/).map(value => value.trim().normalize('NFC')).filter(Boolean))];
     this.editingPaper.serialNo = Number(this.editingPaper.serialNo || document.getElementById('exam-editor-title').dataset.serialNo || this.nextExamSerial());
     document.querySelectorAll('.exam-question-card').forEach((questionNode, questionIndex) => {
       const question = this.editingPaper.questions[questionIndex];
@@ -232,6 +245,105 @@ class ExamAdmin {
         });
       });
     });
+  }
+
+  async importRosterAccounts(input) {
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const status = document.getElementById('exam-roster-status');
+    const download = document.getElementById('download-exam-roster');
+    download.disabled = true;
+    try {
+      if (!this.editingPaper?.id) throw new Error('请先填写试卷编号并保存一次，再导入额外账户');
+      if (!window.XLSX) throw new Error('Excel 组件加载失败，请刷新管理页面后重试');
+      if (file.size > 10 * 1024 * 1024) throw new Error('Excel 文件不能超过 10 MB');
+      status.textContent = '正在读取 Excel 并检查账号状态...';
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true, cellStyles: true });
+      const parsed = this.parseRosterWorkbook(workbook);
+      if (!parsed.users.length) throw new Error('没有找到“姓名 / 学生姓名 / 名字 / 用户名”列');
+      const accountStatus = await this.request('admin_exam_roster_account_status', { usernames: parsed.users.map(item => item.username) });
+      const existingPasswordUsers = new Set(accountStatus.passwordUsers || []);
+      const accounts = [];
+      let generated = 0;
+      for (const user of parsed.users) {
+        if (existingPasswordUsers.has(user.username)) continue;
+        let password = user.password;
+        if (!password) {
+          password = this.admin.generateStudentPassword();
+          generated += 1;
+        }
+        user.cells.forEach(cell => {
+          if (!cell.sheet[cell.passwordAddress]) cell.sheet[cell.passwordAddress] = { t: 's', v: password };
+        });
+        accounts.push({ username: user.username, ...await this.admin.hashStudentPassword(password) });
+      }
+      status.textContent = `正在注册并追加 ${parsed.users.length} 个准入账号...`;
+      const result = await this.request('admin_exam_roster_import', {
+        examId: this.editingPaper.id,
+        usernames: parsed.users.map(item => item.username),
+        accounts,
+      });
+      const current = document.getElementById('exam-roster-users').value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+      const merged = [...new Set([...current, ...parsed.users.map(item => item.username)])];
+      document.getElementById('exam-roster-users').value = merged.join('\n');
+      this.editingPaper.allowedUsers = merged;
+      this.rosterWorkbook = workbook;
+      this.rosterExportName = `${file.name.replace(/\.[^.]+$/, '')}-套卷准入账号.xlsx`;
+      download.disabled = false;
+      status.textContent = `已追加 ${result.added} 人；${existingPasswordUsers.size} 个原密码保持不变，${generated} 个账号生成了新密码。请保存试卷。`;
+    } catch (error) {
+      this.rosterWorkbook = null;
+      status.textContent = `导入失败：${error.message}`;
+    }
+  }
+
+  parseRosterWorkbook(workbook) {
+    const nameHeaders = new Set(['姓名', '学生姓名', '名字', '用户名', 'name', 'username']);
+    const passwordHeaders = new Set(['密码', '登录密码', '初始密码', 'password']);
+    const users = new Map();
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet?.['!ref']) continue;
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+      let headerRow = -1;
+      let nameColumn = -1;
+      let passwordColumn = -1;
+      for (let row = range.s.r; row <= Math.min(range.e.r, range.s.r + 29) && nameColumn < 0; row += 1) {
+        for (let column = range.s.c; column <= range.e.c; column += 1) {
+          const value = String(sheet[XLSX.utils.encode_cell({ r: row, c: column })]?.v ?? '').trim().toLowerCase().replace(/[\s:：]/g, '');
+          if (nameHeaders.has(value)) nameColumn = column;
+          if (passwordHeaders.has(value)) passwordColumn = column;
+        }
+        if (nameColumn >= 0) headerRow = row;
+      }
+      if (nameColumn < 0) continue;
+      if (passwordColumn < 0) {
+        passwordColumn = range.e.c + 1;
+        range.e.c = passwordColumn;
+        sheet['!ref'] = XLSX.utils.encode_range(range);
+        sheet[XLSX.utils.encode_cell({ r: headerRow, c: passwordColumn })] = { t: 's', v: '密码' };
+      }
+      for (let row = headerRow + 1; row <= range.e.r; row += 1) {
+        const username = String(sheet[XLSX.utils.encode_cell({ r: row, c: nameColumn })]?.v ?? '').trim().normalize('NFC');
+        if (!username) continue;
+        if (username.length > 50 || /[\u0000-\u001f\u007f]/.test(username)) throw new Error(`“${username}”用户名格式不正确`);
+        const passwordAddress = XLSX.utils.encode_cell({ r: row, c: passwordColumn });
+        const password = String(sheet[passwordAddress]?.v ?? '').trim();
+        if (password.length > 128) throw new Error(`“${username}”的密码超过 128 个字符`);
+        const user = users.get(username) || { username, password: '', cells: [] };
+        if (password && user.password && password !== user.password) throw new Error(`“${username}”在表格中有不同密码`);
+        if (password) user.password = password;
+        user.cells.push({ sheet, passwordAddress });
+        users.set(username, user);
+      }
+    }
+    return { users: [...users.values()] };
+  }
+
+  downloadRosterWorkbook() {
+    if (!this.rosterWorkbook) return;
+    XLSX.writeFile(this.rosterWorkbook, this.rosterExportName || '套卷准入账号.xlsx', { compression: true });
   }
 
   addQuestion() {

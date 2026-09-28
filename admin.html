@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260928-01">
+  <link rel="stylesheet" href="css/admin.css?v=20260928-02">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -241,6 +241,15 @@
               </div>
               <label class="form-field"><span>试卷说明</span><textarea id="exam-description" class="admin-input" rows="4" maxlength="10000" placeholder="支持 Markdown，可填写考试说明和注意事项"></textarea></label>
               <label class="form-field"><span>学生查看批改结果</span><select id="exam-result-policy" class="admin-input"><option value="immediate">提交后立即显示当前批改结果</option><option value="after_graded" selected>全部批改完成后显示</option><option value="manual">管理员手动发布后显示</option></select></label>
+              <section class="exam-access-editor">
+                <div class="card-heading"><div><strong>额外准入账户</strong><p>“账号密码批量注册”中的所有账号默认可进入全部套卷；这里可为当前套卷追加其他账号。</p></div></div>
+                <label class="form-field"><span>当前套卷额外名单（每行一个用户名）</span><textarea id="exam-roster-users" class="admin-input" rows="6" maxlength="120000" placeholder="可手动填写，或从 Excel 追加导入"></textarea></label>
+                <div class="exam-roster-actions">
+                  <label class="admin-button secondary image-select-button">导入额外准入账户<input id="exam-roster-file" type="file" accept=".xlsx,.xls,.csv"></label>
+                  <button id="download-exam-roster" type="button" class="admin-button secondary" disabled>⇩ 导出更新后的 Excel</button>
+                  <span id="exam-roster-status">已有密码保持不变；仅无密码账号生成随机密码；可多次追加导入</span>
+                </div>
+              </section>
               <div class="testcase-heading"><div><strong>试卷题目</strong><p>大题内可自由组合选择、填空、简答和编程小题</p></div><button id="add-exam-question" type="button" class="admin-button secondary">＋ 添加大题</button></div>
               <div id="exam-question-editor" class="exam-question-editor"></div>
             </div>
@@ -332,6 +341,6 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20260926-01"></script>
   <script src="js/admin.js?v=20260928-04"></script>
-  <script src="js/admin-exams.js?v=20260928-01"></script>
+  <script src="js/admin-exams.js?v=20260928-02"></script>
 </body>
 </html>

@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS student_accounts (
   password_hash TEXT,
   password_iterations INTEGER,
   auth_version INTEGER NOT NULL DEFAULT 1,
+  is_managed INTEGER NOT NULL DEFAULT 0 CHECK (is_managed IN (0, 1)),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   CHECK (
@@ -102,6 +103,17 @@ CREATE TABLE IF NOT EXISTS exam_papers (
 
 CREATE INDEX IF NOT EXISTS idx_exam_papers_group_status
   ON exam_papers(group_name, status, updated_at DESC);
+
+-- 单张套卷可额外准入账号；全局批量注册账号不需要写入此表。
+CREATE TABLE IF NOT EXISTS exam_roster (
+  exam_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (exam_id, username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exam_roster_username
+  ON exam_roster(username, exam_id);
 
 -- 试卷每次修改只新增一个共享版本，历史提交按版本读取，
 -- 不需要在每个学生的提交中重复保存整张题面。

@@ -221,6 +221,14 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamSave(body, env);
+      } else if (body.type === 'admin_exam_roster_account_status') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamRosterAccountStatus(body, env);
+      } else if (body.type === 'admin_exam_roster_import') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamRosterImport(body, env);
       } else if (body.type === 'admin_exam_preview_grade') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
         if (rateLimitError) return rateLimitError;
@@ -716,13 +724,14 @@ async function handleAdminImportStudents(body, env) {
   const statements = Array.from(accounts.values()).flatMap(account => [
     env.OJ_DB.prepare(`
       INSERT INTO student_accounts (
-        username, password_salt, password_hash, password_iterations, auth_version, created_at, updated_at
-      ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)
+        username, password_salt, password_hash, password_iterations, auth_version, is_managed, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, ?5)
       ON CONFLICT(username) DO UPDATE SET
         password_salt = excluded.password_salt,
         password_hash = excluded.password_hash,
         password_iterations = excluded.password_iterations,
         auth_version = student_accounts.auth_version + 1,
+        is_managed = 1,
         updated_at = excluded.updated_at
     `).bind(
       account.username,
@@ -737,6 +746,86 @@ async function handleAdminImportStudents(body, env) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
   }
   return jsonResponse({ success: true, imported: accounts.size });
+}
+
+async function readStudentAccountStates(env, usernames) {
+  const states = new Map();
+  for (let index = 0; index < usernames.length; index += 100) {
+    const chunk = usernames.slice(index, index + 100);
+    const placeholders = chunk.map((_, position) => `?${position + 1}`).join(',');
+    const result = await env.OJ_DB.prepare(`
+      SELECT username, password_hash, is_managed FROM student_accounts
+      WHERE username IN (${placeholders})
+    `).bind(...chunk).all();
+    for (const row of result.results || []) states.set(row.username, row);
+  }
+  return states;
+}
+
+function normalizeRosterUsernames(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.map(normalizeStudentUsername).filter(Boolean))];
+}
+
+async function handleAdminExamRosterAccountStatus(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const usernames = normalizeRosterUsernames(body.usernames);
+  if (!usernames.length || usernames.length > 2000) return jsonResponse({ error: '名单人数必须在 1 到 2000 之间' }, 400);
+  const states = await readStudentAccountStates(env, usernames);
+  return jsonResponse({
+    passwordUsers: usernames.filter(username => Boolean(states.get(username)?.password_hash)),
+  });
+}
+
+async function handleAdminExamRosterImport(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  const usernames = normalizeRosterUsernames(body.usernames);
+  if (!examId || !usernames.length || usernames.length > 2000) return jsonResponse({ error: '试卷编号或名单格式不正确' }, 400);
+  const exam = await env.OJ_DB.prepare('SELECT id FROM exam_papers WHERE id = ?1').bind(examId).first();
+  if (!exam) return jsonResponse({ error: '请先保存试卷，再导入额外准入账户' }, 404);
+
+  const suppliedAccounts = new Map();
+  for (const item of Array.isArray(body.accounts) ? body.accounts : []) {
+    const username = normalizeStudentUsername(item?.username);
+    const salt = String(item?.salt || '');
+    const hash = String(item?.hash || '');
+    if (!username || !usernames.includes(username) || !/^[A-Za-z0-9_-]{22}$/.test(salt) || !/^[A-Za-z0-9_-]{43}$/.test(hash)) {
+      return jsonResponse({ error: '准入账号数据格式不正确' }, 400);
+    }
+    suppliedAccounts.set(username, { username, salt, hash });
+  }
+  const states = await readStudentAccountStates(env, usernames);
+  const missingPassword = usernames.filter(username => !states.get(username)?.password_hash && !suppliedAccounts.has(username));
+  if (missingPassword.length) return jsonResponse({ error: `以下账号缺少初始密码：${missingPassword.slice(0, 5).join('、')}` }, 400);
+
+  const now = Date.now();
+  const statements = [];
+  for (const username of usernames) {
+    const account = suppliedAccounts.get(username);
+    if (account && !states.get(username)?.password_hash) {
+      statements.push(env.OJ_DB.prepare(`
+        INSERT INTO student_accounts (
+          username, password_salt, password_hash, password_iterations, auth_version, is_managed, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, 1, 0, ?5, ?5)
+        ON CONFLICT(username) DO UPDATE SET
+          password_salt = excluded.password_salt,
+          password_hash = excluded.password_hash,
+          password_iterations = excluded.password_iterations,
+          auth_version = student_accounts.auth_version + 1,
+          updated_at = excluded.updated_at
+        WHERE student_accounts.password_hash IS NULL
+      `).bind(username, account.salt, account.hash, STUDENT_PASSWORD_ITERATIONS, now));
+      statements.push(env.OJ_DB.prepare('DELETE FROM student_sessions WHERE username = ?1').bind(username));
+    }
+    statements.push(env.OJ_DB.prepare(`
+      INSERT OR IGNORE INTO exam_roster (exam_id, username, created_at) VALUES (?1, ?2, ?3)
+    `).bind(examId, username, now));
+  }
+  for (let index = 0; index < statements.length; index += 100) {
+    await env.OJ_DB.batch(statements.slice(index, index + 100));
+  }
+  return jsonResponse({ success: true, added: usernames.length });
 }
 
 async function deriveStudentPasswordHash(password, salt, iterations) {
@@ -798,8 +887,12 @@ function validateExamPaper(input) {
   const description = normalizeExamText(input.description, 10000);
   const status = input.status === 'published' ? 'published' : 'draft';
   const resultPolicy = EXAM_RESULT_POLICIES.has(input.resultPolicy) ? input.resultPolicy : 'after_graded';
+  const allowedUsers = Array.isArray(input.allowedUsers)
+    ? [...new Set(input.allowedUsers.map(normalizeStudentUsername).filter(Boolean))]
+    : [];
   const serialNo = Number(input.serialNo || 0);
   if (!id || !title) return { error: '试卷编号或名称不正确' };
+  if (allowedUsers.length > 2000) return { error: '单张套卷最多额外准入 2000 个账号' };
   if (!Number.isInteger(serialNo) || serialNo < 0 || serialNo > 99) return { error: '套卷序号必须在 1 到 99 之间' };
   if (!Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 100) {
     return { error: '一张试卷必须包含 1 到 100 道大题' };
@@ -871,7 +964,7 @@ function validateExamPaper(input) {
   }
   if (totalScore > 10000) return { error: '试卷总分不能超过 10000 分' };
   return {
-    paper: { id, title, description, status, resultPolicy, serialNo, questions },
+    paper: { id, title, description, status, resultPolicy, serialNo, allowedUsers, questions },
     totalScore: Math.round(totalScore * 100) / 100,
     totalParts,
   };
@@ -1000,6 +1093,9 @@ async function handleAdminExamGet(body, env) {
   const record = await readExamRecord(env, examId);
   if (!record) return jsonResponse({ error: '试卷不存在' }, 404);
   const paper = parseExamRecord(record);
+  const roster = await env.OJ_DB.prepare('SELECT username FROM exam_roster WHERE exam_id = ?1 ORDER BY username')
+    .bind(examId).all();
+  paper.allowedUsers = (roster.results || []).map(row => row.username);
   paper.serialNo = await ensureExamSerial(paper, env, record.group_name, record);
   return jsonResponse(await enrichExamProgrammingParts(paper, env, record.group_name));
 }
@@ -1074,8 +1170,31 @@ async function handleAdminExamSave(body, env) {
         )
     `).bind(paper.id, version));
   }
-  await env.OJ_DB.batch(statements);
+  statements.push(env.OJ_DB.prepare('DELETE FROM exam_roster WHERE exam_id = ?1').bind(paper.id));
+  for (const username of paper.allowedUsers) {
+    statements.push(env.OJ_DB.prepare(`
+      INSERT INTO exam_roster (exam_id, username, created_at) VALUES (?1, ?2, ?3)
+    `).bind(paper.id, username, now));
+  }
+  for (let index = 0; index < statements.length; index += 100) {
+    await env.OJ_DB.batch(statements.slice(index, index + 100));
+  }
   return jsonResponse({ success: true, id: paper.id, version, totalScore, serialNo: paper.serialNo });
+}
+
+async function canStudentAccessExam(env, examId, username) {
+  if (!examId || !username) return false;
+  const allowed = await env.OJ_DB.prepare(`
+    SELECT 1 AS allowed
+    WHERE EXISTS (
+      SELECT 1 FROM student_accounts WHERE username = ?1 AND is_managed = 1
+    ) OR EXISTS (
+      SELECT 1 FROM exam_roster r
+      JOIN student_accounts a ON a.username = r.username
+      WHERE r.exam_id = ?2 AND r.username = ?1 AND a.password_hash IS NOT NULL
+    )
+  `).bind(username, examId).first();
+  return Boolean(allowed);
 }
 
 async function handleStudentExamList(body, env) {
@@ -1090,6 +1209,14 @@ async function handleStudentExamList(body, env) {
     LEFT JOIN exam_submissions s
       ON s.exam_id = p.id AND s.username = ?1 AND s.is_preview = 0 AND s.is_final = 1
     WHERE p.group_name = ?2 AND p.status = 'published'
+      AND (
+        EXISTS (SELECT 1 FROM student_accounts a WHERE a.username = ?1 AND a.is_managed = 1)
+        OR EXISTS (
+          SELECT 1 FROM exam_roster r
+          JOIN student_accounts a ON a.username = r.username
+          WHERE r.exam_id = p.id AND r.username = ?1 AND a.password_hash IS NOT NULL
+        )
+      )
     ORDER BY p.updated_at DESC
   `).bind(username, group).all();
   return jsonResponse((result.results || []).map(row => ({
@@ -1119,6 +1246,7 @@ async function handleStudentExamGet(body, env) {
   if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
   const record = await readExamRecord(env, examId);
   if (!record || record.status !== 'published') return jsonResponse({ error: '试卷不存在或尚未发布' }, 404);
+  if (!await canStudentAccessExam(env, examId, username)) return jsonResponse({ error: '你不在这张套卷的准入范围内' }, 403);
   const paper = parseExamRecord(record);
   await enrichExamProgrammingParts(paper, env, record.group_name);
   const submission = await env.OJ_DB.prepare(`
@@ -1373,6 +1501,7 @@ async function handleStudentExamSubmit(body, env) {
   if (answersJson.length > 600000) return jsonResponse({ error: '整张试卷答案不能超过 600 KB' }, 413);
   const record = await readExamRecord(env, examId);
   if (!record || record.status !== 'published') return jsonResponse({ error: '试卷不存在或尚未发布' }, 404);
+  if (!await canStudentAccessExam(env, examId, username)) return jsonResponse({ error: '你不在这张套卷的准入范围内' }, 403);
   const group = record.group_name;
   if (body.group && normalizeGroup(body.group) !== group) return jsonResponse({ error: '试卷组别不正确' }, 400);
   const paper = parseExamRecord(record);
