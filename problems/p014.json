@@ -1,0 +1,28 @@
+{
+  "id": "P014",
+  "title": "（Day 7）**手柄不“抽风”，连招才带感",
+  "difficulty": "easy",
+  "status": "draft",
+  "description": "你的格斗游戏手柄最近有点“神经质”：手指刚碰到攻击键就乱出招，稍微松一点点又突然断连，打排位简直折磨人。社团学长告诉你，这是按键老化导致的信号抖动，并教你写了一个“稳如泰山”补丁，给攻击和松开都上了双重保险：\n\n- **确认攻击**：必须稳稳按住，连续3个时刻信号都是1，才在第3个时刻触发一次攻击（输出 `HIT`）；之后就算一直按着，也不会重复出招。\n- **确认松开**：触发攻击后，必须连续3个时刻信号都是0，才算真正松手并重置计数器；这期间只要冒出一个1，就要重新凑3个连续的0。\n- 没满足上面两个条件的时候，一律保持待机状态（输出 `IDLE`）。\n\n**要求**\n\n读取一串原始按键信号，按照上述双保险规则，输出每个时刻对应的判定结果。",
+  "inputFormat": "第一行整数 `N`（1 ≤ N ≤ 60），表示采样时刻总数。 第二行 `N` 个整数（0或1），表示每个时刻手柄传来的原始信号，数字之间用一个空格隔开。",
+  "outputFormat": "输出一行 `N` 个字符串，每个为 `HIT` 或 `IDLE`，表示对应时刻的判定结果，字符串之间用一个空格隔开。",
+  "constraints": "- 1 ≤ N ≤ 60\n- 信号值仅为 0 或 1",
+  "sampleExplanation": "**样例 #1**\n\n- 第0~1时刻：只连续了2个1就断了 → 攻击计数清零，输出 `IDLE`。\n- 第3~5时刻：连续3个1 → 第5时刻触发攻击，输出 `HIT`，进入“等待松开”状态。\n- 第6时刻：信号还是1 → 没开始凑0，输出 `IDLE`。\n- 第7时刻：出现第一个0 → 松开计数=1。\n- 第8时刻：突然冒出一个1 → 松开计数被中断，重新从0开始算，输出 `IDLE`。\n- 第9~11时刻：连续3个0 → 第11时刻确认松开，计数器完全重置，输出 `IDLE`。\n- 第12~13时刻：只连续了2个1 → 没凑够3次，输出 `IDLE`。\n\n**样例 #2**\n\n- 第0~2时刻：连续3个1 → 第2时刻触发 `HIT`，进入等待松开状态。\n- 第3~4时刻：仅连续2个0 → 未凑够3次，不重置，输出 `IDLE`。\n- 第5时刻：出现1 → 松开计数中断清零，输出 `IDLE`。\n- 第6~7时刻：仅连续2个0 → 仍未凑够3次，且未触发过新的攻击，全程 `IDLE`。\n\n测试点\n\n| #    | 输入                                  | 输出                                                         |\n| ---- | ------------------------------------- | ------------------------------------------------------------ |\n| 1    | `6``1 1 1 0 0 0`                      | `IDLE IDLE HIT IDLE IDLE IDLE`                               |\n| 2    | `5``1 1 0 1 1`                        | `IDLE IDLE IDLE IDLE IDLE`                                   |\n| 3    | `10``1 1 1 0 0 1 0 0 0 0`             | `IDLE IDLE HIT IDLE IDLE IDLE IDLE IDLE IDLE IDLE`           |\n| 4    | `8``1 1 1 1 1 1 1 1`                  | `IDLE IDLE HIT IDLE IDLE IDLE IDLE IDLE`                     |\n| 5    | `16``1 1 1 0 1 0 0 0 1 1 1 0 0 0 1 0` | `IDLE IDLE HIT IDLE IDLE IDLE IDLE IDLE IDLE IDLE HIT IDLE IDLE IDLE IDLE IDLE` |\n| 6    | `1``1`                                | `IDLE`                                                       |",
+  "sampleInput": "14\n1 1 0 1 1 1 1 0 1 0 0 0 1 1",
+  "sampleOutput": "IDLE IDLE IDLE IDLE IDLE HIT IDLE IDLE IDLE IDLE IDLE IDLE IDLE IDLE",
+  "samples": [
+    {
+      "input": "14\n1 1 0 1 1 1 1 0 1 0 0 0 1 1",
+      "output": "IDLE IDLE IDLE IDLE IDLE HIT IDLE IDLE IDLE IDLE IDLE IDLE IDLE IDLE"
+    },
+    {
+      "input": "8\n1 1 1 0 0 1 0 0",
+      "output": "IDLE IDLE HIT IDLE IDLE IDLE IDLE IDLE"
+    }
+  ],
+  "showTestDetails": true,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "pythonJudgeMode": "standard",
+  "group": "control"
+}
