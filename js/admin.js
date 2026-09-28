@@ -19,6 +19,8 @@ class OJAdmin {
     this.filteredSubmissions = [];
     this.problemImages = [];
     this.editingProblem = null;
+    this.problemEditorContext = null;
+    this.problemEditorHome = null;
     this.studentAccountFile = null;
     this.studentAccountWorkbook = null;
     this.studentAccountExportName = '';
@@ -146,6 +148,10 @@ class OJAdmin {
     document.getElementById('close-problem-editor').addEventListener('click', () => this.hideProblemEditor());
     document.getElementById('reset-problem-editor').addEventListener('click', () => {
       if (this.editingProblem) this.editProblem(this.editingProblem.file);
+      else if (this.problemEditorContext?.problemId) {
+        const { problemId, onSaved } = this.problemEditorContext;
+        this.startExamProblemEditor({ problemId, onSaved });
+      }
       else this.resetProblemEditor();
     });
     document.getElementById('add-sample').addEventListener('click', () => this.addSample());
@@ -174,7 +180,7 @@ class OJAdmin {
     });
     document.getElementById('problem-id').addEventListener('input', event => {
       const fileInput = document.getElementById('problem-file');
-      if (!fileInput.value || /^p\d+\.json$/i.test(fileInput.value)) {
+      if (!fileInput.value || /^(?:p\d+|t\d+)\.json$/i.test(fileInput.value)) {
         const id = event.target.value.trim().toLowerCase();
         fileInput.value = id ? `${id}.json` : '';
       }
@@ -654,7 +660,59 @@ class OJAdmin {
   }
 
   hideProblemEditor() {
-    document.getElementById('problem-editor').hidden = true;
+    const editor = document.getElementById('problem-editor');
+    editor.hidden = true;
+    if (this.problemEditorContext) this.finishExamProblemEditor(null);
+  }
+
+  startExamProblemEditor({ problemId, onSaved }) {
+    const editor = document.getElementById('problem-editor');
+    if (!this.problemEditorHome) {
+      this.problemEditorHome = { parent: editor.parentNode, nextSibling: editor.nextSibling };
+    }
+    this.problemEditorContext = { problemId, onSaved };
+    document.getElementById('exam-problem-editor-host').appendChild(editor);
+    document.getElementById('exam-problem-editor-modal').hidden = false;
+    document.body.classList.add('preview-open');
+    this.editingProblem = null;
+    this.resetProblemEditor();
+    this.setProblemEditorMode(false);
+    document.getElementById('problem-id').value = problemId;
+    document.getElementById('problem-id').readOnly = true;
+    document.getElementById('problem-file').value = `${problemId.toLowerCase()}.json`;
+    document.getElementById('problem-file').readOnly = true;
+    document.getElementById('problem-status').value = 'draft';
+    document.getElementById('problem-editor-title').textContent = `新建套卷编程题 ${problemId}`;
+    document.getElementById('problem-editor-subtitle').textContent = '与普通编程题共用完整编辑器；保存后会自动关联到当前套卷小题';
+    this.showProblemEditor();
+  }
+
+  async editExamProblemEditor({ file, onSaved }) {
+    const editor = document.getElementById('problem-editor');
+    if (!this.problemEditorHome) {
+      this.problemEditorHome = { parent: editor.parentNode, nextSibling: editor.nextSibling };
+    }
+    this.problemEditorContext = { onSaved };
+    document.getElementById('exam-problem-editor-host').appendChild(editor);
+    document.getElementById('exam-problem-editor-modal').hidden = false;
+    document.body.classList.add('preview-open');
+    await this.editProblem(file);
+    if (this.problemEditorContext) {
+      document.getElementById('problem-editor-title').textContent = '编辑套卷编程题';
+      document.getElementById('problem-editor-subtitle').textContent = '保存后套卷会继续引用更新后的同一道题';
+    }
+  }
+
+  finishExamProblemEditor(savedProblem) {
+    const context = this.problemEditorContext;
+    const editor = document.getElementById('problem-editor');
+    this.problemEditorContext = null;
+    document.getElementById('exam-problem-editor-modal').hidden = true;
+    if (this.problemEditorHome) {
+      this.problemEditorHome.parent.insertBefore(editor, this.problemEditorHome.nextSibling);
+    }
+    document.body.classList.remove('preview-open');
+    if (savedProblem && typeof context?.onSaved === 'function') context.onSaved(savedProblem);
   }
 
   resetProblemEditor() {
@@ -757,10 +815,10 @@ class OJAdmin {
 
     const titleInfo = this.parseMarkdownTitle(source);
     const rawTitle = titleInfo.raw;
-    const idMatch = rawTitle.match(/\bP\d{3,6}\b/i);
+    const idMatch = rawTitle.match(/\b(?:P\d{3,6}|T\d{3})\b/i);
     const id = idMatch?.[0]?.toUpperCase() || '';
     const title = titleInfo.title
-      .replace(/\bP\d{3,6}\b/i, '')
+      .replace(/\b(?:P\d{3,6}|T\d{3})\b/i, '')
       .replace(/^\s*[:：-]\s*/, '')
       .trim();
     const sections = this.parseMarkdownSections(source);
@@ -868,7 +926,7 @@ class OJAdmin {
     const firstLine = source.split('\n').map(line => line.trim()).find(line => line) || '';
     const firstHeading = source.match(/^#{1,6}\s+(.+?)\s*#*$/m)?.[1]?.trim();
     const hasTitleLine = !this.isProblemSectionTitle(firstLine)
-      && (/题目|问题/.test(firstLine) || /^P\d{3,6}\b/i.test(firstLine));
+      && (/题目|问题/.test(firstLine) || /^(?:P\d{3,6}|T\d{3})\b/i.test(firstLine));
     const headingIsSection = firstHeading && this.isProblemSectionTitle(firstHeading);
     const raw = hasTitleLine ? firstLine : (headingIsSection ? '' : (firstHeading || ''));
     const cleaned = this.cleanMarkdownHeading(raw)
@@ -1311,10 +1369,12 @@ class OJAdmin {
         : result.problem.status === 'draft'
           ? `${result.problem.id} 已保存为草稿，仅管理员可见`
           : `${result.problem.id} 已发布，前台将在 GitHub Pages 更新后显示`);
+      const examContext = this.problemEditorContext;
       this.editingProblem = null;
       this.setProblemEditorMode(false);
       this.resetProblemEditor();
-      this.hideProblemEditor();
+      document.getElementById('problem-editor').hidden = true;
+      if (examContext) this.finishExamProblemEditor(result.problem);
     } catch (error) {
       status.textContent = error instanceof TypeError
         ? '无法连接 Worker，请检查网络后重试'

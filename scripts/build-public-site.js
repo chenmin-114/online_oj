@@ -53,7 +53,7 @@ function sanitizeProblemDirectory(directory) {
   fs.writeFileSync(indexPath, `${JSON.stringify(published, null, 2)}\n`);
 
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (!entry.isFile() || !/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/i.test(entry.name)) continue;
+    if (!entry.isFile() || !/^(?:p\d{3,6}|t\d{3})(?:-[a-z0-9-]+)?\.json$/i.test(entry.name)) continue;
     const filePath = path.join(directory, entry.name);
     if (!publishedFiles.has(entry.name)) {
       fs.unlinkSync(filePath);

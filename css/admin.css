@@ -315,6 +315,13 @@ input.admin-input { min-width: 240px; }
 .exam-part-card { padding: 14px; display: grid; gap: 12px; border: 1px solid var(--admin-border); border-radius: 9px; background: #0e1526; }
 .exam-add-part { display: flex; justify-content: flex-end; gap: 9px; }
 .exam-add-part .admin-input { min-width: 150px; }
+.exam-programming-source { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.exam-programming-actions { padding-bottom: 1px; display: flex; flex-wrap: wrap; gap: 8px; }
+.exam-importer { margin-bottom: 2px; }
+.exam-problem-editor-modal[hidden] { display: none; }
+.exam-problem-editor-modal { position: fixed; inset: 0; z-index: 1300; padding: 24px; overflow-y: auto; background: rgba(5,8,15,.82); backdrop-filter: blur(7px); }
+.exam-problem-editor-host { width: min(1180px, 100%); margin: 0 auto; }
+.exam-problem-editor-host .problem-editor { margin: 0; box-shadow: 0 24px 70px rgba(0,0,0,.55); }
 .test-visibility-option.compact { padding: 9px 11px; }
 .exam-grading-controls { margin-bottom: 18px; }
 .exam-grading-layout { display: grid; grid-template-columns: minmax(240px, .35fr) minmax(0, 1fr); gap: 18px; }
@@ -411,6 +418,9 @@ input.admin-input { min-width: 240px; }
   .problem-importer summary small { margin-left: 0; }
   .account-import-summary { grid-template-columns: 1fr; }
   .exam-grading-layout { grid-template-columns: 1fr; }
+  .exam-programming-source { grid-template-columns: 1fr; }
+  .exam-programming-actions { align-items: stretch; flex-direction: column; }
+  .exam-problem-editor-modal { padding: 8px; }
   .grading-form { grid-template-columns: 1fr; }
   .grading-score-summary { align-items: flex-start; flex-direction: column; }
   .grading-score-summary label { margin-left: 0; }

@@ -73,7 +73,7 @@ function storedProblemId(group, problemId) {
 }
 
 function publicProblemId(value) {
-  const match = /^(control|vision):(P\d{3,6})$/.exec(String(value || ''));
+  const match = /^(control|vision):((?:P\d{3,6}|T\d{3}))$/.exec(String(value || ''));
   return match ? { group: match[1], problemId: match[2] } : { group: 'control', problemId: String(value || '') };
 }
 
@@ -798,7 +798,9 @@ function validateExamPaper(input) {
   const description = normalizeExamText(input.description, 10000);
   const status = input.status === 'published' ? 'published' : 'draft';
   const resultPolicy = EXAM_RESULT_POLICIES.has(input.resultPolicy) ? input.resultPolicy : 'after_graded';
+  const serialNo = Number(input.serialNo || 0);
   if (!id || !title) return { error: '试卷编号或名称不正确' };
+  if (!Number.isInteger(serialNo) || serialNo < 0 || serialNo > 99) return { error: '套卷序号必须在 1 到 99 之间' };
   if (!Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 100) {
     return { error: '一张试卷必须包含 1 到 100 道大题' };
   }
@@ -857,7 +859,7 @@ function validateExamPaper(input) {
       } else if (type === 'programming') {
         hasProgramming = true;
         part.problemId = String(rawPart.problemId || '').trim().toUpperCase();
-        if (!/^P\d{3,6}$/.test(part.problemId)) return { error: `${titleText} 的编程小题必须关联有效题号` };
+        if (!/^(?:P\d{3,6}|T\d{3})$/.test(part.problemId)) return { error: `${titleText} 的编程小题必须关联有效题号` };
       }
       totalScore += part.points;
       question.parts.push(part);
@@ -869,7 +871,7 @@ function validateExamPaper(input) {
   }
   if (totalScore > 10000) return { error: '试卷总分不能超过 10000 分' };
   return {
-    paper: { id, title, description, status, resultPolicy, questions },
+    paper: { id, title, description, status, resultPolicy, serialNo, questions },
     totalScore: Math.round(totalScore * 100) / 100,
     totalParts,
   };
@@ -913,7 +915,35 @@ function parseExamRecord(record) {
     version: Number(record.version),
     totalScore: Number(record.total_score),
     updatedAt: Number(record.updated_at),
+    serialNo: Number(structure.serialNo || record.serial_no || 0),
   };
+}
+
+async function nextExamSerial(env, group) {
+  const result = await env.OJ_DB.prepare(`
+    SELECT MAX(CAST(json_extract(v.structure_json, '$.serialNo') AS INTEGER)) AS max_serial,
+           COUNT(*) AS paper_count
+    FROM exam_papers p
+    JOIN exam_versions v ON v.exam_id = p.id AND v.version = p.version
+    WHERE p.group_name = ?1
+  `).bind(group).first();
+  const next = Math.max(Number(result?.max_serial || 0), Number(result?.paper_count || 0)) + 1;
+  if (next > 99) throw new Error('套卷序号已经用完（最多 99 套）');
+  return next;
+}
+
+async function ensureExamSerial(paper, env, group, existing = null) {
+  if (paper.serialNo > 0) return paper.serialNo;
+  if (existing) {
+    const parsed = parseExamRecord(existing);
+    if (parsed.serialNo > 0) return parsed.serialNo;
+    const rank = await env.OJ_DB.prepare(`
+      SELECT COUNT(*) AS position FROM exam_papers
+      WHERE group_name = ?1 AND (created_at < ?2 OR (created_at = ?2 AND id <= ?3))
+    `).bind(group, Number(existing.created_at), existing.id).first();
+    return Math.max(1, Math.min(Number(rank?.position || 1), 99));
+  }
+  return await nextExamSerial(env, group);
 }
 
 async function enrichExamProgrammingParts(paper, env, group) {
@@ -926,6 +956,12 @@ async function enrichExamProgrammingParts(paper, env, group) {
   ])));
   for (const part of programmingParts) {
     const problem = referencedProblems.get(part.problemId);
+    if (problem) {
+      const publicProblem = { ...problem };
+      delete publicProblem.testCases;
+      delete publicProblem.showTestDetails;
+      part.problem = publicProblem;
+    }
     if (problem?.pythonJudgeMode === 'function' && problem.pythonFunction) {
       part.pythonJudgeMode = 'function';
       part.pythonFunction = problem.pythonFunction;
@@ -940,9 +976,16 @@ async function handleAdminExamList(body, env) {
   const result = await env.OJ_DB.prepare(`
     SELECT p.id, p.title, p.description, p.status, p.result_policy, p.total_score,
            p.version, p.updated_at,
+           COALESCE(
+             NULLIF(CAST(json_extract(v.structure_json, '$.serialNo') AS INTEGER), 0),
+             (SELECT COUNT(*) FROM exam_papers p2
+              WHERE p2.group_name = p.group_name
+                AND (p2.created_at < p.created_at OR (p2.created_at = p.created_at AND p2.id <= p.id)))
+           ) AS serial_no,
            COUNT(CASE WHEN s.is_final = 1 AND s.is_preview = 0 THEN 1 END) AS submitted_students,
            SUM(CASE WHEN s.is_final = 1 AND s.is_preview = 0 AND s.grading_status = 'completed' THEN 1 ELSE 0 END) AS completed_students
     FROM exam_papers p
+    JOIN exam_versions v ON v.exam_id = p.id AND v.version = p.version
     LEFT JOIN exam_submissions s ON s.exam_id = p.id
     WHERE p.group_name = ?1
     GROUP BY p.id
@@ -956,7 +999,9 @@ async function handleAdminExamGet(body, env) {
   if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
   const record = await readExamRecord(env, examId);
   if (!record) return jsonResponse({ error: '试卷不存在' }, 404);
-  return jsonResponse(await enrichExamProgrammingParts(parseExamRecord(record), env, record.group_name));
+  const paper = parseExamRecord(record);
+  paper.serialNo = await ensureExamSerial(paper, env, record.group_name, record);
+  return jsonResponse(await enrichExamProgrammingParts(paper, env, record.group_name));
 }
 
 async function handleAdminExamSave(body, env) {
@@ -980,17 +1025,18 @@ async function handleAdminExamSave(body, env) {
       try { problemIndex = JSON.parse(await indexResponse.text()); } catch { return jsonResponse({ error: '题目索引格式不正确' }, 500); }
       const unavailable = programmingIds.filter(problemId => {
         const item = Array.isArray(problemIndex) ? problemIndex.find(problem => problem.id === problemId) : null;
-        return !item || item.status === 'draft';
+        return !item;
       });
       if (unavailable.length) {
-        return jsonResponse({ error: `发布试卷前，请先发布关联编程题：${unavailable.join('、')}` }, 409);
+        return jsonResponse({ error: `试卷关联的编程题不存在：${unavailable.join('、')}` }, 409);
       }
     }
   }
   const existing = await readExamRecord(env, paper.id);
   if (existing && existing.group_name !== group) return jsonResponse({ error: '该试卷编号已被其他组别使用' }, 409);
+  paper.serialNo = await ensureExamSerial(paper, env, group, existing);
 
-  const structure = JSON.stringify({ questions: paper.questions });
+  const structure = JSON.stringify({ serialNo: paper.serialNo, questions: paper.questions });
   const structureChanged = !existing || existing.structure_json !== structure;
   const version = existing ? Number(existing.version) + (structureChanged ? 1 : 0) : 1;
   const now = Date.now();
@@ -1029,7 +1075,7 @@ async function handleAdminExamSave(body, env) {
     `).bind(paper.id, version));
   }
   await env.OJ_DB.batch(statements);
-  return jsonResponse({ success: true, id: paper.id, version, totalScore });
+  return jsonResponse({ success: true, id: paper.id, version, totalScore, serialNo: paper.serialNo });
 }
 
 async function handleStudentExamList(body, env) {
@@ -1513,7 +1559,7 @@ async function handleData(request, env) {
   let path = fileType === 'problems' ? problemIndexPath(group) : DATA_FILES[fileType];
   if (fileType === 'problem') {
     const name = String(params.get('name') || '').toLowerCase();
-    if (!/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/.test(name)) {
+    if (!/^(?:p\d{3,6}|t\d{3})(?:-[a-z0-9-]+)?\.json$/.test(name)) {
       return jsonResponse({ error: '题目文件名不正确' }, 400);
     }
     path = problemFilePath(group, name);
@@ -1641,7 +1687,7 @@ async function handleAnalyticsView(body, env) {
 
   const group = normalizeGroup(body.group);
   const problemId = body.problemId == null ? '' : String(body.problemId).trim().toUpperCase();
-  if (problemId && !/^P\d{3,6}$/.test(problemId)) {
+  if (problemId && !/^(?:P\d{3,6}|T\d{3})$/.test(problemId)) {
     return jsonResponse({ error: '题号格式不正确' }, 400);
   }
 
@@ -2241,16 +2287,16 @@ function validateProblem(input, requestedFile) {
   }
 
   const id = input.id.trim().toUpperCase();
-  if (!/^P\d{3,6}$/.test(id)) {
-    return { error: '题号格式应为 P006 这样的 P 加数字' };
+  if (!/^(?:P\d{3,6}|T\d{3})$/.test(id)) {
+    return { error: '题号格式应为 P006，套卷题应为 T020 这样的格式' };
   }
 
   const difficulty = ['easy', 'medium', 'hard'].includes(input.difficulty)
     ? input.difficulty
     : 'easy';
   const file = String(requestedFile || `${id.toLowerCase()}.json`).trim().toLowerCase();
-  if (!/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/.test(file)) {
-    return { error: '文件名格式应为 p006-example.json' };
+  if (!/^(?:p\d{3,6}|t\d{3})(?:-[a-z0-9-]+)?\.json$/.test(file)) {
+    return { error: '文件名格式应为 p006-example.json 或 t020.json' };
   }
 
   if (!Array.isArray(input.testCases) || input.testCases.length === 0 || input.testCases.length > 50) {
@@ -2587,7 +2633,7 @@ if 'Solution' in globals() and hasattr(Solution, __oj_config['methodName']):
  * 从 KV 读取包含隐藏测试点的完整题目。
  */
 async function readHiddenProblem(problemId, env, group = 'control') {
-  if (!env.OJ_TESTS || !/^P\d{3,6}$/.test(String(problemId))) return null;
+  if (!env.OJ_TESTS || !/^(?:P\d{3,6}|T\d{3})$/.test(String(problemId))) return null;
   try {
     const groupedProblem = await env.OJ_TESTS.get(`problem:${group}:${problemId}`, 'json');
     if (groupedProblem) return groupedProblem;
@@ -2614,7 +2660,7 @@ async function prepareJudgeSubmission(body, env, allowDraft = false) {
   }
   const group = normalizeGroup(body.group);
 
-  if (!username || username.length > 50 || !/^P\d{3,6}$/.test(problemId)
+  if (!username || username.length > 50 || !/^(?:P\d{3,6}|T\d{3})$/.test(problemId)
       || !Number.isInteger(languageId) || !script.trim() || script.length > 200000) {
     throw judgeError('提交内容格式不正确', 400, 'INVALID_SUBMISSION');
   }
@@ -2829,7 +2875,7 @@ async function persistSubmission(body, env) {
   const normalizedTotalTests = Number(totalTests);
   const normalizedTotalTime = Number(totalTime);
   const normalizedLanguage = String(language || '').trim().slice(0, 30);
-  if (!/^P\d{3,6}$/.test(normalizedProblemId)
+  if (!/^(?:P\d{3,6}|T\d{3})$/.test(normalizedProblemId)
       || !Number.isInteger(normalizedPassedTests) || normalizedPassedTests < 0
       || !Number.isInteger(normalizedTotalTests) || normalizedTotalTests < 1 || normalizedTotalTests > 1000
       || normalizedPassedTests > normalizedTotalTests

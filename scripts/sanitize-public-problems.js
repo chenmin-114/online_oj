@@ -4,7 +4,7 @@ const path = require('path');
 const problemsDirectory = path.join(process.cwd(), 'problems');
 
 for (const file of fs.readdirSync(problemsDirectory)) {
-  if (!/^p\d{3,6}(?:-[a-z0-9-]+)?\.json$/i.test(file)) continue;
+  if (!/^(?:p\d{3,6}|t\d{3})(?:-[a-z0-9-]+)?\.json$/i.test(file)) continue;
   const filePath = path.join(problemsDirectory, file);
   const problem = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   if (!Object.prototype.hasOwnProperty.call(problem, 'testCases')) continue;

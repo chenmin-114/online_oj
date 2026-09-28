@@ -161,7 +161,10 @@ class ExamUI {
 
   partHtml(part, partIndex, answer) {
     const label = `${partIndex + 1}.`;
-    const prompt = `<div class="exam-part-prompt problem-content">${this.app._formatMarkdown(part.prompt || '')}</div>`;
+    const promptContent = part.type === 'programming' && part.problem
+      ? this.programmingStatement(part)
+      : (part.prompt || '');
+    const prompt = `<div class="exam-part-prompt problem-content">${this.app._formatMarkdown(promptContent)}</div>`;
     let control = '';
     if (part.type === 'single_choice') {
       control = `<div class="exam-options">${part.options.map(option => `<label><input type="radio" name="exam-${this.escape(part.id)}" data-answer-part="${this.escape(part.id)}" value="${this.escape(option)}" ${answer === option ? 'checked' : ''}><span>${this.escape(option)}</span></label>`).join('')}</div>`;
@@ -178,6 +181,26 @@ class ExamUI {
       control = `<div class="exam-programming"><div><span>关联题目 ${this.escape(part.problemId)}</span><select data-program-language data-answer-part="${this.escape(part.id)}">${window.LANGUAGES.map(item => `<option value="${this.escape(item.id)}" ${item.id === language ? 'selected' : ''}>${this.escape(item.name)}</option>`).join('')}</select></div><textarea data-program-code="${this.escape(part.id)}" rows="16" spellcheck="false">${this.escape(code)}</textarea></div>`;
     }
     return `<section class="student-exam-part" data-part-id="${this.escape(part.id)}"><div class="exam-part-label"><strong>${label}</strong><span>${this.partTypeName(part.type)} · ${this.escape(part.points)} 分</span></div>${prompt}${control}</section>`;
+  }
+
+  programmingStatement(part) {
+    const problem = part.problem;
+    const blocks = [];
+    if (part.prompt) blocks.push(part.prompt);
+    blocks.push(`# ${problem.id} ${problem.title}`, '## 题目描述', problem.description || '');
+    if (problem.inputFormat) blocks.push('## 输入格式', problem.inputFormat);
+    if (problem.outputFormat) blocks.push('## 输出格式', problem.outputFormat);
+    if (problem.constraints) blocks.push('## 数据范围', problem.constraints);
+    const samples = Array.isArray(problem.samples) && problem.samples.length
+      ? problem.samples
+      : ((problem.sampleInput || problem.sampleOutput) ? [{ input: problem.sampleInput || '', output: problem.sampleOutput || '' }] : []);
+    samples.forEach((sample, index) => blocks.push(
+      `## 输入 #${index + 1}`, `\`\`\`text\n${sample.input}\n\`\`\``,
+      `## 输出 #${index + 1}`, `\`\`\`text\n${sample.output}\n\`\`\``,
+    ));
+    if (problem.sampleExplanation) blocks.push('## 样例解释', problem.sampleExplanation);
+    if (Array.isArray(problem.hints) && problem.hints.length) blocks.push('## 提示', problem.hints.join('\n'));
+    return blocks.filter(value => String(value || '').trim()).join('\n\n');
   }
 
   partTypeName(type) {

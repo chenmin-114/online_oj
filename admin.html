@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260927-07">
+  <link rel="stylesheet" href="css/admin.css?v=20260928-01">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -217,12 +217,23 @@
             <div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>试卷</th><th>状态</th><th>总分</th><th>提交人数</th><th>批改完成</th><th>操作</th></tr></thead><tbody id="exam-admin-list"><tr><td colspan="7" class="empty-cell">正在读取...</td></tr></tbody></table></div>
           </article>
 
-          <form id="exam-editor" class="admin-card exam-editor" hidden>
+        <form id="exam-editor" class="admin-card exam-editor" hidden>
             <div class="card-heading">
               <div><h3 id="exam-editor-title">新建套卷</h3><p>一道大题可以组合多种小题，编程小题复用现有题库的隐藏测试点</p></div>
               <button id="close-exam-editor" type="button" class="text-button">关闭 ×</button>
             </div>
             <div class="problem-form">
+              <details class="problem-importer exam-importer">
+                <summary><span>⚡ 一键粘贴或上传套卷 Markdown</span><small>支持本站导出的标准格式</small></summary>
+                <div class="problem-importer-body">
+                  <textarea id="exam-import-markdown" class="admin-input code-input" rows="10" placeholder="粘贴整份套卷 Markdown，或选择 .md 文件"></textarea>
+                  <div class="problem-importer-actions">
+                    <span id="exam-import-status">解析后会填充整张套卷；编程题会进入题库并默认保存为草稿</span>
+                    <label class="admin-button secondary image-select-button">选择 .md 文件<input id="exam-import-file" type="file" accept=".md,text/markdown,text/plain"></label>
+                    <button id="import-exam-markdown" type="button" class="admin-button primary">解析并自动填入</button>
+                  </div>
+                </div>
+              </details>
               <div class="form-grid three-columns">
                 <label class="form-field"><span>试卷编号 *</span><input id="exam-id" class="admin-input" required maxlength="32" placeholder="EXAM01"></label>
                 <label class="form-field"><span>试卷名称 *</span><input id="exam-title" class="admin-input" required maxlength="120" placeholder="第一次综合考核"></label>
@@ -233,7 +244,7 @@
               <div class="testcase-heading"><div><strong>试卷题目</strong><p>大题内可自由组合选择、填空、简答和编程小题</p></div><button id="add-exam-question" type="button" class="admin-button secondary">＋ 添加大题</button></div>
               <div id="exam-question-editor" class="exam-question-editor"></div>
             </div>
-            <div class="problem-form-actions"><span id="exam-save-status"></span><button type="submit" class="admin-button primary">保存试卷</button></div>
+            <div class="problem-form-actions"><span id="exam-save-status"></span><button id="export-current-exam" type="button" class="admin-button secondary">导出 Markdown</button><button type="submit" class="admin-button primary">保存试卷</button></div>
           </form>
         </div>
 
@@ -310,6 +321,9 @@
       <div id="admin-preview-body" class="admin-preview-body"></div>
     </div>
   </section>
+  <section id="exam-problem-editor-modal" class="exam-problem-editor-modal" hidden aria-modal="true" role="dialog" aria-label="套卷编程题编辑器">
+    <div id="exam-problem-editor-host" class="exam-problem-editor-host"></div>
+  </section>
   <script src="vendor/xlsx/xlsx.full.min.js?v=0.20.3"></script>
   <script src="vendor/marked/marked.umd.js?v=18.0.13"></script>
   <script src="vendor/dompurify/purify.min.js?v=3.4.15"></script>
@@ -317,7 +331,7 @@
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20260926-01"></script>
-  <script src="js/admin.js?v=20260928-01"></script>
-  <script src="js/admin-exams.js?v=20260927-05"></script>
+  <script src="js/admin.js?v=20260928-02"></script>
+  <script src="js/admin-exams.js?v=20260928-01"></script>
 </body>
 </html>

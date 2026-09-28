@@ -6,6 +6,7 @@ class ExamAdmin {
     this.submissions = [];
     this.studentIndex = -1;
     this.loadedGroup = '';
+    this.pendingImportedProblems = [];
   }
 
   init() {
@@ -15,6 +16,9 @@ class ExamAdmin {
     document.getElementById('exam-editor').addEventListener('submit', event => this.saveExam(event));
     document.getElementById('exam-question-editor').addEventListener('click', event => this.handleEditorClick(event));
     document.getElementById('exam-question-editor').addEventListener('change', event => this.handleEditorChange(event));
+    document.getElementById('import-exam-markdown').addEventListener('click', () => this.importExamMarkdown());
+    document.getElementById('exam-import-file').addEventListener('change', event => this.readExamMarkdownFile(event.target.files?.[0]));
+    document.getElementById('export-current-exam').addEventListener('click', () => this.exportCurrentExam());
     document.getElementById('exam-admin-list').addEventListener('click', event => this.handleListClick(event));
     document.getElementById('show-exam-grading').addEventListener('click', () => this.showGrading());
     document.getElementById('back-to-exams').addEventListener('click', () => this.showManager());
@@ -108,6 +112,7 @@ class ExamAdmin {
   newExam() {
     this.editingPaper = {
       id: '', title: '', description: '', status: 'draft', resultPolicy: 'after_graded',
+      serialNo: this.nextExamSerial(),
       questions: [this.emptyQuestion(1)],
     };
     this.renderEditor();
@@ -133,8 +138,14 @@ class ExamAdmin {
       options: type.includes('choice') ? ['选项 A', '选项 B'] : undefined,
       correctAnswers: type.includes('choice') ? ['选项 A'] : type === 'fill_blank' ? [''] : undefined,
       caseSensitive: false,
-      problemId: type === 'programming' ? (this.admin.problems[0]?.id || '') : undefined,
+      problemId: type === 'programming' ? '' : undefined,
     };
+  }
+
+  nextExamSerial() {
+    const used = this.exams.map(exam => Number(exam.serial_no || exam.serialNo || 0)).filter(Number.isInteger);
+    const next = Math.max(0, ...used) + 1;
+    return next <= 99 ? next : 0;
   }
 
   async editExam(id) {
@@ -162,6 +173,7 @@ class ExamAdmin {
     document.getElementById('exam-description').value = paper.description || '';
     document.getElementById('exam-status').value = paper.status || 'draft';
     document.getElementById('exam-result-policy').value = paper.resultPolicy || 'after_graded';
+    document.getElementById('exam-editor-title').dataset.serialNo = String(paper.serialNo || this.nextExamSerial());
     document.getElementById('exam-save-status').textContent = '';
     document.getElementById('exam-question-editor').innerHTML = paper.questions.map((question, index) => this.questionHtml(question, index)).join('');
   }
@@ -194,7 +206,7 @@ class ExamAdmin {
       <label class="form-field"><span>小题内容</span><textarea class="admin-input" rows="3" data-p-field="prompt">${this.escape(part.prompt || '')}</textarea></label>
       ${isChoice ? `<div class="form-grid two-columns"><label class="form-field"><span>选项（每行一个）</span><textarea class="admin-input" rows="4" data-p-field="options">${this.escape((part.options || []).join('\n'))}</textarea></label><label class="form-field"><span>正确答案（每行一个，文字须与选项一致）</span><textarea class="admin-input" rows="4" data-p-field="correctAnswers">${this.escape((part.correctAnswers || []).join('\n'))}</textarea></label></div>` : ''}
       ${part.type === 'fill_blank' ? `<label class="form-field"><span>可接受答案（每行一个）</span><textarea class="admin-input" rows="4" data-p-field="correctAnswers">${this.escape((part.correctAnswers || []).join('\n'))}</textarea></label><label class="test-visibility-option compact"><input type="checkbox" data-p-field="caseSensitive" ${part.caseSensitive ? 'checked' : ''}><span><strong>区分大小写</strong><small>不勾选时会忽略首尾空格和大小写</small></span></label>` : ''}
-      ${part.type === 'programming' ? `<label class="form-field"><span>关联现有编程题</span><select class="admin-input" data-p-field="problemId"><option value="">请选择题目</option>${problemOptions}</select><small>复用该题的语言模板和隐藏测试点，不额外复制测试数据。</small></label>` : ''}
+      ${part.type === 'programming' ? `<div class="exam-programming-source"><label class="form-field"><span>关联编程题</span><select class="admin-input" data-p-field="problemId"><option value="">请选择题目</option>${problemOptions}${part.problemId && !this.admin.problems.some(problem => problem.id === part.problemId) ? `<option value="${this.escape(part.problemId)}" selected>${this.escape(part.problemId)} · 待创建</option>` : ''}</select><small>套卷题默认保存为草稿，但发布套卷后仍可正常作答和判题。</small></label><div class="exam-programming-actions"><button type="button" class="admin-button primary" data-create-programming="${questionIndex}:${partIndex}">＋ 使用完整编辑器出题</button>${part.problemId && this.admin.problems.some(problem => problem.id === part.problemId) ? `<button type="button" class="admin-button secondary" data-edit-programming="${questionIndex}:${partIndex}">编辑关联题目</button>` : ''}</div></div>` : ''}
     </section>`;
   }
 
@@ -205,6 +217,7 @@ class ExamAdmin {
     this.editingPaper.description = document.getElementById('exam-description').value;
     this.editingPaper.status = document.getElementById('exam-status').value;
     this.editingPaper.resultPolicy = document.getElementById('exam-result-policy').value;
+    this.editingPaper.serialNo = Number(this.editingPaper.serialNo || document.getElementById('exam-editor-title').dataset.serialNo || this.nextExamSerial());
     document.querySelectorAll('.exam-question-card').forEach((questionNode, questionIndex) => {
       const question = this.editingPaper.questions[questionIndex];
       questionNode.querySelectorAll('[data-q-field]').forEach(input => { question[input.dataset.qField] = input.value; });
@@ -231,6 +244,10 @@ class ExamAdmin {
     const removeQuestion = event.target.closest('[data-remove-question]');
     const removePart = event.target.closest('[data-remove-part]');
     const addPart = event.target.closest('[data-add-part]');
+    const createProgramming = event.target.closest('[data-create-programming]');
+    const editProgramming = event.target.closest('[data-edit-programming]');
+    if (createProgramming) return this.openProgrammingEditor(createProgramming.dataset.createProgramming, false);
+    if (editProgramming) return this.openProgrammingEditor(editProgramming.dataset.editProgramming, true);
     if (!removeQuestion && !removePart && !addPart) return;
     this.syncEditorState();
     if (removeQuestion) {
@@ -260,6 +277,215 @@ class ExamAdmin {
     this.renderEditor();
   }
 
+  nextProgrammingProblemId() {
+    const serial = Number(this.editingPaper?.serialNo || this.nextExamSerial());
+    if (!Number.isInteger(serial) || serial < 1 || serial > 99) throw new Error('套卷序号不正确');
+    const prefix = `T${String(serial).padStart(2, '0')}`;
+    const ids = [
+      ...this.admin.problems.map(problem => problem.id),
+      ...this.editingPaper.questions.flatMap(question => question.parts.map(part => part.problemId || '')),
+    ];
+    const used = ids.map(id => new RegExp(`^${prefix}(\\d)$`).exec(id)?.[1]).filter(value => value !== undefined).map(Number);
+    const index = used.length ? Math.max(...used) + 1 : 0;
+    if (index > 9) throw new Error('同一套卷最多自动创建 10 道编程题（编号 0 到 9）');
+    return `${prefix}${index}`;
+  }
+
+  openProgrammingEditor(position, editing) {
+    this.syncEditorState();
+    const [questionIndex, partIndex] = position.split(':').map(Number);
+    const part = this.editingPaper.questions[questionIndex]?.parts[partIndex];
+    if (!part) return;
+    const onSaved = problem => {
+      const current = this.editingPaper?.questions[questionIndex]?.parts[partIndex];
+      if (!current) return;
+      current.problemId = problem.id;
+      this.renderEditor();
+      this.admin.toast(`${problem.id} 已关联到当前套卷小题`);
+    };
+    if (editing) {
+      const problem = this.admin.problems.find(item => item.id === part.problemId);
+      if (!problem) return this.admin.toast('关联题目不存在，请刷新题库后重试');
+      this.admin.editExamProblemEditor({ file: problem.file, onSaved });
+      return;
+    }
+    try {
+      this.admin.startExamProblemEditor({ problemId: this.nextProgrammingProblemId(), onSaved });
+    } catch (error) {
+      this.admin.toast(error.message);
+    }
+  }
+
+  async readExamMarkdownFile(file) {
+    const status = document.getElementById('exam-import-status');
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      status.textContent = 'Markdown 文件不能超过 8 MB';
+      return;
+    }
+    document.getElementById('exam-import-markdown').value = await file.text();
+    status.textContent = `已读取 ${file.name}，点击“解析并自动填入”继续`;
+  }
+
+  examExportPayload(paper, problems) {
+    const questions = structuredClone(paper.questions);
+    questions.forEach(question => question.parts.forEach(part => {
+      delete part.problem;
+      delete part.pythonFunction;
+      delete part.pythonJudgeMode;
+    }));
+    return {
+      format: 'jc-oj-exam-v1',
+      paper: {
+        title: paper.title,
+        description: paper.description || '',
+        resultPolicy: paper.resultPolicy || 'after_graded',
+        questions,
+      },
+      problems: problems.map(problem => ({
+        originalId: problem.id,
+        title: problem.title,
+        difficulty: problem.difficulty || 'easy',
+        description: problem.description || '',
+        inputFormat: problem.inputFormat || '',
+        outputFormat: problem.outputFormat || '',
+        constraints: problem.constraints || '',
+        hints: Array.isArray(problem.hints) ? problem.hints : [],
+        samples: Array.isArray(problem.samples) ? problem.samples : [],
+        sampleExplanation: problem.sampleExplanation || '',
+        testCases: Array.isArray(problem.testCases) ? problem.testCases : [],
+        pythonJudgeMode: problem.pythonJudgeMode || 'standard',
+        pythonFunctionSignature: problem.pythonFunction?.signature || '',
+      })),
+    };
+  }
+
+  encodeBase64Utf8(value) {
+    const bytes = new TextEncoder().encode(value);
+    let binary = '';
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    return btoa(binary);
+  }
+
+  decodeBase64Utf8(value) {
+    const binary = atob(value.replace(/\s/g, ''));
+    return new TextDecoder().decode(Uint8Array.from(binary, character => character.charCodeAt(0)));
+  }
+
+  readableExamMarkdown(payload) {
+    const typeNames = { single_choice: '单选题', multiple_choice: '多选题', fill_blank: '填空题', short_answer: '简答题', programming: '编程题' };
+    const problemMap = new Map(payload.problems.map(problem => [problem.originalId, problem]));
+    const lines = [`# ${payload.paper.title}`, '', payload.paper.description || '', ''];
+    payload.paper.questions.forEach((question, questionIndex) => {
+      lines.push(`## 第 ${questionIndex + 1} 大题：${question.title}`, '', question.description || '', '');
+      question.parts.forEach((part, partIndex) => {
+        lines.push(`### ${questionIndex + 1}.${partIndex + 1} ${typeNames[part.type] || '小题'}（${part.points} 分）`, '', part.prompt || '', '');
+        if (part.options?.length) lines.push(...part.options.map((option, index) => `- ${String.fromCharCode(65 + index)}. ${option}`), '');
+        if (part.correctAnswers?.length) lines.push(`**参考答案：** ${part.correctAnswers.join(' / ')}`, '');
+        if (part.type === 'programming') {
+          const problem = problemMap.get(part.problemId);
+          if (problem) {
+            lines.push(`#### 编程题 ${problem.originalId}：${problem.title}`, '', '##### 题目描述', '', problem.description, '', '##### 输入格式', '', problem.inputFormat, '', '##### 输出格式', '', problem.outputFormat, '');
+            if (problem.constraints) lines.push('##### 数据范围', '', problem.constraints, '');
+            problem.samples.forEach((sample, index) => lines.push(`##### 输入 #${index + 1}`, '', '```text', sample.input, '```', '', `##### 输出 #${index + 1}`, '', '```text', sample.output, '```', ''));
+            if (problem.testCases.length) {
+              lines.push('##### 测试点（管理员数据）', '');
+              problem.testCases.forEach((testCase, index) => lines.push(`输入 #${index + 1}`, '```text', testCase.input, '```', `输出 #${index + 1}`, '```text', testCase.expectedOutput, '```', ''));
+            }
+          }
+        }
+      });
+    });
+    const encoded = this.encodeBase64Utf8(JSON.stringify(payload));
+    lines.push('<!-- JC_OJ_EXAM_V1', encoded.match(/.{1,120}/g)?.join('\n') || encoded, 'JC_OJ_EXAM_V1 -->', '', '> 此文件包含参考答案和隐藏测试点，仅供管理员备份与导入，请勿发给学生。', '');
+    return lines.join('\n');
+  }
+
+  async exportCurrentExam() {
+    if (!this.editingPaper) return;
+    this.syncEditorState();
+    const status = document.getElementById('exam-save-status');
+    status.textContent = '正在收集套卷和编程题内容...';
+    try {
+      const ids = [...new Set(this.editingPaper.questions.flatMap(question => question.parts).filter(part => part.type === 'programming' && part.problemId).map(part => part.problemId))];
+      const problems = await Promise.all(ids.map(async id => {
+        const indexItem = this.admin.problems.find(problem => problem.id === id);
+        if (!indexItem) throw new Error(`找不到关联编程题 ${id}`);
+        return await this.admin.fetchJson(`${this.admin.config.workerUrl}/?file=problem&name=${encodeURIComponent(indexItem.file)}`);
+      }));
+      const markdown = this.readableExamMarkdown(this.examExportPayload(this.editingPaper, problems));
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${(this.editingPaper.id || 'exam').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.md`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      status.textContent = 'Markdown 已导出（包含答案和隐藏测试点）';
+    } catch (error) {
+      status.textContent = `导出失败：${error.message}`;
+    }
+  }
+
+  parseExamMarkdown(source) {
+    const match = String(source || '').match(/<!--\s*JC_OJ_EXAM_V1\s+([A-Za-z0-9+/=\s]+?)\s+JC_OJ_EXAM_V1\s*-->/);
+    if (!match) throw new Error('没有找到本站套卷数据，请使用管理端导出的 Markdown 标准格式');
+    const payload = JSON.parse(this.decodeBase64Utf8(match[1]));
+    if (payload?.format !== 'jc-oj-exam-v1' || !payload.paper || !Array.isArray(payload.paper.questions) || !Array.isArray(payload.problems)) {
+      throw new Error('套卷 Markdown 数据格式不正确');
+    }
+    return payload;
+  }
+
+  async importExamMarkdown() {
+    const status = document.getElementById('exam-import-status');
+    const button = document.getElementById('import-exam-markdown');
+    button.disabled = true;
+    status.textContent = '正在解析套卷...';
+    try {
+      const payload = this.parseExamMarkdown(document.getElementById('exam-import-markdown').value);
+      this.syncEditorState();
+      const serialNo = Number(this.editingPaper?.serialNo || this.nextExamSerial());
+      const idMap = new Map();
+      for (let index = 0; index < payload.problems.length; index += 1) {
+        if (index > 9) throw new Error('一张套卷最多导入 10 道编程题');
+        const exported = payload.problems[index];
+        const id = `T${String(serialNo).padStart(2, '0')}${index}`;
+        idMap.set(exported.originalId, id);
+        if (this.admin.problems.some(problem => problem.id === id)) continue;
+        status.textContent = `正在创建编程题 ${id}（${index + 1}/${payload.problems.length}）...`;
+        const problem = { ...exported, id, status: 'draft', showTestDetails: true, hintsDefaultExpanded: true };
+        delete problem.originalId;
+        const result = await this.request('create_problem', { file: `${id.toLowerCase()}.json`, problem, images: [] });
+        this.admin.problems.push(result.problem);
+      }
+      this.admin.problems.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+      const questions = structuredClone(payload.paper.questions);
+      questions.forEach(question => question.parts.forEach(part => {
+        if (part.type === 'programming') part.problemId = idMap.get(part.problemId) || part.problemId;
+      }));
+      this.editingPaper = {
+        ...this.editingPaper,
+        title: payload.paper.title || this.editingPaper.title,
+        description: payload.paper.description || '',
+        resultPolicy: payload.paper.resultPolicy || 'after_graded',
+        status: 'draft',
+        serialNo,
+        questions,
+      };
+      this.admin.renderProblems();
+      this.renderEditor();
+      document.querySelector('.exam-importer').open = false;
+      status.textContent = `已填入 ${questions.length} 道大题和 ${payload.problems.length} 道编程题，请检查后保存套卷`;
+      this.admin.toast('套卷 Markdown 已自动填入');
+    } catch (error) {
+      status.textContent = `导入失败：${error.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   async saveExam(event) {
     event.preventDefault();
     this.syncEditorState();
@@ -267,6 +493,7 @@ class ExamAdmin {
     status.textContent = '正在保存...';
     try {
       const result = await this.request('admin_exam_save', { paper: this.editingPaper });
+      this.editingPaper.serialNo = result.serialNo;
       status.textContent = `保存成功 · 第 ${result.version} 版 · 总分 ${result.totalScore}`;
       this.admin.toast('试卷已保存');
       await this.ensureLoaded(true);
