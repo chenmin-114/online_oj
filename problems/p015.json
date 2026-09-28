@@ -1,0 +1,28 @@
+{
+  "id": "P015",
+  "title": "（Day 8）班级图书角的“新书推荐榜”",
+  "difficulty": "easy",
+  "status": "draft",
+  "description": "班级图书角旁边有一块小黑板，专门用来展示同学们最近推荐的 **5 本好书**。\n\n这块黑板的空间是固定的，只有 5 个格子。当有同学推荐新书时，书名会依次写进这些格子里；一旦 5 个格子都写满了，再有新书推荐，就会自动擦掉最早的那本旧书，把新书写在它的位置上，以此类推。整个过程不需要把后面的书往前挪，只需要记住“下一个该写哪个格子”和“当前已经写了几本书”就可以了。\n**要求**\n设计一个能循环使用 5 个格子的存储方式，完成添加书名和按从新到旧查看书名的操作。规定 `0` 号格子是最新推荐的书，`4` 号格子是最早推荐的书；如果查询的格子里还没有书，就视为空。",
+  "inputFormat": "第一行整数 `N`（1 ≤ N ≤ 100），表示操作总数。 接下来 `N` 行，每行为以下两种操作之一：\n\n- `A name`：添加一本名为 `name` 的新书（不含空格，长度 ≤ 20）\n- `Q index`：查询当前黑板上第 `index` 个格子的书名（0 ≤ index ≤ 4）",
+  "outputFormat": "每个 `Q` 操作输出一行书名；若查询位置无书，输出 `(empty)`。",
+  "constraints": "- 1 ≤ N ≤ 100\n- 书名字符串仅含大小写字母、数字和下划线，长度 ≤ 20",
+  "sampleExplanation": "**样例 #1**\n\n- 推荐 \"LittlePrince\"、\"Dune\" 后，黑板上有 2 本书。`Q 0` → \"Dune\"（最新），`Q 1` → \"LittlePrince\"。\n- 再推荐 \"Neuromancer\"、\"Foundation\"、\"Solaris\" 后，黑板满 5 本（从新到旧：Solaris, Foundation, Neuromancer, Dune, LittlePrince）。`Q 4` → \"LittlePrince\"（最早的那本还在）。\n\n**样例 #2**\n\n- 前 5 本书填满黑板；推荐 \"RoadsidePicnic\" 时，最早的 \"Hobbit\" 被擦掉替换。此时从新到旧为：RoadsidePicnic, Nineteen84, AnimalFarm, BraveNewWorld, Fahrenheit。`Q 4` → \"Fahrenheit\"。\n\n#### 精选测试点（共8组）\n\n| #    | 输入                                                         | 输出                                               |\n| ---- | ------------------------------------------------------------ | -------------------------------------------------- |\n| 1    | `5``Q 0``Q 2``Q 4``Q 1``Q 3`                                 | `(empty)``(empty)``(empty)``(empty)``(empty)`      |\n| 2    | `4``A Walden``Q 0``Q 1``Q 4`                                 | `Walden``(empty)``(empty)`                         |\n| 3    | `7``A Frankenstein``A Dracula``A Carmilla``Q 0``Q 1``Q 2``Q 3` | `Carmilla``Dracula``Frankenstein``(empty)`         |\n| 4    | `6``A MobyDick``A Ulysses``A Lolita``A Catcher``A Gatsby``Q 4` | `MobyDick`                                         |\n| 5    | `7``A Beloved``A Jazz``A Paradise``A Sula``A TarBaby``A SongOfSolomon``Q 4` | `Jazz`                                             |\n| 6    | `12``A WutheringHeights``A JaneEyre``A Rebecca``A Emma``A Persuasion``A NorthangerAbbey``A MansfieldPark``A SenseSensibility``A PridePrejudice``A LadySusan``Q 0``Q 4` | `LadySusan``NorthangerAbbey`                       |\n| 7    | `9``A Siddhartha``Q 0``A Steppenwolf``Q 1``A Demian``Q 2``Q 0``Q 4` | `Siddhartha``(empty)``(empty)``Demian``Siddhartha` |\n| 8    | `20``A Hyperion``A Endymion``A Ilium``A Olympus``A Timeline``A Prey``A Sphere``A Congo``A JurassicPark``A Andromeda``A TerminalMan``A GreatTrain``A Eaters``A PirateLatitudes``A Micro``A DragonTeeth``A StateOfFear``A Airframe``A Disclosure``Q 4` | `Timeline`                                         |",
+  "sampleInput": "8\nA LittlePrince\nA Dune\nQ 0\nQ 1\nA Neuromancer\nA Foundation\nA Solaris\nQ 4",
+  "sampleOutput": "Dune\nLittlePrince\nLittlePrince",
+  "samples": [
+    {
+      "input": "8\nA LittlePrince\nA Dune\nQ 0\nQ 1\nA Neuromancer\nA Foundation\nA Solaris\nQ 4",
+      "output": "Dune\nLittlePrince\nLittlePrince"
+    },
+    {
+      "input": "7\nA Hobbit\nA Fahrenheit\nA BraveNewWorld\nA AnimalFarm\nA Nineteen84\nA RoadsidePicnic\nQ 4",
+      "output": "Fahrenheit"
+    }
+  ],
+  "showTestDetails": true,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "pythonJudgeMode": "standard",
+  "group": "control"
+}
