@@ -98,7 +98,7 @@
 
       <section id="panel-accounts" class="admin-panel">
         <div class="admin-page-title">
-          <div><p class="eyebrow">ACCOUNTS</p><h2>学生账号管理</h2><p>从 Excel 的姓名列批量注册账号，并补全空白密码</p></div>
+          <div><p class="eyebrow">ACCOUNTS</p><h2>学生账号管理</h2><p>从 Excel 批量注册账号，并补全空白密码；账号列优先，姓名列作为后备</p></div>
         </div>
         <form id="reset-student-account-form" class="admin-card account-reset-card">
           <div class="card-heading">
@@ -116,7 +116,7 @@
         </form>
         <article class="admin-card account-import-card">
           <div class="card-heading">
-            <div><h3>导入学生名单</h3><p>自动识别“姓名/名字/用户名”和“密码”表头，其他工作表及列保持不变</p></div>
+            <div><h3>导入学生名单</h3><p>优先识别“账号/登录账号/用户名”，没有时读取“姓名/名字”；其他工作表及列保持不变</p></div>
           </div>
           <div class="account-import-body">
             <label class="account-file-picker">
@@ -354,7 +354,7 @@
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20260926-01"></script>
-  <script src="js/admin.js?v=20260930-01"></script>
-  <script src="js/admin-exams.js?v=20260928-03"></script>
+  <script src="js/admin.js?v=20260930-02"></script>
+  <script src="js/admin-exams.js?v=20260930-01"></script>
 </body>
 </html>

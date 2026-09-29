@@ -300,7 +300,8 @@ class ExamAdmin {
   }
 
   parseRosterWorkbook(workbook) {
-    const nameHeaders = new Set(['姓名', '学生姓名', '名字', '用户名', 'name', 'username']);
+    const accountHeaders = new Set(['账号', '登录账号', '用户名', 'account', 'username']);
+    const nameHeaders = new Set(['姓名', '学生姓名', '名字', 'name']);
     const passwordHeaders = new Set(['密码', '登录密码', '初始密码', 'password']);
     const users = new Map();
     for (const sheetName of workbook.SheetNames) {
@@ -308,16 +309,19 @@ class ExamAdmin {
       if (!sheet?.['!ref']) continue;
       const range = XLSX.utils.decode_range(sheet['!ref']);
       let headerRow = -1;
+      let accountColumn = -1;
       let nameColumn = -1;
       let passwordColumn = -1;
-      for (let row = range.s.r; row <= Math.min(range.e.r, range.s.r + 29) && nameColumn < 0; row += 1) {
+      for (let row = range.s.r; row <= Math.min(range.e.r, range.s.r + 29) && accountColumn < 0 && nameColumn < 0; row += 1) {
         for (let column = range.s.c; column <= range.e.c; column += 1) {
           const value = String(sheet[XLSX.utils.encode_cell({ r: row, c: column })]?.v ?? '').trim().toLowerCase().replace(/[\s:：]/g, '');
+          if (accountHeaders.has(value)) accountColumn = column;
           if (nameHeaders.has(value)) nameColumn = column;
           if (passwordHeaders.has(value)) passwordColumn = column;
         }
-        if (nameColumn >= 0) headerRow = row;
+        if (accountColumn >= 0 || nameColumn >= 0) headerRow = row;
       }
+      if (accountColumn >= 0) nameColumn = accountColumn;
       if (nameColumn < 0) continue;
       if (passwordColumn < 0) {
         passwordColumn = range.e.c + 1;

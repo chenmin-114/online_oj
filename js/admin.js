@@ -457,7 +457,8 @@ class OJAdmin {
   }
 
   prepareStudentAccountWorkbook(workbook) {
-    const nameHeaders = new Set(['姓名', '学生姓名', '名字', '用户名', 'name', 'username']);
+    const accountHeaders = new Set(['账号', '登录账号', '用户名', 'account', 'username']);
+    const nameHeaders = new Set(['姓名', '学生姓名', '名字', 'name']);
     const passwordHeaders = new Set(['密码', '登录密码', '初始密码', 'password']);
     const occurrences = [];
 
@@ -467,20 +468,23 @@ class OJAdmin {
       const range = XLSX.utils.decode_range(sheet['!ref']);
       let section = null;
       for (let row = range.s.r; row <= Math.min(range.e.r, range.s.r + 29); row++) {
+        let accountColumn = -1;
         let nameColumn = -1;
         let passwordColumn = -1;
         for (let column = range.s.c; column <= range.e.c; column++) {
           const text = this.accountCellText(sheet[XLSX.utils.encode_cell({ r: row, c: column })]);
           const normalized = text.toLowerCase().replace(/[\s:：]/g, '');
+          if (accountHeaders.has(normalized)) accountColumn = column;
           if (nameHeaders.has(normalized)) nameColumn = column;
           if (passwordHeaders.has(normalized)) passwordColumn = column;
         }
-        if (nameColumn !== -1) {
+        const usernameColumn = accountColumn !== -1 ? accountColumn : nameColumn;
+        if (usernameColumn !== -1) {
           section = {
             sheet,
             range,
             headerRow: row,
-            nameColumn,
+            nameColumn: usernameColumn,
             passwordColumn: passwordColumn === -1 ? range.e.c + 1 : passwordColumn,
           };
           break;
