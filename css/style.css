@@ -656,12 +656,20 @@ body.username-locked { overflow: hidden; }
 .exam-list { margin-top: 16px; display: grid; gap: 12px; }
 .exam-card { width: 100%; padding: 17px 18px; display: grid; gap: 9px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-secondary); color: var(--text-primary); text-align: left; cursor: pointer; transition: border-color .18s, transform .18s; }
 .exam-card:hover { border-color: var(--accent-primary); transform: translateY(-1px); }
+.exam-card.is-locked { opacity: .72; cursor: not-allowed; }
+.exam-card.is-locked:hover { border-color: var(--border-color); transform: none; }
+.exam-card-lock { margin-left: auto; padding: 3px 7px; border: 1px solid var(--border-color); border-radius: 999px; color: var(--warning); font-size: 11px; }
 .exam-card > div { display: flex; align-items: center; gap: 12px; }
 .exam-card > div strong { font-size: 16px; }
 .exam-card > p { color: var(--text-secondary); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .exam-card footer { display: flex; align-items: center; gap: 15px; color: var(--text-secondary); font-size: 12px; }
 .exam-card footer b { margin-left: auto; color: var(--success); font-size: 14px; }
 .exam-page-heading { margin: 20px 0 14px; display: flex; align-items: center; gap: 15px; }
+.exam-page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.exam-docx-import { position: relative; cursor: pointer; }
+.exam-docx-import input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.exam-answer-sheet-status { min-height: 0; margin: -7px 0 12px; color: var(--text-secondary); font-size: 12px; }
+.exam-answer-sheet-status:empty { display: none; }
 .exam-page-heading h2 { font-size: 22px; }
 .exam-page-heading p { color: var(--text-secondary); font-size: 12px; }
 .exam-description { margin-bottom: 16px; padding: 16px 18px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-secondary); }

@@ -358,6 +358,12 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleJudgeSubmit(body, env, false, true);
+      } else if (body.type === 'judge_preview_stream') {
+        const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
+        if (rateLimitError) return rateLimitError;
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleJudgeSubmitStream(body, env, false, true);
       } else if (body.type === 'submit' || typeof body.passed === 'boolean') {
         return jsonResponse({
           error: '旧版成绩上报接口已停用，请刷新页面后重新提交代码',
@@ -1263,19 +1269,19 @@ async function handleStudentExamList(body, env) {
   const result = await env.OJ_DB.prepare(`
     SELECT p.id, p.title, p.description, p.total_score, p.result_policy, p.updated_at,
            s.id AS submission_id, s.grading_status, s.total_score AS achieved_score,
-           s.graded_count, s.total_parts, s.released, s.submitted_at
+           s.graded_count, s.total_parts, s.released, s.submitted_at,
+           CASE WHEN
+             EXISTS (SELECT 1 FROM student_accounts a WHERE a.username = ?1 AND a.is_managed = 1)
+             OR EXISTS (
+               SELECT 1 FROM exam_roster r
+               JOIN student_accounts a ON a.username = r.username
+               WHERE r.exam_id = p.id AND r.username = ?1 AND a.password_hash IS NOT NULL
+             )
+           THEN 1 ELSE 0 END AS access_allowed
     FROM exam_papers p
     LEFT JOIN exam_submissions s
       ON s.exam_id = p.id AND s.username = ?1 AND s.is_preview = 0 AND s.is_final = 1
     WHERE p.group_name = ?2 AND p.status = 'published'
-      AND (
-        EXISTS (SELECT 1 FROM student_accounts a WHERE a.username = ?1 AND a.is_managed = 1)
-        OR EXISTS (
-          SELECT 1 FROM exam_roster r
-          JOIN student_accounts a ON a.username = r.username
-          WHERE r.exam_id = p.id AND r.username = ?1 AND a.password_hash IS NOT NULL
-        )
-      )
     ORDER BY p.updated_at DESC
   `).bind(username, group).all();
   return jsonResponse((result.results || []).map(row => ({
@@ -1283,6 +1289,7 @@ async function handleStudentExamList(body, env) {
     title: row.title,
     description: row.description,
     totalScore: Number(row.total_score),
+    accessAllowed: Number(row.access_allowed) === 1,
     submittedAt: row.submitted_at ? Number(row.submitted_at) : null,
     gradingStatus: row.grading_status || null,
     gradedCount: Number(row.graded_count || 0),
@@ -3010,13 +3017,13 @@ async function handleJudgeSubmit(body, env, shouldPersist = true, allowDraft = f
   }
 }
 
-async function handleJudgeSubmitStream(body, env) {
+async function handleJudgeSubmitStream(body, env, shouldPersist = true, allowDraft = false) {
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
       const send = event => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       try {
-        const result = await runJudgeSubmission(body, env, send, true);
+        const result = await runJudgeSubmission(body, env, send, shouldPersist, allowDraft);
         send({ type: 'result', result });
       } catch (error) {
         try {

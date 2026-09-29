@@ -23,6 +23,8 @@ class ExamUI {
       this.loadList(true);
     });
     document.getElementById('submit-exam').addEventListener('click', () => this.submit());
+    document.getElementById('download-exam-docx').addEventListener('click', () => this.downloadAnswerSheet());
+    document.getElementById('import-exam-docx').addEventListener('change', event => this.importAnswerSheet(event.target));
     document.getElementById('student-exam-form').addEventListener('input', () => {
       clearTimeout(this.saveTimer);
       this.saveTimer = setTimeout(() => this.saveDraft(), 400);
@@ -104,22 +106,33 @@ class ExamUI {
       return;
     }
     container.innerHTML = this.exams.map(exam => {
-      const status = exam.submittedAt
+      const allowed = exam.accessAllowed !== false;
+      const status = !allowed
+        ? '无权限'
+        : exam.submittedAt
         ? exam.gradingStatus === 'completed' ? '批改完成' : `批改中 ${exam.gradedCount}/${exam.totalParts}`
         : '未提交';
-      return `<button type="button" class="exam-card" data-open-exam="${this.escape(exam.id)}">
-        <div><span class="problem-id">${this.escape(exam.id)}</span><strong>${this.escape(exam.title)}</strong></div>
+      return `<button type="button" class="exam-card${allowed ? '' : ' is-locked'}" data-open-exam="${this.escape(exam.id)}" data-access-allowed="${allowed ? '1' : '0'}" aria-disabled="${allowed ? 'false' : 'true'}">
+        <div><span class="problem-id">${this.escape(exam.id)}</span><strong>${this.escape(exam.title)}</strong>${allowed ? '' : '<span class="exam-card-lock">🔒 无权限</span>'}</div>
         <p>${this.escape(exam.description || '综合套卷')}</p>
         <footer><span>总分 ${this.escape(exam.totalScore)}</span><span>${this.escape(status)}</span>${exam.resultVisible ? `<b>${this.escape(exam.achievedScore)} 分</b>` : ''}</footer>
       </button>`;
     }).join('');
     container.querySelectorAll('[data-open-exam]').forEach(button => {
-      button.addEventListener('click', () => this.openExam(button.dataset.openExam));
+      button.addEventListener('click', () => {
+        if (button.dataset.accessAllowed !== '1') {
+          alert('没有权限，请跟管理员申请');
+          return;
+        }
+        this.openExam(button.dataset.openExam);
+      });
     });
   }
 
   async openExam(examId) {
     const status = document.getElementById('exam-submit-status');
+    document.getElementById('exam-answer-sheet-status').textContent = '';
+    document.getElementById('download-exam-docx').disabled = true;
     status.textContent = '正在读取试卷...';
     this.app.views.show('exam');
     try {
@@ -127,6 +140,7 @@ class ExamUI {
       this.paper = result.paper;
       this.submission = result.mySubmission;
       this.renderPaper();
+      document.getElementById('download-exam-docx').disabled = false;
       status.textContent = this.submission
         ? `已于 ${new Date(this.submission.submittedAt).toLocaleString()} 提交；再次提交将以新答案作为最终评分依据`
         : this.app.adminExamPreview
@@ -135,6 +149,40 @@ class ExamUI {
       this.renderResult(this.submission);
     } catch (error) {
       status.textContent = `读取失败：${error.message}`;
+    }
+  }
+
+  async downloadAnswerSheet() {
+    if (!this.paper) return;
+    const button = document.getElementById('download-exam-docx');
+    const status = document.getElementById('exam-answer-sheet-status');
+    button.disabled = true;
+    status.textContent = '正在生成包含完整题目的 Word 答题卡...';
+    try {
+      await window.ExamDocx.download(this.paper, this.collectAnswers(), this.app.username, this.app.group);
+      status.textContent = '答题卡已下载。请保留答案区域标记，填写后可在这里导入。';
+    } catch (error) {
+      status.textContent = `答题卡生成失败：${error.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async importAnswerSheet(input) {
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !this.paper) return;
+    const status = document.getElementById('exam-answer-sheet-status');
+    status.textContent = '正在读取 Word 答题卡...';
+    try {
+      const currentAnswers = this.collectAnswers();
+      const result = await window.ExamDocx.import(file, this.paper);
+      this.answers = { ...currentAnswers, ...result.answers };
+      localStorage.setItem(this.draftKey(), JSON.stringify(this.answers));
+      this.renderPaper();
+      status.textContent = `已从答题卡填入 ${result.imported} 个小题，答案已保存到本机草稿；请检查后再提交。`;
+    } catch (error) {
+      status.textContent = `答题卡导入失败：${error.message}`;
     }
   }
 

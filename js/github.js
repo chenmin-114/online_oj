@@ -28,6 +28,17 @@ class GitHubStore {
     return this._submitViaWorker(payload, onProgress);
   }
 
+  async submitPreview(problemId, language, code, onProgress, group = 'control') {
+    return this._submitViaWorker({
+      type: 'judge_preview_stream',
+      username: '管理员预览',
+      problemId,
+      language,
+      code,
+      group,
+    }, onProgress);
+  }
+
   async _submitViaWorker(payload, onProgress) {
     let response;
     try {
@@ -59,7 +70,11 @@ class GitHubStore {
     const handleLine = line => {
       if (!line.trim()) return;
       const event = JSON.parse(line);
-      if (event.type === 'error') throw new Error(event.error || '服务端判题失败');
+      if (event.type === 'error') {
+        const error = new Error(event.error || '服务端判题失败');
+        error.code = event.code || '';
+        throw error;
+      }
       if (event.type === 'result') finalResult = event.result;
       else if (onProgress) onProgress(event);
     };

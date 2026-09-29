@@ -974,21 +974,13 @@ class App {
 
     try {
       if (this.adminProblemPreview) {
-        const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'judge_preview',
-            username: '管理员预览',
-            problemId: this.currentProblem.id,
-            language: langId,
-            code,
-            group: this.group,
-          }),
-        });
-        const previewResult = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(previewResult.error || `判题失败 (${response.status})`);
+        const previewResult = await this.github.submitPreview(
+          this.currentProblem.id,
+          langId,
+          code,
+          event => this._renderJudgeProgress(event),
+          this.group,
+        );
         this._renderJudgeResult(previewResult);
         return;
       }
