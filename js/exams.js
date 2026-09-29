@@ -121,7 +121,7 @@ class ExamUI {
     container.querySelectorAll('[data-open-exam]').forEach(button => {
       button.addEventListener('click', () => {
         if (button.dataset.accessAllowed !== '1') {
-          alert('没有权限，请跟管理员申请');
+          alert('暂无权限，请向管理员申请');
           return;
         }
         this.openExam(button.dataset.openExam);
