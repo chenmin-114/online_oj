@@ -84,8 +84,10 @@ for (const requiredPath of [
   'js/app.js',
   'js/admin.js',
   'js/exams.js',
+  'js/exam-docx.js',
   'js/admin-exams.js',
   'css/style.css',
+  'vendor/jszip/jszip.min.js',
   'problems/index.json',
   'problems/vision/index.json',
 ]) {
