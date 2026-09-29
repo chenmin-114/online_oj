@@ -1189,7 +1189,42 @@ async function handleAdminExamList(body, env) {
     GROUP BY p.id
     ORDER BY p.updated_at DESC
   `).bind(group).all();
-  return jsonResponse(result.results || []);
+  const [visitorResult, submitterResult] = await env.OJ_DB.batch([
+    env.OJ_DB.prepare(`
+      SELECT exam_id, visitor_hash
+      FROM analytics_exam_visitors
+      WHERE group_name = ?1
+    `).bind(group),
+    env.OJ_DB.prepare(`
+      SELECT DISTINCT s.exam_id, s.username
+      FROM exam_submissions s
+      JOIN exam_papers p ON p.id = s.exam_id
+      WHERE p.group_name = ?1 AND s.is_preview = 0
+    `).bind(group),
+  ]);
+  const viewerSets = new Map();
+  for (const row of visitorResult.results || []) {
+    if (!viewerSets.has(row.exam_id)) viewerSets.set(row.exam_id, new Set());
+    viewerSets.get(row.exam_id).add(row.visitor_hash);
+  }
+  const submitterRows = submitterResult.results || [];
+  const uniqueUsernames = [...new Set(submitterRows
+    .map(row => normalizeStudentUsername(row.username))
+    .filter(Boolean))];
+  const submitterHashes = new Map(await Promise.all(uniqueUsernames.map(async username => [
+    username,
+    await analyticsVisitorHash(username, env),
+  ])));
+  for (const row of submitterRows) {
+    const username = normalizeStudentUsername(row.username);
+    if (!username) continue;
+    if (!viewerSets.has(row.exam_id)) viewerSets.set(row.exam_id, new Set());
+    viewerSets.get(row.exam_id).add(submitterHashes.get(username));
+  }
+  return jsonResponse((result.results || []).map(row => ({
+    ...row,
+    view_students: viewerSets.get(row.id)?.size || 0,
+  })));
 }
 
 async function handleAdminExamGet(body, env) {
