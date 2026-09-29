@@ -149,6 +149,15 @@ body.username-locked { overflow: hidden; }
   font-size: 14px;
 }
 
+.user-account { position: relative; }
+.user-account[hidden] { display: none; }
+.user-menu-trigger { padding: 6px 9px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.user-account:hover .user-menu-trigger, .user-account:focus-within .user-menu-trigger { background: var(--bg-tertiary); color: var(--text-primary); }
+.user-menu { position: absolute; z-index: 80; top: 100%; right: 0; width: 132px; padding: 5px; visibility: hidden; opacity: 0; transform: translateY(-4px); border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-secondary); box-shadow: 0 10px 28px rgba(0,0,0,.28); transition: 130ms ease; }
+.user-account:hover .user-menu, .user-account:focus-within .user-menu { visibility: visible; opacity: 1; transform: translateY(0); }
+.user-menu button { width: 100%; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); text-align: left; cursor: pointer; }
+.user-menu button:hover, .user-menu button:focus { background: var(--bg-tertiary); color: var(--text-primary); outline: none; }
+
 /* ========== 按钮 ========== */
 .btn {
   padding: 8px 16px;

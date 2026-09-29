@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260928-01">
+  <link rel="stylesheet" href="css/style.css?v=20260929-01">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
@@ -20,6 +20,10 @@
       <label id="username-login-name-field">
         <span>用户名</span>
         <input id="username-login-input" type="text" maxlength="50" autocomplete="username" required placeholder="请输入用户名">
+      </label>
+      <label id="username-login-current-password-field" hidden>
+        <span>当前密码</span>
+        <input id="username-login-current-password" type="password" maxlength="128" autocomplete="current-password" placeholder="请输入当前密码">
       </label>
       <label id="username-login-password-field" hidden>
         <span>密码</span>
@@ -33,6 +37,7 @@
       <div class="username-login-actions">
         <button id="username-login-back" class="btn" type="button" hidden>返回</button>
         <button id="username-login-skip" class="btn" type="button" hidden>暂不设置</button>
+        <button id="username-login-change-password" class="btn" type="button" hidden>修改密码</button>
         <button id="username-login-submit" class="btn btn-primary" type="submit">下一步</button>
       </div>
     </form>
@@ -46,9 +51,12 @@
         <a href="#" class="nav-link" data-view="exams">套卷</a>
         <a href="#" class="nav-link" data-view="submissions">提交</a>
       </nav>
-      <div class="user-info">
-        <span id="username-display">未登录</span>
-        <button id="change-username-btn" class="btn-small">修改</button>
+      <div class="user-info user-account">
+        <button id="user-menu-trigger" class="user-menu-trigger" type="button" aria-haspopup="true"><span id="username-display">未登录</span><span aria-hidden="true">⌄</span></button>
+        <div class="user-menu" role="menu">
+          <button id="change-password-btn" type="button" role="menuitem">修改密码</button>
+          <button id="change-username-btn" type="button" role="menuitem">更换账号</button>
+        </div>
       </div>
     </div>
   </header>
@@ -182,7 +190,7 @@
   <script src="js/config.js?v=20260922-9"></script>
   <script src="js/languages.js?v=20260926-01"></script>
   <script src="js/editor.js?v=20260927-02"></script>
-  <script src="js/runner.js?v=20260927-09"></script>
+  <script src="js/runner.js?v=20260929-01"></script>
   <script src="js/github.js?v=20260927-02"></script>
   <script src="js/views.js?v=20260927-07"></script>
   <script src="vendor/marked/marked.umd.js?v=18.0.13"></script>
@@ -190,7 +198,7 @@
   <script src="vendor/katex/katex.min.js?v=0.18.7"></script>
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
-  <script src="js/exams.js?v=20260928-02"></script>
-  <script src="js/app.js?v=20260928-01"></script>
+  <script src="js/exams.js?v=20260929-01"></script>
+  <script src="js/app.js?v=20260929-01"></script>
 </body>
 </html>

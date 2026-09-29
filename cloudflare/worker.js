@@ -275,6 +275,16 @@ export default {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
         if (rateLimitError) return rateLimitError;
         return await handleStudentSetPassword(body, env);
+      } else if (body.type === 'student_change_password') {
+        const rateLimitError = await enforceRateLimit(
+          env.STUDENT_LOGIN_RATE_LIMITER,
+          request,
+          'student-login',
+          normalizeStudentUsername(body.username),
+          false,
+        );
+        if (rateLimitError) return rateLimitError;
+        return await handleStudentChangePassword(body, env);
       } else if (body.type === 'student_session') {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
         if (rateLimitError) return rateLimitError;
@@ -598,6 +608,54 @@ async function handleStudentSetPassword(body, env) {
   const account = await env.OJ_DB.prepare('SELECT auth_version FROM student_accounts WHERE username = ?1')
     .bind(username).first();
   return await studentSessionSuccessResponse(username, Number(account.auth_version), env);
+}
+
+async function handleStudentChangePassword(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const username = normalizeStudentUsername(body.username);
+  const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+  const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+  if (!username || !currentPassword || currentPassword.length > 128) {
+    return jsonResponse({ error: '当前密码不正确' }, 401);
+  }
+  if (newPassword.length < 8 || newPassword.length > 128) {
+    return jsonResponse({ error: '新密码长度需要为 8 到 128 个字符' }, 400);
+  }
+  if (currentPassword === newPassword) {
+    return jsonResponse({ error: '新密码不能与当前密码相同' }, 400);
+  }
+  const account = await env.OJ_DB.prepare(`
+    SELECT password_salt, password_hash, password_iterations, auth_version
+    FROM student_accounts WHERE username = ?1
+  `).bind(username).first();
+  if (!account?.password_hash || !account.password_salt) {
+    return jsonResponse({ error: '当前密码不正确' }, 401);
+  }
+  const iterations = Number(account.password_iterations);
+  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 1000000) {
+    return jsonResponse({ error: '账号密码数据异常，请联系管理员' }, 503);
+  }
+  const currentHash = await deriveStudentPasswordHash(currentPassword, account.password_salt, iterations);
+  if (!await secureTextEqual(currentHash, account.password_hash)) {
+    return jsonResponse({ error: '当前密码不正确' }, 401);
+  }
+
+  const saltBytes = new Uint8Array(16);
+  crypto.getRandomValues(saltBytes);
+  const salt = bytesToBase64Url(saltBytes);
+  const hash = await deriveStudentPasswordHash(newPassword, salt, STUDENT_PASSWORD_ITERATIONS);
+  const nextAuthVersion = Number(account.auth_version) + 1;
+  const now = Date.now();
+  await env.OJ_DB.batch([
+    env.OJ_DB.prepare(`
+      UPDATE student_accounts
+      SET password_salt = ?2, password_hash = ?3, password_iterations = ?4,
+          auth_version = ?5, updated_at = ?6
+      WHERE username = ?1
+    `).bind(username, salt, hash, STUDENT_PASSWORD_ITERATIONS, nextAuthVersion, now),
+    env.OJ_DB.prepare('DELETE FROM student_sessions WHERE username = ?1').bind(username),
+  ]);
+  return await studentSessionSuccessResponse(username, nextAuthVersion, env);
 }
 
 async function handleStudentSkipLogin(body, env) {

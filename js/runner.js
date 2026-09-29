@@ -14,7 +14,7 @@ class CodeRunner {
    * @param {string} stdin - 标准输入
    * @returns {Promise<{stdout: string, stderr: string, exitCode: number, time: number, signal: string|null, compileError: boolean}>}
    */
-  async execute(languageId, code, stdin = '', username = '') {
+  async execute(languageId, code, stdin = '', username = '', requestType = 'execute') {
     const startTime = performance.now();
 
     if (!this.workerUrl) {
@@ -31,7 +31,7 @@ class CodeRunner {
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
-          type: 'execute',
+          type: requestType,
           username,
           script: code,
           languageId,

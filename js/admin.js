@@ -1464,36 +1464,12 @@ class OJAdmin {
   }
 
   async previewProblem(file) {
-    try {
-      this.toast('正在生成题目预览...');
-      const problem = await this.fetchJson(`${this.config.workerUrl}/?file=problem&name=${encodeURIComponent(file)}`);
-      const sections = [
-        ['题目描述', problem.description],
-        ['输入格式', problem.inputFormat],
-        ['输出格式', problem.outputFormat],
-        ['数据范围', problem.constraints],
-        ['提示', Array.isArray(problem.hints) ? problem.hints.join('\n') : ''],
-      ].filter(([, content]) => String(content || '').trim());
-      const samples = Array.isArray(problem.samples) && problem.samples.length
-        ? problem.samples
-        : ((problem.sampleInput || problem.sampleOutput) ? [{ input: problem.sampleInput || '', output: problem.sampleOutput || '' }] : []);
-      this.previewProblemData = problem;
-      const defaultLanguage = this.group === 'vision' ? 'python' : 'c';
-      const html = `<div class="preview-status-row"><span class="result-pill ${problem.status === 'draft' ? 'failed' : 'accepted'}">${problem.status === 'draft' ? '草稿 · 学生不可见' : '已发布'}</span><span>${this.escape(this.groupLabel())} · 预览提交不会保存记录</span></div>
-        <h2>${this.escape(problem.id)}. ${this.escape(problem.title)}</h2>
-        ${sections.map(([title, content]) => `<h3 class="problem-section-title">${title}</h3><div class="problem-content">${this.renderMarkdown(content)}</div>`).join('')}
-        ${samples.length ? `<h3 class="problem-section-title">样例</h3><div class="problem-samples">${samples.map((sample, index) => `<div class="sample"><div><div class="sample-heading"><strong>输入 #${index + 1}</strong><button type="button" class="btn-small" data-preview-sample="${index}">自动填充</button></div><pre>${this.escape(sample.input)}</pre></div><div><strong>输出 #${index + 1}</strong><pre>${this.escape(sample.output)}</pre></div></div>`).join('')}</div>` : ''}
-        ${String(problem.sampleExplanation || '').trim() ? `<h3 class="problem-section-title">样例解释</h3><div class="problem-content">${this.renderMarkdown(problem.sampleExplanation)}</div>` : ''}
-        <section class="preview-solve-area">
-          <div class="preview-solve-toolbar"><select class="admin-input" data-preview-language>${window.LANGUAGES.map(language => `<option value="${this.escape(language.id)}" ${language.id === defaultLanguage ? 'selected' : ''}>${this.escape(language.name)}</option>`).join('')}</select><button type="button" class="admin-button secondary" data-preview-run>运行代码</button><button type="button" class="admin-button primary" data-preview-submit>提交判题</button></div>
-          <textarea class="admin-input preview-code-editor" data-preview-code rows="18" spellcheck="false">${this.escape(this.problemTemplate(defaultLanguage, problem))}</textarea>
-          <div class="preview-io-grid"><label class="form-field"><span>自定义输入</span><textarea class="admin-input code-input" data-preview-input rows="6"></textarea></label><div class="form-field"><span>运行输出 / 判题结果</span><pre class="preview-run-output" data-preview-output></pre></div></div>
-          <div data-preview-judge-detail></div>
-        </section>`;
-      this.showPreview(`${problem.id} · ${problem.title}`, html);
-    } catch (error) {
-      this.toast(`预览失败：${error.message}`);
-    }
+    const url = new URL('index.html', location.href);
+    url.searchParams.set('adminPreviewProblem', file);
+    url.searchParams.set('group', this.group);
+    const preview = window.open(url.href, '_blank');
+    if (preview) preview.opener = null;
+    else this.toast('浏览器拦截了预览窗口，请允许本站打开新窗口');
   }
 
   problemTemplate(languageId, problem) {

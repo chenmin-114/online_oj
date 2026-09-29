@@ -34,7 +34,10 @@ class ExamUI {
       const button = event.target.closest('[data-open-exam-problem]');
       if (button) this.openProgrammingProblem(button.dataset.openExamProblem);
     });
-    document.getElementById('back-to-exam-from-problem').addEventListener('click', () => this.returnFromProgrammingProblem());
+    document.getElementById('back-to-exam-from-problem').addEventListener('click', () => {
+      if (this.app.adminProblemPreview) window.close();
+      else this.returnFromProgrammingProblem();
+    });
   }
 
   onGroupChange() {

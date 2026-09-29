@@ -15,9 +15,11 @@ class App {
     const searchParams = new URLSearchParams(location.search);
     const requestedGroup = searchParams.get('group');
     const previewExam = String(searchParams.get('adminPreviewExam') || '').trim().toUpperCase();
+    const previewProblem = String(searchParams.get('adminPreviewProblem') || '').trim().toLowerCase();
     this.adminExamPreview = /^[A-Z][A-Z0-9_-]{1,31}$/.test(previewExam) ? previewExam : '';
+    this.adminProblemPreview = /^(?:p\d{3,6}|t\d{3})(?:-[a-z0-9-]+)?\.json$/.test(previewProblem) ? previewProblem : '';
     this.group = ['control', 'vision'].includes(requestedGroup) ? requestedGroup : 'control';
-    this.username = this.adminExamPreview ? 'admin' : (localStorage.getItem('oj_username') || '').trim();
+    this.username = (this.adminExamPreview || this.adminProblemPreview) ? 'admin' : (localStorage.getItem('oj_username') || '').trim();
     this.editorFontSize = this._loadEditorFontSize();
     this.codeSaveTimer = null;
     this.isRestoringCode = false;
@@ -53,13 +55,24 @@ class App {
     this._renderGroupSwitcher();
 
     // 管理员套卷预览也初始化同一套编辑器，这样可以打开完整编程题并返回试卷。
-    if (this.adminExamPreview) {
+    if (this.adminExamPreview || this.adminProblemPreview) {
       document.body.classList.remove('username-gate-pending');
       document.getElementById('username-display').textContent = 'admin';
-      document.getElementById('change-username-btn').hidden = true;
+      document.querySelector('.user-account').hidden = true;
       document.querySelectorAll('.group-switch').forEach(button => { button.disabled = true; });
       this.editorInitialization = editorInitialization;
-      await this.examUI.openExam(this.adminExamPreview);
+      if (this.adminExamPreview) {
+        await this.examUI.openExam(this.adminExamPreview);
+      } else {
+        await this.loadProblem(this.adminProblemPreview);
+        const context = document.getElementById('exam-problem-context');
+        context.hidden = false;
+        context.querySelector('strong').textContent = '管理员正在预览普通题目';
+        document.getElementById('exam-problem-context-label').textContent = '页面与学生端一致；运行和判题不会写入学生提交记录';
+        const back = document.getElementById('back-to-exam-from-problem');
+        back.textContent = '关闭预览';
+        back.onclick = () => window.close();
+      }
       return;
     }
     // 登录弹窗显示期间也加载背景题目列表，但遮罩会阻止任何操作。
@@ -203,7 +216,10 @@ class App {
       const problemUrl = workerUrl
         ? `${workerUrl}/?file=problem&name=${encodeURIComponent(file)}&group=${encodeURIComponent(this.group)}&t=${Date.now()}`
         : `${this.group === 'vision' ? 'problems/vision' : 'problems'}/${file}?t=${Date.now()}`;
-      const response = await fetch(problemUrl, { cache: 'no-store' });
+      const response = await fetch(problemUrl, {
+        cache: 'no-store',
+        credentials: this.adminProblemPreview ? 'include' : 'same-origin',
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const problem = await response.json();
       if (requestSequence !== this.problemRequestSequence || requestedGroup !== this.group) return;
@@ -421,6 +437,9 @@ class App {
     document.getElementById('change-username-btn').addEventListener('click', () => {
       this._promptUsername();
     });
+    document.getElementById('change-password-btn').addEventListener('click', () => {
+      this._promptUsername({ changePassword: true });
+    });
 
     document.getElementById('clear-input-btn').addEventListener('click', () => {
       const input = document.getElementById('custom-input');
@@ -460,6 +479,7 @@ class App {
   }
 
   _trackView(problemId = '') {
+    if (this.adminExamPreview || this.adminProblemPreview) return;
     const workerUrl = window.OJ_CONFIG.WORKER_URL;
     if (!workerUrl || !this.username) return;
     const now = new Date();
@@ -496,6 +516,9 @@ class App {
     const nameField = document.getElementById('username-login-name-field');
     const passwordField = document.getElementById('username-login-password-field');
     const passwordInput = document.getElementById('username-login-password');
+    const passwordLabel = passwordField.querySelector('span');
+    const currentPasswordField = document.getElementById('username-login-current-password-field');
+    const currentPasswordInput = document.getElementById('username-login-current-password');
     const confirmField = document.getElementById('username-login-confirm-field');
     const confirmInput = document.getElementById('username-login-confirm');
     const status = document.getElementById('username-login-status');
@@ -504,6 +527,7 @@ class App {
     const submit = document.getElementById('username-login-submit');
     const skip = document.getElementById('username-login-skip');
     const back = document.getElementById('username-login-back');
+    const changePassword = document.getElementById('username-login-change-password');
     const changing = Boolean(this.username);
     let step = 'username';
     let pendingUsername = '';
@@ -515,13 +539,17 @@ class App {
     input.disabled = false;
     nameField.hidden = false;
     passwordField.hidden = true;
+    currentPasswordField.hidden = true;
     confirmField.hidden = true;
     passwordInput.value = '';
+    currentPasswordInput.value = '';
     confirmInput.value = '';
     passwordInput.required = false;
+    currentPasswordInput.required = false;
     confirmInput.required = false;
     skip.hidden = true;
     back.hidden = true;
+    changePassword.hidden = true;
     status.textContent = '';
     dialog.hidden = false;
     document.body.classList.add('username-locked');
@@ -543,6 +571,7 @@ class App {
         form.removeEventListener('submit', handleSubmit);
         skip.removeEventListener('click', handleSkip);
         back.removeEventListener('click', handleBack);
+        changePassword.removeEventListener('click', handleChangePassword);
         dialog.hidden = true;
         document.body.classList.remove('username-locked');
         lockedPageElements.forEach(element => { element.inert = false; });
@@ -555,12 +584,14 @@ class App {
         nameField.hidden = true;
         input.disabled = true;
         passwordField.hidden = false;
+        passwordLabel.textContent = hasPassword ? '密码' : '设置密码';
         confirmField.hidden = hasPassword;
         passwordInput.required = true;
         passwordInput.minLength = hasPassword ? 1 : 8;
         passwordInput.autocomplete = hasPassword ? 'current-password' : 'new-password';
         confirmInput.required = !hasPassword;
         skip.hidden = hasPassword;
+        changePassword.hidden = !hasPassword;
         back.hidden = false;
         title.textContent = hasPassword ? '输入账号密码' : '设置账号密码';
         description.textContent = hasPassword
@@ -569,6 +600,30 @@ class App {
         submit.textContent = hasPassword ? '登录' : '设置密码并进入';
         status.textContent = '';
         setTimeout(() => passwordInput.focus(), 0);
+      };
+
+      const showChangePasswordStep = name => {
+        pendingUsername = name;
+        step = 'change-password';
+        nameField.hidden = true;
+        input.disabled = true;
+        currentPasswordField.hidden = false;
+        passwordField.hidden = false;
+        passwordLabel.textContent = '新密码';
+        confirmField.hidden = false;
+        currentPasswordInput.required = true;
+        passwordInput.required = true;
+        confirmInput.required = true;
+        passwordInput.minLength = 8;
+        passwordInput.autocomplete = 'new-password';
+        skip.hidden = true;
+        changePassword.hidden = true;
+        back.hidden = false;
+        title.textContent = '修改账号密码';
+        description.textContent = `正在修改账号“${name}”的密码`;
+        submit.textContent = '确认修改密码';
+        status.textContent = '';
+        setTimeout(() => currentPasswordInput.focus(), 0);
       };
 
       const handleSubmit = async event => {
@@ -598,6 +653,31 @@ class App {
           }
 
           const password = passwordInput.value;
+          if (step === 'change-password') {
+            if (!currentPasswordInput.value) {
+              status.textContent = '请输入当前密码';
+              currentPasswordInput.focus();
+              return;
+            }
+            if (password.length < 8) {
+              status.textContent = '新密码至少需要 8 个字符';
+              passwordInput.focus();
+              return;
+            }
+            if (password !== confirmInput.value) {
+              status.textContent = '两次输入的新密码不一致';
+              confirmInput.focus();
+              return;
+            }
+            status.textContent = '正在修改密码...';
+            await this._studentAccountRequest('student_change_password', {
+              username: pendingUsername,
+              currentPassword: currentPasswordInput.value,
+              newPassword: password,
+            });
+            finishLogin(pendingUsername);
+            return;
+          }
           if (step === 'login-password') {
             if (!password) {
               status.textContent = '请输入密码';
@@ -633,6 +713,15 @@ class App {
         }
       };
 
+      const handleChangePassword = () => {
+        if (!pendingUsername) return;
+        const typedCurrentPassword = passwordInput.value;
+        passwordInput.value = '';
+        confirmInput.value = '';
+        showChangePasswordStep(pendingUsername);
+        currentPasswordInput.value = typedCurrentPassword;
+      };
+
       const handleSkip = async () => {
         if (step !== 'set-password' || !pendingUsername) return;
         skip.disabled = true;
@@ -656,13 +745,18 @@ class App {
         nameField.hidden = false;
         input.disabled = false;
         passwordField.hidden = true;
+        passwordLabel.textContent = '密码';
+        currentPasswordField.hidden = true;
         confirmField.hidden = true;
         passwordInput.required = false;
+        currentPasswordInput.required = false;
         confirmInput.required = false;
         passwordInput.value = '';
+        currentPasswordInput.value = '';
         confirmInput.value = '';
         skip.hidden = true;
         back.hidden = true;
+        changePassword.hidden = true;
         status.textContent = '';
         input.focus();
       };
@@ -670,7 +764,16 @@ class App {
       form.addEventListener('submit', handleSubmit);
       skip.addEventListener('click', handleSkip);
       back.addEventListener('click', handleBack);
-      if (options.verifyCurrent && this.username) {
+      changePassword.addEventListener('click', handleChangePassword);
+      if (options.changePassword && this.username) {
+        status.textContent = '正在检查账号...';
+        this._studentAccountRequest('student_account_status', { username: this.username })
+          .then(account => {
+            if (account.hasPassword) showChangePasswordStep(this.username);
+            else showPasswordStep(this.username, false);
+          })
+          .catch(error => { status.textContent = error.message || '账号检查失败'; });
+      } else if (options.verifyCurrent && this.username) {
         showPasswordStep(this.username, true);
       } else if (options.autoCheck && input.value.trim()) {
         setTimeout(() => form.requestSubmit(), 0);
@@ -828,6 +931,7 @@ class App {
         executionCode,
         customInput,
         this.username,
+        this.adminProblemPreview ? 'admin_execute' : 'execute',
       );
 
       if (result.compileError) {
@@ -869,6 +973,25 @@ class App {
     resultEl.innerHTML = '<span class="info">⏳ 正在进行服务端判题，请稍候...</span>';
 
     try {
+      if (this.adminProblemPreview) {
+        const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'judge_preview',
+            username: '管理员预览',
+            problemId: this.currentProblem.id,
+            language: langId,
+            code,
+            group: this.group,
+          }),
+        });
+        const previewResult = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(previewResult.error || `判题失败 (${response.status})`);
+        this._renderJudgeResult(previewResult);
+        return;
+      }
       const result = await this.github.submit(
         this.currentProblem.id,
         this.username,
