@@ -275,6 +275,10 @@ input.admin-input { min-width: 240px; }
 .filter-count { margin-left: auto; color: var(--admin-muted); font-size: 11px; }
 
 .account-import-body { padding: 22px; display: grid; gap: 18px; }
+.account-reset-card { margin-bottom: 18px; }
+.account-reset-body { padding: 22px; display: grid; grid-template-columns: minmax(220px, .8fr) minmax(300px, 1.2fr) auto; align-items: end; gap: 14px; }
+.account-reset-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.account-reset-body .account-import-status { grid-column: 1 / -1; }
 .account-file-picker { min-height: 120px; padding: 22px; display: grid; place-items: center; gap: 8px; border: 1px dashed #40547d; border-radius: 11px; background: rgba(91,140,255,.035); color: var(--admin-text); cursor: pointer; text-align: center; }
 .account-file-picker:hover { border-color: var(--admin-blue); background: rgba(91,140,255,.06); }
 .account-file-picker > span { font-size: 13px; font-weight: 700; }
@@ -421,6 +425,8 @@ input.admin-input { min-width: 240px; }
   .problem-importer-actions { align-items: flex-start; flex-direction: column; }
   .problem-importer summary small { margin-left: 0; }
   .account-import-summary { grid-template-columns: 1fr; }
+  .account-reset-body { grid-template-columns: 1fr; }
+  .account-reset-actions { align-items: stretch; flex-direction: column; }
   .exam-grading-layout { grid-template-columns: 1fr; }
   .exam-programming-source { grid-template-columns: 1fr; }
   .exam-programming-actions { align-items: stretch; flex-direction: column; }

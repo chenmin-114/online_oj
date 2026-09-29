@@ -141,6 +141,13 @@ class OJAdmin {
     });
     document.getElementById('import-student-accounts').addEventListener('click', () => this.importStudentAccounts());
     document.getElementById('download-student-accounts').addEventListener('click', () => this.downloadStudentAccounts());
+    document.getElementById('generate-reset-password').addEventListener('click', () => {
+      const input = document.getElementById('reset-student-password');
+      input.value = this.generateStudentPassword();
+      input.focus();
+      input.select();
+    });
+    document.getElementById('reset-student-account-form').addEventListener('submit', event => this.resetStudentAccount(event));
     document.getElementById('admin-ranking-scope').addEventListener('change', event => {
       this.renderLeaderboard(event.target.value);
     });
@@ -324,6 +331,57 @@ class OJAdmin {
     status.textContent = file
       ? '文件已选择。点击“生成密码并注册账号”开始处理。'
       : '已有密码会保留；密码为空时会生成 16 位高随机密码。账号密码只以带盐哈希保存到服务器。';
+  }
+
+  async resetStudentAccount(event) {
+    event.preventDefault();
+    const usernameInput = document.getElementById('reset-student-username');
+    const passwordInput = document.getElementById('reset-student-password');
+    const button = document.getElementById('reset-student-account');
+    const status = document.getElementById('reset-student-status');
+    const username = usernameInput.value.trim().normalize('NFC');
+    const password = passwordInput.value;
+    if (!username || username.length > 50 || /[\u0000-\u001f\u007f]/.test(username)) {
+      status.className = 'account-import-status error';
+      status.textContent = '请输入格式正确的学生用户名。';
+      return;
+    }
+    if (password.length < 8 || password.length > 128) {
+      status.className = 'account-import-status error';
+      status.textContent = '新密码长度必须为 8 到 128 位。';
+      return;
+    }
+    if (!confirm(`确定重置“${username}”的密码，并赋予全部套卷权限吗？该账号当前登录会立即失效。`)) return;
+
+    button.disabled = true;
+    status.className = 'account-import-status';
+    status.textContent = '正在本机加密新密码并更新账号...';
+    try {
+      const passwordData = await this.hashStudentPassword(password);
+      const response = await fetch(this.config.workerUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'admin_reset_student_account',
+          username,
+          ...passwordData,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 401) this.lockExpiredSession();
+      if (!response.ok) throw new Error(result.error || `账号更新失败 (${response.status})`);
+      status.className = 'account-import-status success';
+      status.textContent = `${result.created ? '账号已创建' : '密码已重置'}：${username} 已获得全部套卷权限，旧登录已失效。请复制上方新密码交给学生。`;
+      usernameInput.value = '';
+      passwordInput.focus();
+      passwordInput.select();
+    } catch (error) {
+      status.className = 'account-import-status error';
+      status.textContent = error.message || '账号更新失败';
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async importStudentAccounts() {

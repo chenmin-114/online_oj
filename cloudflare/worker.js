@@ -209,6 +209,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminImportStudents(body, env);
+      } else if (body.type === 'admin_reset_student_account') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminResetStudentAccount(body, env);
       } else if (body.type === 'admin_exam_list') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -810,6 +814,40 @@ async function handleAdminImportStudents(body, env) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
   }
   return jsonResponse({ success: true, imported: accounts.size });
+}
+
+async function handleAdminResetStudentAccount(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const username = normalizeStudentUsername(body.username);
+  const salt = String(body.salt || '');
+  const hash = String(body.hash || '');
+  if (!username || !/^[A-Za-z0-9_-]{22}$/.test(salt) || !/^[A-Za-z0-9_-]{43}$/.test(hash)) {
+    return jsonResponse({ error: '账号或密码数据格式不正确' }, 400);
+  }
+  const existing = await env.OJ_DB.prepare('SELECT 1 AS found FROM student_accounts WHERE username = ?1')
+    .bind(username).first();
+  const now = Date.now();
+  await env.OJ_DB.batch([
+    env.OJ_DB.prepare(`
+      INSERT INTO student_accounts (
+        username, password_salt, password_hash, password_iterations, auth_version, is_managed, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, ?5)
+      ON CONFLICT(username) DO UPDATE SET
+        password_salt = excluded.password_salt,
+        password_hash = excluded.password_hash,
+        password_iterations = excluded.password_iterations,
+        auth_version = student_accounts.auth_version + 1,
+        is_managed = 1,
+        updated_at = excluded.updated_at
+    `).bind(username, salt, hash, STUDENT_PASSWORD_ITERATIONS, now),
+    env.OJ_DB.prepare('DELETE FROM student_sessions WHERE username = ?1').bind(username),
+  ]);
+  return jsonResponse({
+    success: true,
+    username,
+    created: !existing,
+    access: 'all_exams',
+  });
 }
 
 async function readStudentAccountStates(env, usernames) {

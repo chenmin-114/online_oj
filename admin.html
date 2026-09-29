@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260928-02">
+  <link rel="stylesheet" href="css/admin.css?v=20260930-01">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -100,6 +100,20 @@
         <div class="admin-page-title">
           <div><p class="eyebrow">ACCOUNTS</p><h2>学生账号管理</h2><p>从 Excel 的姓名列批量注册账号，并补全空白密码</p></div>
         </div>
+        <form id="reset-student-account-form" class="admin-card account-reset-card">
+          <div class="card-heading">
+            <div><h3>单个账号重置与授权</h3><p>重置登录密码，同时设为正式注册账号并赋予全部套卷权限</p></div>
+          </div>
+          <div class="account-reset-body">
+            <label class="form-field"><span>学生用户名</span><input id="reset-student-username" class="admin-input" maxlength="50" autocomplete="off" required placeholder="请输入需要处理的用户名"></label>
+            <label class="form-field"><span>新密码</span><input id="reset-student-password" class="admin-input" type="text" minlength="8" maxlength="128" autocomplete="off" spellcheck="false" required placeholder="至少 8 位，可点击右侧随机生成"></label>
+            <div class="account-reset-actions">
+              <button id="generate-reset-password" type="button" class="admin-button secondary">随机生成密码</button>
+              <button id="reset-student-account" type="submit" class="admin-button primary">重置密码并赋予权限</button>
+            </div>
+            <p id="reset-student-status" class="account-import-status" role="status">操作后该账号会退出原有登录；请将页面中的新密码妥善交给学生。</p>
+          </div>
+        </form>
         <article class="admin-card account-import-card">
           <div class="card-heading">
             <div><h3>导入学生名单</h3><p>自动识别“姓名/名字/用户名”和“密码”表头，其他工作表及列保持不变</p></div>
@@ -340,7 +354,7 @@
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20260926-01"></script>
-  <script src="js/admin.js?v=20260929-01"></script>
+  <script src="js/admin.js?v=20260930-01"></script>
   <script src="js/admin-exams.js?v=20260928-03"></script>
 </body>
 </html>
