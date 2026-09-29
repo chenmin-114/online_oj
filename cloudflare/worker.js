@@ -1178,6 +1178,8 @@ async function handleAdminExamList(body, env) {
               WHERE p2.group_name = p.group_name
                 AND (p2.created_at < p.created_at OR (p2.created_at = p.created_at AND p2.id <= p.id)))
            ) AS serial_no,
+           (SELECT COUNT(*) FROM analytics_exam_visitors av
+            WHERE av.group_name = p.group_name AND av.exam_id = p.id) AS view_students,
            COUNT(CASE WHEN s.is_final = 1 AND s.is_preview = 0 THEN 1 END) AS submitted_students,
            SUM(CASE WHEN s.is_final = 1 AND s.is_preview = 0 AND s.grading_status = 'completed' THEN 1 ELSE 0 END) AS completed_students
     FROM exam_papers p
@@ -1623,6 +1625,7 @@ async function handleStudentExamSubmit(body, env) {
   `).bind(examId, username).first();
   const attemptNo = Number(previous?.attempts || 0) + 1;
   const now = Date.now();
+  const visitorHash = await analyticsVisitorHash(username, env);
   const statements = [
     env.OJ_DB.prepare(`
       UPDATE exam_submissions SET is_final = 0, updated_at = ?3
@@ -1639,6 +1642,13 @@ async function handleStudentExamSubmit(body, env) {
       scores.autoScore, scores.manualScore, scores.totalScore, scores.gradedCount,
       scores.totalParts, scores.gradingStatus, now,
     ),
+    env.OJ_DB.prepare(`
+      INSERT INTO analytics_exam_visitors
+        (group_name, exam_id, visitor_hash, first_seen, last_seen)
+      VALUES (?1, ?2, ?3, ?4, ?4)
+      ON CONFLICT(group_name, exam_id, visitor_hash)
+      DO UPDATE SET last_seen = excluded.last_seen
+    `).bind(group, examId, visitorHash, now),
   ];
   await env.OJ_DB.batch(statements);
   const visible = isExamResultVisible(paper.resultPolicy, scores.gradingStatus, 0);
@@ -1920,8 +1930,18 @@ async function handleAnalyticsView(body, env) {
 
   const group = normalizeGroup(body.group);
   const problemId = body.problemId == null ? '' : String(body.problemId).trim().toUpperCase();
+  const examId = body.examId == null ? '' : normalizeExamId(body.examId);
   if (problemId && !/^(?:P\d{3,6}|T\d{3})$/.test(problemId)) {
     return jsonResponse({ error: '题号格式不正确' }, 400);
+  }
+  if (body.examId != null && !examId) return jsonResponse({ error: '试卷编号格式不正确' }, 400);
+  if (problemId && examId) return jsonResponse({ error: '一次只能记录一种内容的浏览' }, 400);
+  if (examId) {
+    const exam = await env.OJ_DB.prepare(`
+      SELECT 1 AS found FROM exam_papers
+      WHERE id = ?1 AND group_name = ?2 AND status = 'published'
+    `).bind(examId, group).first();
+    if (!exam) return jsonResponse({ error: '试卷不存在或尚未发布' }, 404);
   }
 
   const now = Date.now();
@@ -1939,6 +1959,16 @@ async function handleAnalyticsView(body, env) {
       ON CONFLICT(group_name, problem_id, visitor_hash)
       DO UPDATE SET last_seen = excluded.last_seen
     `).bind(group, problemId, visitorHash, now));
+  }
+
+  if (examId) {
+    statements.push(env.OJ_DB.prepare(`
+      INSERT INTO analytics_exam_visitors
+        (group_name, exam_id, visitor_hash, first_seen, last_seen)
+      VALUES (?1, ?2, ?3, ?4, ?4)
+      ON CONFLICT(group_name, exam_id, visitor_hash)
+      DO UPDATE SET last_seen = excluded.last_seen
+    `).bind(group, examId, visitorHash, now));
   }
 
   await env.OJ_DB.batch(statements);

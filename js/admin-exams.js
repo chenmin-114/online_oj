@@ -69,7 +69,7 @@ class ExamAdmin {
     if (!this.admin || document.body.classList.contains('auth-locked')) return;
     if (!force && this.loadedGroup === this.group && this.exams.length) return;
     const tbody = document.getElementById('exam-admin-list');
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">正在读取...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-cell">正在读取...</td></tr>';
     try {
       this.exams = await this.request('admin_exam_list');
       this.loadedGroup = this.group;
@@ -98,10 +98,11 @@ class ExamAdmin {
         <td>${this.escape(exam.title)}</td>
         <td><span class="result-pill ${exam.status === 'published' ? 'accepted' : 'failed'}">${exam.status === 'published' ? '已发布' : '草稿'}</span></td>
         <td>${this.escape(exam.total_score)}</td>
+        <td>${this.escape(exam.view_students || 0)}</td>
         <td>${this.escape(exam.submitted_students || 0)}</td>
         <td>${this.escape(exam.completed_students || 0)}</td>
         <td><button type="button" class="table-link table-link-button" data-preview-exam="${this.escape(exam.id)}">预览</button> · <button type="button" class="table-link table-link-button" data-edit-exam="${this.escape(exam.id)}">编辑</button> · <button type="button" class="table-link table-link-button" data-grade-exam="${this.escape(exam.id)}">批改</button></td>
-      </tr>`).join('') : '<tr><td colspan="7" class="empty-cell">当前组别还没有套卷</td></tr>';
+      </tr>`).join('') : '<tr><td colspan="8" class="empty-cell">当前组别还没有套卷</td></tr>';
   }
 
   populateExamSelector() {

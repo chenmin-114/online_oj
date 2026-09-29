@@ -139,6 +139,7 @@ class ExamUI {
       const result = await this.request('exam_get', { examId });
       this.paper = result.paper;
       this.submission = result.mySubmission;
+      this.app._trackExamView(this.paper.id);
       this.renderPaper();
       document.getElementById('download-exam-docx').disabled = false;
       status.textContent = this.submission

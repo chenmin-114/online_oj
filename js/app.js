@@ -509,6 +509,34 @@ class App {
     }).catch(() => {}).finally(() => this.analyticsPending.delete(viewKey));
   }
 
+  _trackExamView(examId) {
+    if (this.adminExamPreview || this.adminProblemPreview) return;
+    const workerUrl = window.OJ_CONFIG.WORKER_URL;
+    const normalizedExamId = String(examId || '').trim().toUpperCase();
+    if (!workerUrl || !this.username || !normalizedExamId) return;
+    const usernameKey = encodeURIComponent(this.username.normalize('NFC'));
+    const viewKey = `oj_analytics_sent_exam:${usernameKey}:${this.group}:${normalizedExamId}`;
+    try {
+      if (localStorage.getItem(viewKey) || this.analyticsPending.has(viewKey)) return;
+    } catch {}
+    this.analyticsPending.add(viewKey);
+    fetch(workerUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'analytics_view',
+        visitorId: this.username,
+        group: this.group,
+        examId: normalizedExamId,
+      }),
+      keepalive: true,
+    }).then(response => {
+      if (!response.ok) return;
+      try { localStorage.setItem(viewKey, '1'); } catch {}
+    }).catch(() => {}).finally(() => this.analyticsPending.delete(viewKey));
+  }
+
   _promptUsername(options = {}) {
     const dialog = document.getElementById('username-login');
     const form = document.getElementById('username-login-form');
