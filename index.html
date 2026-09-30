@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260930-04">
+  <link rel="stylesheet" href="css/style.css?v=20260930-05">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
@@ -142,7 +142,9 @@
           </div>
         </div>
 
-        <div id="solve-resizer" class="solve-resizer" role="separator" aria-label="调整题目和代码区域宽度" aria-orientation="vertical" tabindex="0"></div>
+        <div id="solve-resizer" class="solve-resizer" role="separator" aria-label="调整题目和代码区域宽度" aria-orientation="vertical" tabindex="0" title="拖动调整题目与代码区域宽度">
+          <span class="solve-resizer-grip" aria-hidden="true"><span>⋮</span><span>↔</span><span>⋮</span></span>
+        </div>
 
         <!-- 右侧：代码编辑器 -->
         <div class="editor-panel">
@@ -157,6 +159,7 @@
               <option value="rust">Rust</option>
             </select>
             <div class="font-size-control" aria-label="代码字体大小">
+              <span class="font-size-label">字体大小：</span>
               <button id="font-size-decrease" type="button" class="btn-small" title="缩小代码字体">A−</button>
               <span id="font-size-value" aria-live="polite">14px</span>
               <button id="font-size-increase" type="button" class="btn-small" title="放大代码字体">A+</button>

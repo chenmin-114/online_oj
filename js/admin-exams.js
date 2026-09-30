@@ -801,7 +801,13 @@ class ExamAdmin {
       return;
     }
     const results = submission.grading.partResults.filter(result => mode !== 'part' || !selectedPart || result.partId === selectedPart);
-    workspace.innerHTML = `<div class="grading-score-summary"><strong>${submission.totalScore} / ${this.paper.totalScore} 分</strong><span>已批改 ${submission.gradedCount}/${submission.totalParts}</span><label><input type="checkbox" data-release-result ${submission.released ? 'checked' : ''}> 向学生发布当前结果</label></div>` + results.map(result => {
+    const selected = mode === 'part' && selectedPart ? this.findPart(selectedPart) : null;
+    const formalCount = this.submissions.filter(item => !item.preview).length;
+    const bulkActions = selected?.part.type === 'programming' ? `<div class="grading-bulk-actions">
+      <div><strong>批量处理本题 · ${this.escape(selected.part.problemId)}</strong><span>面向 ${formalCount} 名正式提交学生；重新判题将依次进入队列</span></div>
+      <div class="grading-bulk-buttons"><button type="button" class="admin-button secondary" data-bulk-rejudge-programming="${this.escape(selected.part.problemId)}">全部同学重新判题</button><button type="button" class="admin-button secondary" data-bulk-request-programming-resubmit="${this.escape(selected.part.problemId)}">全部同学需重新提交</button></div>
+    </div>` : '';
+    workspace.innerHTML = bulkActions + `<div class="grading-score-summary"><strong>${submission.totalScore} / ${this.paper.totalScore} 分</strong><span>已批改 ${submission.gradedCount}/${submission.totalParts}</span><label><input type="checkbox" data-release-result ${submission.released ? 'checked' : ''}> 向学生发布当前结果</label></div>` + results.map(result => {
       const found = this.findPart(result.partId);
       if (!found) return '';
       const answer = submission.answers[result.partId];
@@ -824,6 +830,34 @@ class ExamAdmin {
     const save = event.target.closest('[data-save-grade]');
     const rejudge = event.target.closest('[data-rejudge-programming]');
     const requestResubmit = event.target.closest('[data-request-programming-resubmit]');
+    const bulkRejudge = event.target.closest('[data-bulk-rejudge-programming]');
+    const bulkRequestResubmit = event.target.closest('[data-bulk-request-programming-resubmit]');
+    if (bulkRejudge || bulkRequestResubmit) {
+      const isRejudge = Boolean(bulkRejudge);
+      const button = bulkRejudge || bulkRequestResubmit;
+      const problemId = button.dataset[isRejudge ? 'bulkRejudgeProgramming' : 'bulkRequestProgrammingResubmit'];
+      const formalCount = this.submissions.filter(item => !item.preview).length;
+      const prompt = isRejudge
+        ? `确定将 ${formalCount} 名正式提交学生的 ${problemId} 加入重新判题队列吗？`
+        : `确定要求 ${formalCount} 名正式提交学生重新提交 ${problemId} 吗？系统会逐一发送弹窗消息。`;
+      if (!confirm(prompt)) return;
+      button.disabled = true;
+      try {
+        const result = await this.request('admin_exam_part_bulk_action', {
+          examId: this.paper.id,
+          problemId,
+          action: isRejudge ? 'rejudge' : 'resubmit',
+        });
+        this.admin.toast(isRejudge
+          ? `已将 ${result.count} 名学生的提交加入重判队列`
+          : `已向 ${result.count} 名学生发送重新提交通知`);
+      } catch (error) {
+        this.admin.toast(`批量操作失败：${error.message}`);
+      } finally {
+        button.disabled = false;
+      }
+      return;
+    }
     const submission = this.submissions[this.studentIndex];
     if (!submission || (!release && !save && !rejudge && !requestResubmit)) return;
     if (rejudge || requestResubmit) {

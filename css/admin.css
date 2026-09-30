@@ -359,6 +359,11 @@ input.admin-input { min-width: 240px; }
 .grading-score-summary { padding: 13px; display: flex; align-items: center; gap: 16px; border: 1px solid var(--admin-border); border-radius: 9px; background: rgba(91,140,255,.04); color: var(--admin-muted); font-size: 11px; }
 .grading-score-summary strong { color: var(--admin-text); font-size: 18px; }
 .grading-score-summary label { margin-left: auto; cursor: pointer; }
+.grading-bulk-actions { padding: 13px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(91,140,255,.32); border-radius: 9px; background: rgba(91,140,255,.07); }
+.grading-bulk-actions > div:first-child { display: grid; gap: 4px; }
+.grading-bulk-actions strong { color: var(--admin-text); font-size: 12px; }
+.grading-bulk-actions span { color: var(--admin-muted); font-size: 10px; }
+.grading-bulk-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .grading-part-card { padding: 15px; display: grid; gap: 11px; border: 1px solid var(--admin-border); border-radius: 10px; background: #0e1526; }
 .grading-part-title { display: flex; justify-content: space-between; gap: 16px; }
 .grading-part-title > div { display: grid; gap: 3px; }
@@ -449,6 +454,8 @@ input.admin-input { min-width: 240px; }
   .grading-form { grid-template-columns: 1fr; }
   .grading-score-summary { align-items: flex-start; flex-direction: column; }
   .grading-score-summary label { margin-left: 0; }
+  .grading-bulk-actions { align-items: stretch; flex-direction: column; }
+  .grading-bulk-buttons { justify-content: flex-start; }
   .admin-preview { padding: 10px; }
   .admin-preview-body { padding: 17px; }
   .preview-io-grid { grid-template-columns: 1fr; }

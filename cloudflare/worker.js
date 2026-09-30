@@ -261,6 +261,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamGrade(body, env);
+      } else if (body.type === 'admin_exam_part_bulk_action') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamPartBulkAction(body, env);
       } else if (body.type === 'admin_rejudge_submission') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -1845,6 +1849,97 @@ async function handleAdminExamGrade(body, env) {
     released, now,
   ).run();
   return jsonResponse({ success: true, ...scores, released: released === 1, grading: { partResults } });
+}
+
+async function handleAdminExamPartBulkAction(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  const problemId = String(body.problemId || '').trim().toUpperCase();
+  const action = body.action === 'resubmit' ? 'resubmit' : body.action === 'rejudge' ? 'rejudge' : '';
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  if (!/^(?:P\d{3,6}|T\d{3})$/.test(problemId)) return jsonResponse({ error: '关联题号不正确' }, 400);
+  if (!action) return jsonResponse({ error: '批量操作类型不正确' }, 400);
+
+  const result = await env.OJ_DB.prepare(`
+    SELECT s.id, s.username, p.group_name, v.structure_json
+    FROM exam_submissions s
+    JOIN exam_papers p ON p.id = s.exam_id
+    JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+    WHERE s.exam_id = ?1 AND s.is_final = 1 AND s.is_preview = 0
+    ORDER BY s.id ASC
+  `).bind(examId).all();
+  const targets = [];
+  for (const row of result.results || []) {
+    try {
+      const structure = JSON.parse(row.structure_json);
+      const referenced = structure.questions?.some(question => question.parts?.some(part =>
+        part.type === 'programming' && part.problemId === problemId));
+      if (referenced) targets.push({
+        submissionId: Number(row.id),
+        username: row.username,
+        group: row.group_name,
+      });
+    } catch {
+      // 单个损坏的历史版本不应阻塞其他学生的批量操作。
+    }
+  }
+  if (!targets.length) return jsonResponse({ success: true, action, count: 0 });
+
+  const now = Date.now();
+  const statements = [];
+  if (action === 'rejudge') {
+    for (const target of targets) {
+      statements.push(env.OJ_DB.prepare(`
+        INSERT INTO rejudge_queue (
+          submission_kind, submission_id, group_name, problem_id,
+          status, attempts, requested_at, updated_at, last_error
+        ) VALUES ('exam', ?1, ?2, ?3, 'pending', 0, ?4, ?4, '')
+        ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
+          group_name = excluded.group_name, status = 'pending', attempts = 0,
+          requested_at = excluded.requested_at, updated_at = excluded.updated_at,
+          last_error = ''
+      `).bind(target.submissionId, target.group, problemId, now));
+    }
+  } else {
+    const uniqueTargets = [...new Map(targets.map(target => [target.username, target])).values()];
+    for (const target of uniqueTargets) {
+      const groupLabel = GROUPS[target.group]?.label || target.group;
+      const resubmissionKey = `${target.group}:${problemId}:${target.username}`;
+      statements.push(
+        env.OJ_DB.prepare(`
+          INSERT INTO resubmission_requests (group_name, problem_id, username, requested_at)
+          VALUES (?1, ?2, ?3, ?4)
+          ON CONFLICT(group_name, problem_id, username)
+          DO UPDATE SET requested_at = excluded.requested_at
+        `).bind(target.group, problemId, target.username, now),
+        env.OJ_DB.prepare(`
+          INSERT INTO system_messages (
+            audience, username, title, content, created_at,
+            message_type, group_name, problem_id, resubmission_key, popup_enabled
+          ) VALUES ('user', ?1, ?2, ?3, ?4, 'resubmission', ?5, ?6, ?7, 1)
+          ON CONFLICT(resubmission_key) DO UPDATE SET
+            title = excluded.title, content = excluded.content,
+            created_at = excluded.created_at, popup_enabled = 1
+        `).bind(
+          target.username,
+          `需要重新提交：${problemId}`,
+          `管理员要求你重新提交${groupLabel}题目 ${problemId}。请修改代码后重新提交判题。`,
+          now, target.group, problemId, resubmissionKey,
+        ),
+        env.OJ_DB.prepare(`
+          DELETE FROM system_message_reads
+          WHERE message_id = (
+            SELECT id FROM system_messages WHERE resubmission_key = ?1
+          ) AND username = ?2
+        `).bind(resubmissionKey, target.username),
+      );
+    }
+    targets.length = uniqueTargets.length;
+  }
+  for (let index = 0; index < statements.length; index += 100) {
+    await env.OJ_DB.batch(statements.slice(index, index + 100));
+  }
+  return jsonResponse({ success: true, action, count: targets.length });
 }
 
 async function resolveAdminSubmissionTarget(body, env) {

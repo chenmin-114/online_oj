@@ -386,6 +386,38 @@ body.username-locked { overflow: hidden; }
 .solve-resizer:focus-visible { outline: none; }
 .solve-layout.is-resizing { cursor: col-resize; user-select: none; }
 
+.solve-resizer-grip {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background: var(--bg-secondary);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .18);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 13px;
+  transition: border-color .15s, background .15s, color .15s, box-shadow .15s;
+}
+
+.solve-resizer-grip span:nth-child(2) { font-size: 13px; }
+.solve-resizer:hover .solve-resizer-grip,
+.solve-resizer:focus-visible .solve-resizer-grip,
+.solve-layout.is-resizing .solve-resizer-grip {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+  box-shadow: 0 3px 12px rgba(76, 141, 255, .3);
+  color: var(--accent-primary);
+}
+
 .problem-panel {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -519,6 +551,7 @@ body.username-locked { overflow: hidden; }
 }
 
 .font-size-control .btn-small { min-width: 31px; }
+.font-size-label { color: var(--text-secondary); }
 
 .sample-heading {
   display: flex;
