@@ -135,6 +135,7 @@ class OJAdmin {
     document.getElementById('submission-search').addEventListener('input', () => this.renderSubmissions());
     document.getElementById('submission-problem').addEventListener('change', () => this.renderSubmissions());
     document.getElementById('submission-result').addEventListener('change', () => this.renderSubmissions());
+    document.getElementById('all-submissions').addEventListener('click', event => this.handleSubmissionAction(event));
     document.getElementById('export-submissions').addEventListener('click', () => this.exportSubmissions());
     document.getElementById('student-account-file').addEventListener('change', event => {
       this.selectStudentAccountFile(event.target.files?.[0] || null);
@@ -1505,7 +1506,9 @@ class OJAdmin {
       this.populateFilters();
       this.populateRankingSelector();
       this.toast(isEditing
-        ? `${result.problem.id} 已更新，题目列表也已同步`
+        ? result.testCasesChanged
+          ? `${result.problem.id} 测试点已更新；已加入自动重判：普通提交 ${result.rejudge?.problemSubmissions || 0} 份，套卷提交 ${result.rejudge?.examSubmissions || 0} 份`
+          : `${result.problem.id} 题面已更新；测试点未变化，不触发重判`
         : result.problem.status === 'draft'
           ? `${result.problem.id} 已保存为草稿，仅管理员可见`
           : `${result.problem.id} 已发布，前台将在 GitHub Pages 更新后显示`);
@@ -1697,8 +1700,41 @@ class OJAdmin {
         <td>${this.resultPill(item.passed)}</td>
         <td>${this.escape(item.passedTests)}/${this.escape(item.totalTests)}</td>
         <td>${this.escape(item.totalTime)}ms</td>
+        <td><div class="submission-actions"><button type="button" class="table-link table-link-button" data-rejudge-submission="${this.escape(item.id)}">重新判题</button><button type="button" class="table-link table-link-button warning" data-request-resubmission="${this.escape(item.id)}">要求重新提交</button></div></td>
       </tr>
-    `).join('') : '<tr><td colspan="7" class="empty-cell">没有符合条件的提交</td></tr>';
+    `).join('') : '<tr><td colspan="8" class="empty-cell">没有符合条件的提交</td></tr>';
+  }
+
+  async handleSubmissionAction(event) {
+    const rejudge = event.target.closest('[data-rejudge-submission]');
+    const request = event.target.closest('[data-request-resubmission]');
+    if (!rejudge && !request) return;
+    const submissionId = Number((rejudge || request).dataset[rejudge ? 'rejudgeSubmission' : 'requestResubmission']);
+    const submission = this.submissions.find(item => Number(item.id) === submissionId);
+    if (!submission) return;
+    if (request && !confirm(`确定要求“${submission.username}”重新提交 ${submission.problemId} 吗？学生登录后会看到提醒。`)) return;
+    const button = rejudge || request;
+    button.disabled = true;
+    try {
+      const response = await fetch(this.config.workerUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: rejudge ? 'admin_rejudge_submission' : 'admin_request_resubmission',
+          submissionKind: 'problem',
+          submissionId,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 401) this.lockExpiredSession();
+      if (!response.ok) throw new Error(result.error || `操作失败 (${response.status})`);
+      this.toast(rejudge ? '已加入自动重判队列' : '已向该学生发送重新提交通知');
+    } catch (error) {
+      this.toast(`操作失败：${error.message}`);
+    } finally {
+      button.disabled = false;
+    }
   }
 
   populateRankingSelector() {

@@ -170,3 +170,32 @@ CREATE INDEX IF NOT EXISTS idx_exam_submissions_exam_final
 
 CREATE INDEX IF NOT EXISTS idx_exam_submissions_user_final
   ON exam_submissions(username, is_final, submitted_at DESC);
+
+-- 测试点变化后的后台重判队列。成功任务会立即删除，只保留待处理或失败任务。
+CREATE TABLE IF NOT EXISTS rejudge_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_kind TEXT NOT NULL CHECK (submission_kind IN ('problem', 'exam')),
+  submission_id INTEGER NOT NULL,
+  group_name TEXT NOT NULL CHECK (group_name IN ('control', 'vision')),
+  problem_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  requested_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  last_error TEXT NOT NULL DEFAULT '',
+  UNIQUE(submission_kind, submission_id, problem_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rejudge_queue_status
+  ON rejudge_queue(status, requested_at, id);
+
+CREATE TABLE IF NOT EXISTS resubmission_requests (
+  group_name TEXT NOT NULL CHECK (group_name IN ('control', 'vision')),
+  problem_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  requested_at INTEGER NOT NULL,
+  PRIMARY KEY (group_name, problem_id, username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_resubmission_requests_user
+  ON resubmission_requests(username, group_name, requested_at DESC);

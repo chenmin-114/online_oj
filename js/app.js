@@ -24,6 +24,7 @@ class App {
     this.codeSaveTimer = null;
     this.isRestoringCode = false;
     this.analyticsPending = new Set();
+    this.resubmissionNotices = [];
   }
 
   async init() {
@@ -94,6 +95,7 @@ class App {
 
     // 题目列表与编辑器并行加载；这里只等待首屏真正需要的题目数据。
     await problemListLoading;
+    await this._loadResubmissionNotices(true);
 
     // 保留 Promise 引用，避免编辑器初始化失败产生未处理的异步错误。
     this.editorInitialization = editorInitialization;
@@ -164,6 +166,7 @@ class App {
     this.examUI?.onGroupChange();
     document.getElementById('problem-list').innerHTML = '<p class="info">⏳ 正在加载题目...</p>';
     await this.loadProblemList();
+    await this._loadResubmissionNotices(true);
   }
 
   _renderProblemList(problems) {
@@ -175,11 +178,13 @@ class App {
     container.innerHTML = problems.map(p => {
       const difficulty = ['easy', 'medium', 'hard'].includes(p.difficulty) ? p.difficulty : 'easy';
       const submitCount = Number.isFinite(Number(p.submitCount)) ? Number(p.submitCount) : 0;
+      const needsResubmission = this.resubmissionNotices.some(notice => notice.problemId === p.id);
       return `
       <div class="problem-card" data-id="${this._escapeHtml(p.id)}" data-file="${this._escapeHtml(p.file)}">
         <div class="problem-header">
           <span class="problem-id">${this._escapeHtml(p.id)}</span>
           <span class="problem-title">${this._escapeHtml(p.title)}</span>
+          ${needsResubmission ? '<span class="resubmit-badge">需要重新提交</span>' : ''}
           <span class="difficulty ${difficulty}">${this._difficultyText(difficulty)}</span>
         </div>
         <div class="problem-meta">
@@ -404,6 +409,13 @@ class App {
       if (this.examUI?.programmingContext) this.examUI.returnFromProgrammingProblem();
       else this.submitCode();
     });
+    document.getElementById('resubmission-notice-btn').addEventListener('click', () => {
+      const notice = this.resubmissionNotices[0];
+      if (!notice) return;
+      const problem = this.problemList.find(item => item.id === notice.problemId);
+      if (problem) this.loadProblem(problem.file);
+      else alert(`管理员要求你重新提交题目 ${notice.problemId}`);
+    });
 
     document.querySelectorAll('.nav-link').forEach(link => {
       link.addEventListener('click', () => this.examUI?.leaveProgrammingProblem());
@@ -595,6 +607,7 @@ class App {
         document.getElementById('username-display').textContent = this.username;
         if (this.currentProblem) this._restoreCode(document.getElementById('language-select').value);
         this._trackView(this.currentProblem?.id || '');
+        this._loadResubmissionNotices(true);
 
         form.removeEventListener('submit', handleSubmit);
         skip.removeEventListener('click', handleSkip);
@@ -1021,6 +1034,7 @@ class App {
         this.group
       );
       this._renderJudgeResult(result);
+      this._loadResubmissionNotices(false);
     } catch (err) {
       if (err.code === 'STUDENT_AUTH_REQUIRED' && !authRetried) {
         await this._promptUsername({ verifyCurrent: true });
@@ -1041,6 +1055,42 @@ class App {
       resultEl.innerHTML = `<span class="warning">⏳ 测试点 ${this._escapeHtml(event.current)} 服务繁忙，正在重试 ${this._escapeHtml(event.attempt)}/${this._escapeHtml(event.maxAttempts)}...</span>`;
     } else if (event.type === 'saving') {
       resultEl.innerHTML = '<span class="info">⏳ 判题完成，正在保存结果...</span>';
+    }
+  }
+
+  async _loadResubmissionNotices(showPopup = false) {
+    if (!this.username || this.adminExamPreview || this.adminProblemPreview) return;
+    try {
+      const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'student_resubmission_notices',
+          username: this.username,
+          group: this.group,
+        }),
+      });
+      if (!response.ok) return;
+      const notices = await response.json();
+      this.resubmissionNotices = Array.isArray(notices) ? notices : [];
+      const menuButton = document.getElementById('resubmission-notice-btn');
+      menuButton.hidden = !this.resubmissionNotices.length;
+      menuButton.textContent = this.resubmissionNotices.length
+        ? `需要重新提交（${this.resubmissionNotices.length}）`
+        : '需要重新提交';
+      if (this.problemList.length) this._renderProblemList(this.problemList);
+      if (showPopup && this.resubmissionNotices.length) {
+        const newest = Math.max(...this.resubmissionNotices.map(item => Number(item.requestedAt) || 0));
+        const key = `oj_resubmit_popup:${encodeURIComponent(this.username)}:${this.group}`;
+        const shown = Number(sessionStorage.getItem(key) || 0);
+        if (newest > shown) {
+          sessionStorage.setItem(key, String(newest));
+          alert(`管理员要求你重新提交以下题目：\n${this.resubmissionNotices.map(item => item.problemId).join('、')}\n\n请修改代码后重新提交判题。`);
+        }
+      }
+    } catch {
+      // 通知读取失败不影响正常浏览和判题。
     }
   }
 

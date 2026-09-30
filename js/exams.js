@@ -241,10 +241,11 @@ class ExamUI {
       control = `<textarea class="exam-text-answer" data-answer-part="${this.escape(part.id)}" maxlength="30000" rows="6" placeholder="请输入你的回答">${this.escape(answer || '')}</textarea>`;
     } else if (part.type === 'programming') {
       const problemTitle = part.problem?.title || '完整编程题';
+      const needsResubmission = this.app.resubmissionNotices.some(notice => notice.problemId === part.problemId);
       const hasEditedCode = Boolean(answer?.code && answer.code.trim()
         && answer.code.trim() !== this.languageTemplate(answer.language || 'c', part).trim());
       control = `<div class="exam-programming-link-card">
-        <div><span>关联题目 ${this.escape(part.problemId)}</span><strong>${this.escape(problemTitle)}</strong><small>${hasEditedCode ? '代码已保存到本套卷草稿' : '尚未填写代码'}</small></div>
+        <div><span>关联题目 ${this.escape(part.problemId)}</span><strong>${this.escape(problemTitle)}</strong><small class="${needsResubmission ? 'warning' : ''}">${needsResubmission ? '管理员要求重新提交这道编程题' : hasEditedCode ? '代码已保存到本套卷草稿' : '尚未填写代码'}</small></div>
         <button type="button" class="btn btn-primary" data-open-exam-problem="${this.escape(part.id)}">打开完整编程题 →</button>
       </div>`;
     }

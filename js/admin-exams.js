@@ -813,6 +813,7 @@ class ExamAdmin {
         <div class="grading-part-title"><div><strong>${this.escape(found.question.title)} · ${this.escape(found.part.prompt || found.part.id)}</strong><span>${this.escape(statusText)}${result.blockedByProgramming ? ' · 因编程未通过暂计 0 分' : ''}</span></div><b>${this.escape(result.effectiveScore || 0)} / ${this.escape(result.maxScore)}</b></div>
         <pre class="grading-answer">${this.escape(answerText || '（未作答）')}</pre>
         ${result.judge ? `<p class="grading-judge">编程测试：${result.judge.passedTests}/${result.judge.totalTests} · ${result.judge.totalTime}ms</p>` : ''}
+        ${result.type === 'programming' && !submission.preview ? `<div class="grading-programming-actions"><button type="button" class="admin-button secondary" data-rejudge-programming="${this.escape(found.part.problemId)}">重新判题</button><button type="button" class="admin-button secondary" data-request-programming-resubmit="${this.escape(found.part.problemId)}">要求学生重新提交</button></div>` : ''}
         <div class="grading-form"><label class="form-field"><span>人工评分</span><input class="admin-input" data-grade-score type="number" min="0" max="${this.escape(result.maxScore)}" step="0.5" value="${this.escape(result.manualScore || 0)}"></label><label class="form-field"><span>批注</span><input class="admin-input" data-grade-feedback maxlength="3000" value="${this.escape(result.feedback || '')}" placeholder="可选"></label><button type="button" class="admin-button primary" data-save-grade>保存评分</button></div>
       </section>`;
     }).join('');
@@ -821,8 +822,29 @@ class ExamAdmin {
   async handleGradingClick(event) {
     const release = event.target.closest('[data-release-result]');
     const save = event.target.closest('[data-save-grade]');
+    const rejudge = event.target.closest('[data-rejudge-programming]');
+    const requestResubmit = event.target.closest('[data-request-programming-resubmit]');
     const submission = this.submissions[this.studentIndex];
-    if (!submission || (!release && !save)) return;
+    if (!submission || (!release && !save && !rejudge && !requestResubmit)) return;
+    if (rejudge || requestResubmit) {
+      const problemId = (rejudge || requestResubmit).dataset[rejudge ? 'rejudgeProgramming' : 'requestProgrammingResubmit'];
+      if (requestResubmit && !confirm(`确定要求“${submission.username}”重新提交 ${problemId} 吗？学生登录后会看到提醒。`)) return;
+      const button = rejudge || requestResubmit;
+      button.disabled = true;
+      try {
+        await this.request(rejudge ? 'admin_rejudge_submission' : 'admin_request_resubmission', {
+          submissionKind: 'exam',
+          submissionId: submission.id,
+          problemId,
+        });
+        this.admin.toast(rejudge ? '该编程题已加入自动重判队列' : '已向该学生发送重新提交通知');
+      } catch (error) {
+        this.admin.toast(`操作失败：${error.message}`);
+      } finally {
+        button.disabled = false;
+      }
+      return;
+    }
     const payload = { submissionId: submission.id };
     if (release) payload.released = release.checked;
     if (save) {

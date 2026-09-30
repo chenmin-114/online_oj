@@ -261,6 +261,14 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamGrade(body, env);
+      } else if (body.type === 'admin_rejudge_submission') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminRejudgeSubmission(body, env);
+      } else if (body.type === 'admin_request_resubmission') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminRequestResubmission(body, env);
       } else if (body.type === 'student_account_status') {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
         if (rateLimitError) return rateLimitError;
@@ -295,6 +303,10 @@ export default {
         const authError = await requireStudentSession(request, env, body.username);
         if (authError) return authError;
         return jsonResponse({ success: true });
+      } else if (body.type === 'student_resubmission_notices') {
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return await handleStudentResubmissionNotices(body, env);
       } else if (body.type === 'student_skip_login') {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
         if (rateLimitError) return rateLimitError;
@@ -381,6 +393,10 @@ export default {
       console.error('API 请求处理失败:', error);
       return jsonResponse({ error: '服务器内部错误' }, 500);
     }
+  },
+
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(processNextRejudgeJob(env));
   },
 };
 
@@ -1685,6 +1701,15 @@ async function handleStudentExamSubmit(body, env) {
       DO UPDATE SET last_seen = excluded.last_seen
     `).bind(group, examId, visitorHash, now),
   ];
+  const programmingProblemIds = [...new Set(paper.questions.flatMap(question => question.parts)
+    .filter(part => part.type === 'programming' && /^(?:P\d{3,6}|T\d{3})$/.test(part.problemId))
+    .map(part => part.problemId))];
+  for (const problemId of programmingProblemIds) {
+    statements.push(env.OJ_DB.prepare(`
+      DELETE FROM resubmission_requests
+      WHERE group_name = ?1 AND problem_id = ?2 AND username = ?3
+    `).bind(group, problemId, username));
+  }
   await env.OJ_DB.batch(statements);
   const visible = isExamResultVisible(paper.resultPolicy, scores.gradingStatus, 0);
   return jsonResponse({
@@ -1800,6 +1825,89 @@ async function handleAdminExamGrade(body, env) {
     released, now,
   ).run();
   return jsonResponse({ success: true, ...scores, released: released === 1, grading: { partResults } });
+}
+
+async function resolveAdminSubmissionTarget(body, env) {
+  const kind = body.submissionKind === 'exam' ? 'exam' : 'problem';
+  const submissionId = Number(body.submissionId);
+  if (!Number.isInteger(submissionId) || submissionId < 1) return { error: '提交编号不正确' };
+  if (kind === 'problem') {
+    const row = await env.OJ_DB.prepare(`
+      SELECT id, username, problem_id FROM submissions WHERE id = ?1
+    `).bind(submissionId).first();
+    if (!row) return { error: '找不到该编程提交' };
+    const parsed = publicProblemId(row.problem_id);
+    return { kind, submissionId, username: row.username, group: parsed.group, problemId: parsed.problemId };
+  }
+  const problemId = String(body.problemId || '').trim().toUpperCase();
+  if (!/^(?:P\d{3,6}|T\d{3})$/.test(problemId)) return { error: '关联题号不正确' };
+  const row = await env.OJ_DB.prepare(`
+    SELECT s.id, s.username, s.is_preview, p.group_name, v.structure_json
+    FROM exam_submissions s
+    JOIN exam_papers p ON p.id = s.exam_id
+    JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+    WHERE s.id = ?1 AND s.is_final = 1
+  `).bind(submissionId).first();
+  if (!row || Number(row.is_preview) === 1) return { error: '找不到该学生的最终套卷提交' };
+  let referenced = false;
+  try {
+    const structure = JSON.parse(row.structure_json);
+    referenced = structure.questions?.some(question => question.parts?.some(part =>
+      part.type === 'programming' && part.problemId === problemId));
+  } catch { /* 下方统一返回错误 */ }
+  if (!referenced) return { error: '这份套卷提交不包含该编程题' };
+  return {
+    kind, submissionId, username: row.username,
+    group: row.group_name, problemId,
+  };
+}
+
+async function handleAdminRejudgeSubmission(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '提交数据库尚未配置' }, 503);
+  const target = await resolveAdminSubmissionTarget(body, env);
+  if (target.error) return jsonResponse({ error: target.error }, 400);
+  const now = Date.now();
+  await env.OJ_DB.prepare(`
+    INSERT INTO rejudge_queue (
+      submission_kind, submission_id, group_name, problem_id,
+      status, attempts, requested_at, updated_at, last_error
+    ) VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, ?5, '')
+    ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
+      group_name = excluded.group_name, status = 'pending', attempts = 0,
+      requested_at = excluded.requested_at, updated_at = excluded.updated_at,
+      last_error = ''
+  `).bind(target.kind, target.submissionId, target.group, target.problemId, now).run();
+  return jsonResponse({ success: true, queued: true, ...target });
+}
+
+async function handleAdminRequestResubmission(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '提交数据库尚未配置' }, 503);
+  const target = await resolveAdminSubmissionTarget(body, env);
+  if (target.error) return jsonResponse({ error: target.error }, 400);
+  const now = Date.now();
+  await env.OJ_DB.prepare(`
+    INSERT INTO resubmission_requests (group_name, problem_id, username, requested_at)
+    VALUES (?1, ?2, ?3, ?4)
+    ON CONFLICT(group_name, problem_id, username)
+    DO UPDATE SET requested_at = excluded.requested_at
+  `).bind(target.group, target.problemId, target.username, now).run();
+  return jsonResponse({ success: true, ...target, requestedAt: now });
+}
+
+async function handleStudentResubmissionNotices(body, env) {
+  if (!env.OJ_DB) return jsonResponse([]);
+  const username = normalizeStudentUsername(body.username);
+  const group = normalizeGroup(body.group);
+  const result = await env.OJ_DB.prepare(`
+    SELECT problem_id, requested_at
+    FROM resubmission_requests
+    WHERE username = ?1 AND group_name = ?2
+    ORDER BY requested_at DESC
+  `).bind(username, group).all();
+  return jsonResponse((result.results || []).map(row => ({
+    problemId: row.problem_id,
+    requestedAt: Number(row.requested_at),
+  })));
 }
 
 /**
@@ -2083,6 +2191,7 @@ async function handleAnalyticsReport(env, group) {
 function submissionSummary(row) {
   const parsed = publicProblemId(row.problem_id);
   return {
+    id: Number(row.id),
     username: row.username,
     group: parsed.group,
     problemId: parsed.problemId,
@@ -2105,7 +2214,7 @@ async function handleD1Submissions(request, env, params) {
     const authError = await requireAdmin(request, env);
     if (authError) return authError;
     const result = await env.OJ_DB.prepare(`
-      SELECT username, problem_id, passed, passed_tests, total_tests,
+      SELECT id, username, problem_id, passed, passed_tests, total_tests,
              total_time, language, timestamp
       FROM submissions
       WHERE ${groupCondition}
@@ -2125,7 +2234,7 @@ async function handleD1Submissions(request, env, params) {
   const authError = await requireStudentAccess(request, env, username);
   if (authError) return authError;
   const result = await env.OJ_DB.prepare(`
-    SELECT username, problem_id, passed, passed_tests, total_tests,
+    SELECT id, username, problem_id, passed, passed_tests, total_tests,
            total_time, language, timestamp
     FROM submissions
     WHERE username = ?1 AND ${groupCondition}
@@ -2472,6 +2581,9 @@ async function handleUpdateProblem(body, env) {
   const validation = validateProblem(body.problem, body.file);
   if (validation.error) return jsonResponse({ error: validation.error }, 400);
   const { problem, file } = validation;
+  const previousHiddenProblem = await readHiddenProblem(problem.id, env, group);
+  const testCasesChanged = JSON.stringify(previousHiddenProblem?.testCases || [])
+    !== JSON.stringify(problem.testCases);
   const imageValidation = validateProblemImages(body.images, problem.id, group);
   if (imageValidation.error) return jsonResponse({ error: imageValidation.error }, 400);
   const images = imageValidation.images;
@@ -2571,7 +2683,190 @@ async function handleUpdateProblem(body, env) {
     return githubErrorResponse(updateIndexRes, '题目内容已更新，但同步题目列表失败，请重试');
   }
 
-  return jsonResponse({ success: true, problem: indexItem });
+  const rejudge = testCasesChanged
+    ? await enqueueProblemRejudges(env, group, problem.id)
+    : { queued: false, problemSubmissions: 0, examSubmissions: 0 };
+  return jsonResponse({ success: true, problem: indexItem, testCasesChanged, rejudge });
+}
+
+async function enqueueProblemRejudges(env, group, problemId) {
+  if (!env.OJ_DB) return { queued: false, problemSubmissions: 0, examSubmissions: 0 };
+  const storedId = storedProblemId(group, problemId);
+  const [problemRows, examRows] = await env.OJ_DB.batch([
+    env.OJ_DB.prepare('SELECT id FROM submissions WHERE problem_id = ?1').bind(storedId),
+    env.OJ_DB.prepare(`
+      SELECT s.id, v.structure_json
+      FROM exam_submissions s
+      JOIN exam_papers p ON p.id = s.exam_id
+      JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+      WHERE p.group_name = ?1 AND s.is_preview = 0 AND s.is_final = 1
+    `).bind(group),
+  ]);
+  const examSubmissionIds = [];
+  for (const row of examRows.results || []) {
+    try {
+      const structure = JSON.parse(row.structure_json);
+      const referenced = structure.questions?.some(question => question.parts?.some(part =>
+        part.type === 'programming' && part.problemId === problemId));
+      if (referenced) examSubmissionIds.push(Number(row.id));
+    } catch {
+      // 损坏的历史试卷结构留给管理员人工处理，不阻塞题目更新。
+    }
+  }
+  const now = Date.now();
+  const statements = [];
+  const enqueue = (kind, submissionId) => statements.push(env.OJ_DB.prepare(`
+    INSERT INTO rejudge_queue (
+      submission_kind, submission_id, group_name, problem_id,
+      status, attempts, requested_at, updated_at, last_error
+    ) VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, ?5, '')
+    ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
+      group_name = excluded.group_name,
+      status = 'pending', attempts = 0,
+      requested_at = excluded.requested_at,
+      updated_at = excluded.updated_at,
+      last_error = ''
+  `).bind(kind, submissionId, group, problemId, now));
+  for (const row of problemRows.results || []) enqueue('problem', Number(row.id));
+  for (const id of examSubmissionIds) enqueue('exam', id);
+  for (let index = 0; index < statements.length; index += 100) {
+    await env.OJ_DB.batch(statements.slice(index, index + 100));
+  }
+  return {
+    queued: statements.length > 0,
+    problemSubmissions: (problemRows.results || []).length,
+    examSubmissions: examSubmissionIds.length,
+  };
+}
+
+async function processNextRejudgeJob(env) {
+  if (!env.OJ_DB) return;
+  const now = Date.now();
+  const staleBefore = now - 10 * 60 * 1000;
+  const job = await env.OJ_DB.prepare(`
+    SELECT * FROM rejudge_queue
+    WHERE attempts < 5
+      AND (status = 'pending' OR (status = 'processing' AND updated_at < ?1))
+    ORDER BY requested_at ASC, id ASC
+    LIMIT 1
+  `).bind(staleBefore).first();
+  if (!job) return;
+  const claimed = await env.OJ_DB.prepare(`
+    UPDATE rejudge_queue
+    SET status = 'processing', attempts = attempts + 1, updated_at = ?2
+    WHERE id = ?1 AND attempts < 5
+      AND (status = 'pending' OR (status = 'processing' AND updated_at < ?3))
+  `).bind(Number(job.id), now, staleBefore).run();
+  if (!claimed.meta?.changes) return;
+
+  try {
+    if (job.submission_kind === 'problem') await rejudgeProblemSubmission(job, env);
+    else if (job.submission_kind === 'exam') await rejudgeExamSubmission(job, env);
+    else throw new Error('未知重判任务类型');
+    await env.OJ_DB.prepare(`
+      DELETE FROM rejudge_queue
+      WHERE id = ?1 AND requested_at = ?2 AND status = 'processing'
+    `).bind(Number(job.id), Number(job.requested_at)).run();
+  } catch (error) {
+    const attempts = Number(job.attempts || 0) + 1;
+    await env.OJ_DB.prepare(`
+      UPDATE rejudge_queue
+      SET status = ?2, updated_at = ?3, last_error = ?4
+      WHERE id = ?1 AND requested_at = ?5 AND status = 'processing'
+    `).bind(
+      Number(job.id), attempts >= 5 ? 'failed' : 'pending', Date.now(),
+      String(error?.message || error || '重判失败').slice(0, 500),
+      Number(job.requested_at),
+    ).run();
+    console.error(`自动重判任务 ${job.id} 失败:`, error);
+  }
+}
+
+async function rejudgeProblemSubmission(job, env) {
+  const row = await env.OJ_DB.prepare(`
+    SELECT id, username, language, code
+    FROM submissions WHERE id = ?1
+  `).bind(Number(job.submission_id)).first();
+  if (!row) return;
+  const judged = await runJudgeSubmission({
+    username: row.username,
+    problemId: job.problem_id,
+    group: job.group_name,
+    language: row.language,
+    code: decodeBase64Utf8(String(row.code || '')),
+  }, env, null, false, true);
+  await env.OJ_DB.prepare(`
+    UPDATE submissions
+    SET passed = ?2, passed_tests = ?3, total_tests = ?4, total_time = ?5
+    WHERE id = ?1
+  `).bind(
+    Number(row.id), judged.passed ? 1 : 0, judged.passedTests,
+    judged.totalTests, judged.totalTime,
+  ).run();
+}
+
+async function rejudgeExamSubmission(job, env) {
+  const row = await env.OJ_DB.prepare(`
+    SELECT s.*, v.structure_json
+    FROM exam_submissions s
+    JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+    WHERE s.id = ?1 AND s.is_preview = 0 AND s.is_final = 1
+  `).bind(Number(job.submission_id)).first();
+  if (!row) return;
+  const paper = JSON.parse(row.structure_json);
+  const answers = JSON.parse(row.answers_json);
+  const grading = JSON.parse(row.grading_json);
+  const partResults = Array.isArray(grading.partResults) ? grading.partResults : [];
+  let matched = 0;
+  for (const question of paper.questions || []) {
+    for (const part of question.parts || []) {
+      if (part.type !== 'programming' || part.problemId !== job.problem_id) continue;
+      matched += 1;
+      const answer = answers[part.id] || {};
+      const code = String(answer.code || '');
+      const judged = code.trim() ? await runJudgeSubmission({
+        username: row.username,
+        problemId: part.problemId,
+        group: job.group_name,
+        language: String(answer.language || 'c'),
+        code,
+      }, env, null, false, true) : null;
+      const index = partResults.findIndex(result => result.partId === part.id);
+      const existing = index >= 0 ? partResults[index] : {};
+      const updated = {
+        ...existing,
+        questionId: question.id,
+        partId: part.id,
+        type: 'programming',
+        maxScore: Number(part.points || 0),
+        status: judged?.passed ? 'correct' : 'incorrect',
+        autoScore: judged?.passed ? Number(part.points || 0) : 0,
+        manualScore: Number(existing.manualScore || 0),
+        feedback: '',
+        judge: judged ? {
+          passed: judged.passed,
+          passedTests: judged.passedTests,
+          totalTests: judged.totalTests,
+          totalTime: judged.totalTime,
+        } : null,
+      };
+      if (index >= 0) partResults[index] = updated;
+      else partResults.push(updated);
+    }
+  }
+  if (!matched) return;
+  const scores = calculateExamScores(paper, partResults);
+  await env.OJ_DB.prepare(`
+    UPDATE exam_submissions
+    SET grading_json = ?2, auto_score = ?3, manual_score = ?4,
+        total_score = ?5, graded_count = ?6, total_parts = ?7,
+        grading_status = ?8, updated_at = ?9
+    WHERE id = ?1
+  `).bind(
+    Number(row.id), JSON.stringify({ ...grading, partResults }),
+    scores.autoScore, scores.manualScore, scores.totalScore,
+    scores.gradedCount, scores.totalParts, scores.gradingStatus, Date.now(),
+  ).run();
 }
 
 function validateProblem(input, requestedFile) {
@@ -3199,22 +3494,28 @@ async function persistSubmission(body, env) {
 
   const safeTimestamp = Number.isFinite(Number(timestamp)) ? Math.trunc(Number(timestamp)) : Date.now();
   try {
-    const result = await env.OJ_DB.prepare(`
-      INSERT INTO submissions (
-        username, problem_id, passed, passed_tests, total_tests,
-        total_time, language, code, timestamp
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-    `).bind(
-      displayUsername,
-      storedProblemId(group, normalizedProblemId),
-      passed ? 1 : 0,
-      normalizedPassedTests,
-      normalizedTotalTests,
-      normalizedTotalTime,
-      normalizedLanguage,
-      code,
-      safeTimestamp,
-    ).run();
+    const [result] = await env.OJ_DB.batch([
+      env.OJ_DB.prepare(`
+        INSERT INTO submissions (
+          username, problem_id, passed, passed_tests, total_tests,
+          total_time, language, code, timestamp
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      `).bind(
+        displayUsername,
+        storedProblemId(group, normalizedProblemId),
+        passed ? 1 : 0,
+        normalizedPassedTests,
+        normalizedTotalTests,
+        normalizedTotalTime,
+        normalizedLanguage,
+        code,
+        safeTimestamp,
+      ),
+      env.OJ_DB.prepare(`
+        DELETE FROM resubmission_requests
+        WHERE group_name = ?1 AND problem_id = ?2 AND username = ?3
+      `).bind(group, normalizedProblemId, displayUsername),
+    ]);
     return jsonResponse({ success: true, id: result.meta?.last_row_id || null });
   } catch (error) {
     console.error('D1 保存提交失败:', error);

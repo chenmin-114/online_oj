@@ -273,6 +273,8 @@
 .admin-input:focus { border-color: var(--admin-blue); box-shadow: 0 0 0 3px rgba(91,140,255,.1); }
 input.admin-input { min-width: 240px; }
 .filter-count { margin-left: auto; color: var(--admin-muted); font-size: 11px; }
+.submission-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 150px; }
+.table-link-button.warning { color: var(--admin-orange); }
 
 .account-import-body { padding: 22px; display: grid; gap: 18px; }
 .account-reset-card { margin-bottom: 18px; }
@@ -352,6 +354,7 @@ input.admin-input { min-width: 240px; }
 .grading-part-title span, .grading-judge { color: var(--admin-muted); font-size: 10px; }
 .grading-part-title b { color: var(--admin-blue); white-space: nowrap; }
 .grading-answer { max-height: 320px; padding: 12px; overflow: auto; border-radius: 7px; background: #080d18; color: #cbd5ea; font: 12px/1.6 Consolas, Monaco, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.grading-programming-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .grading-form { display: grid; grid-template-columns: 140px minmax(200px, 1fr) auto; gap: 10px; align-items: end; }
 .grading-form input.admin-input { min-width: 0; }
 .preview-open { overflow: hidden; }
