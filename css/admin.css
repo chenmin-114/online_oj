@@ -295,6 +295,18 @@ input.admin-input { min-width: 240px; }
 .account-import-summary > div { padding: 15px; display: grid; gap: 4px; border: 1px solid var(--admin-border); border-radius: 9px; background: #0e1526; }
 .account-import-summary span { color: var(--admin-muted); font-size: 10px; }
 .account-import-summary strong { color: var(--admin-text); font-size: 21px; }
+.message-editor-card { margin-bottom: 18px; }
+.message-editor-body { padding: 20px; display: grid; gap: 16px; }
+.message-editor-body textarea { width: 100%; padding: 11px; resize: vertical; line-height: 1.6; }
+.message-history-card { margin-top: 18px; }
+.admin-message-list { display: grid; }
+.admin-message-item { padding: 16px 18px; display: grid; gap: 10px; border-top: 1px solid var(--admin-border); }
+.admin-message-item:first-child { border-top: 0; }
+.admin-message-item header, .admin-message-item footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.admin-message-item header > div { display: grid; gap: 3px; }
+.admin-message-item header strong { color: var(--admin-text); font-size: 13px; }
+.admin-message-item header span, .admin-message-item footer { color: var(--admin-muted); font-size: 10px; }
+.admin-message-item p { color: #cbd5ea; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 
 .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
 .status-card { gap: 14px; min-height: 94px; padding: 18px; border: 1px solid var(--admin-border); border-radius: 12px; background: var(--admin-panel); }

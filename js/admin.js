@@ -24,6 +24,7 @@ class OJAdmin {
     this.studentAccountFile = null;
     this.studentAccountWorkbook = null;
     this.studentAccountExportName = '';
+    this.systemMessages = [];
     this.controlsBound = false;
   }
 
@@ -119,7 +120,10 @@ class OJAdmin {
 
   bindNavigation() {
     document.querySelectorAll('.admin-nav-item').forEach(button => {
-      button.addEventListener('click', () => this.openPanel(button.dataset.panel));
+      button.addEventListener('click', () => {
+        this.openPanel(button.dataset.panel);
+        if (button.dataset.panel === 'messages') this.loadAdminMessages();
+      });
     });
     document.querySelectorAll('[data-open-panel]').forEach(button => {
       button.addEventListener('click', () => this.openPanel(button.dataset.openPanel));
@@ -149,6 +153,14 @@ class OJAdmin {
       input.select();
     });
     document.getElementById('reset-student-account-form').addEventListener('submit', event => this.resetStudentAccount(event));
+    document.getElementById('admin-message-audience').addEventListener('change', event => {
+      const targeted = event.target.value === 'user';
+      document.getElementById('admin-message-user-field').hidden = !targeted;
+      document.getElementById('admin-message-username').required = targeted;
+    });
+    document.getElementById('admin-message-form').addEventListener('submit', event => this.publishAdminMessage(event));
+    document.getElementById('refresh-admin-messages').addEventListener('click', () => this.loadAdminMessages());
+    document.getElementById('admin-message-list').addEventListener('click', event => this.deleteAdminMessage(event));
     document.getElementById('admin-ranking-scope').addEventListener('change', event => {
       this.renderLeaderboard(event.target.value);
     });
@@ -1791,6 +1803,75 @@ class OJAdmin {
     link.click();
     URL.revokeObjectURL(link.href);
     this.toast(`已导出 ${this.filteredSubmissions.length} 条记录`);
+  }
+
+  async messageRequest(type, payload = {}) {
+    const response = await fetch(this.config.workerUrl, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, ...payload }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.status === 401) this.lockExpiredSession();
+    if (!response.ok) throw new Error(result.error || `消息操作失败 (${response.status})`);
+    return result;
+  }
+
+  async loadAdminMessages() {
+    const container = document.getElementById('admin-message-list');
+    container.innerHTML = '<p class="empty-cell">正在读取消息...</p>';
+    try {
+      this.systemMessages = await this.messageRequest('admin_message_list');
+      container.innerHTML = this.systemMessages.length ? this.systemMessages.map(message => `
+        <article class="admin-message-item">
+          <header><div><strong>${this.escape(message.title)}</strong><span>${message.audience === 'all' ? '全体学生' : `发送给 ${this.escape(message.username)}`}</span></div><button type="button" class="table-link table-link-button warning" data-delete-message="${this.escape(message.id)}">删除</button></header>
+          <p>${this.escape(message.content).replace(/\n/g, '<br>')}</p>
+          <footer><span>${this.formatDate(message.createdAt)}</span><span>${this.escape(message.readCount)} 人已读</span></footer>
+        </article>`).join('') : '<p class="empty-cell">还没有发布消息</p>';
+    } catch (error) {
+      container.innerHTML = `<p class="empty-cell">${this.escape(error.message)}</p>`;
+    }
+  }
+
+  async publishAdminMessage(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const button = document.getElementById('admin-message-submit');
+    const status = document.getElementById('admin-message-status');
+    const audience = document.getElementById('admin-message-audience').value;
+    button.disabled = true;
+    status.textContent = '正在发布...';
+    try {
+      await this.messageRequest('admin_message_create', {
+        audience,
+        username: audience === 'user' ? document.getElementById('admin-message-username').value.trim() : '',
+        title: document.getElementById('admin-message-title').value,
+        content: document.getElementById('admin-message-content').value,
+      });
+      status.textContent = '发布成功';
+      document.getElementById('admin-message-title').value = '';
+      document.getElementById('admin-message-content').value = '';
+      await this.loadAdminMessages();
+      this.toast('消息已发布');
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async deleteAdminMessage(event) {
+    const button = event.target.closest('[data-delete-message]');
+    if (!button || !confirm('确定删除这条消息吗？学生端也会立即看不到。')) return;
+    button.disabled = true;
+    try {
+      await this.messageRequest('admin_message_delete', { messageId: Number(button.dataset.deleteMessage) });
+      await this.loadAdminMessages();
+      this.toast('消息已删除');
+    } catch (error) {
+      this.toast(`删除失败：${error.message}`);
+      button.disabled = false;
+    }
   }
 
   countBy(items, selector) {

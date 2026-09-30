@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260930-01">
+  <link rel="stylesheet" href="css/style.css?v=20260930-02">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
@@ -65,9 +65,12 @@
   <main class="container">
     <!-- 题目列表视图 -->
     <section id="view-problems" class="view">
-      <div class="group-switcher" aria-label="选择题目组别">
-        <button type="button" class="group-switch active" data-group="control">电控组</button>
-        <button type="button" class="group-switch" data-group="vision">视觉组</button>
+      <div class="group-toolbar">
+        <div class="group-switcher" aria-label="选择题目组别">
+          <button type="button" class="group-switch active" data-group="control">电控组</button>
+          <button type="button" class="group-switch" data-group="vision">视觉组</button>
+        </div>
+        <button type="button" class="student-message-button" aria-label="查看系统消息" title="系统消息">✉<span class="student-message-badge" hidden>0</span></button>
       </div>
       <h2>题目列表</h2>
       <div id="problem-list" class="problem-list"></div>
@@ -75,9 +78,12 @@
 
     <!-- 套卷列表 -->
     <section id="view-exams" class="view" style="display: none;">
-      <div class="group-switcher" aria-label="选择套卷组别">
-        <button type="button" class="group-switch active" data-group="control">电控组</button>
-        <button type="button" class="group-switch" data-group="vision">视觉组</button>
+      <div class="group-toolbar">
+        <div class="group-switcher" aria-label="选择套卷组别">
+          <button type="button" class="group-switch active" data-group="control">电控组</button>
+          <button type="button" class="group-switch" data-group="vision">视觉组</button>
+        </div>
+        <button type="button" class="student-message-button" aria-label="查看系统消息" title="系统消息">✉<span class="student-message-badge" hidden>0</span></button>
       </div>
       <h2>套卷列表</h2>
       <div id="exam-list" class="exam-list"><p class="info">打开套卷页面后加载</p></div>
@@ -192,6 +198,13 @@
     </section>
   </main>
 
+  <section id="student-message-modal" class="student-message-modal" hidden aria-modal="true" role="dialog" aria-labelledby="student-message-title">
+    <div class="student-message-card">
+      <header><div><h2 id="student-message-title">系统消息</h2><p>公告和发送给你的个人消息</p></div><button id="close-student-messages" type="button" class="btn btn-secondary">关闭 ×</button></header>
+      <div id="student-message-list" class="student-message-list"><p class="info">正在加载...</p></div>
+    </div>
+  </section>
+
   <!-- 脚本加载（顺序很重要） -->
   <script src="js/config.js?v=20260922-9"></script>
   <script src="js/languages.js?v=20260926-01"></script>
@@ -207,6 +220,6 @@
   <script src="vendor/jszip/jszip.min.js?v=3.10.2"></script>
   <script src="js/exam-docx.js?v=20260929-01"></script>
   <script src="js/exams.js?v=20260930-02"></script>
-  <script src="js/app.js?v=20260930-03"></script>
+  <script src="js/app.js?v=20260930-04"></script>
 </body>
 </html>

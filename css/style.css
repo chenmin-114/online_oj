@@ -225,6 +225,24 @@ body.username-locked { overflow: hidden; }
   border-radius: 7px;
   background: var(--bg-secondary);
 }
+.group-toolbar { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.student-message-button { position: relative; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--border-color); border-radius: 50%; background: var(--bg-secondary); color: var(--text-primary); font-size: 18px; cursor: pointer; }
+.student-message-button:hover { border-color: var(--accent-primary); background: var(--bg-tertiary); }
+.student-message-badge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; display: grid; place-items: center; border: 2px solid var(--bg-primary); border-radius: 99px; background: #e65353; color: white; font-size: 9px; font-weight: 700; }
+.student-message-badge[hidden] { display: none; }
+.student-message-modal[hidden] { display: none; }
+.student-message-modal { position: fixed; inset: 0; z-index: 1250; padding: 24px; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; background: rgba(0,0,0,.68); backdrop-filter: blur(6px); }
+.student-message-card { width: min(680px, 100%); margin-top: 6vh; overflow: hidden; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); box-shadow: 0 24px 70px rgba(0,0,0,.5); }
+.student-message-card > header { padding: 17px 19px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--border-color); }
+.student-message-card > header h2 { font-size: 20px; }
+.student-message-card > header p { margin-top: 3px; color: var(--text-secondary); font-size: 12px; }
+.student-message-list { max-height: 68vh; padding: 14px; display: grid; gap: 10px; overflow-y: auto; }
+.student-message-item { padding: 14px 15px; display: grid; gap: 8px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-primary); }
+.student-message-item.unread { border-color: rgba(86,156,214,.55); }
+.student-message-item header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.student-message-item header strong { font-size: 14px; }
+.student-message-item header span, .student-message-item footer { color: var(--text-secondary); font-size: 10px; }
+.student-message-item p { color: var(--text-primary); font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .group-switch {
   min-width: 92px;

@@ -25,6 +25,7 @@ class App {
     this.isRestoringCode = false;
     this.analyticsPending = new Set();
     this.resubmissionNotices = [];
+    this.systemMessages = [];
   }
 
   async init() {
@@ -96,6 +97,7 @@ class App {
     // 题目列表与编辑器并行加载；这里只等待首屏真正需要的题目数据。
     await problemListLoading;
     await this._loadResubmissionNotices(true);
+    await this._loadSystemMessages(false);
 
     // 保留 Promise 引用，避免编辑器初始化失败产生未处理的异步错误。
     this.editorInitialization = editorInitialization;
@@ -416,6 +418,13 @@ class App {
       if (problem) this.loadProblem(problem.file);
       else alert(`管理员要求你重新提交题目 ${notice.problemId}`);
     });
+    document.querySelectorAll('.student-message-button').forEach(button => {
+      button.addEventListener('click', () => this._openSystemMessages());
+    });
+    document.getElementById('close-student-messages').addEventListener('click', () => this._closeSystemMessages());
+    document.getElementById('student-message-modal').addEventListener('click', event => {
+      if (event.target.id === 'student-message-modal') this._closeSystemMessages();
+    });
 
     document.querySelectorAll('.nav-link').forEach(link => {
       link.addEventListener('click', () => this.examUI?.leaveProgrammingProblem());
@@ -608,6 +617,7 @@ class App {
         if (this.currentProblem) this._restoreCode(document.getElementById('language-select').value);
         this._trackView(this.currentProblem?.id || '');
         this._loadResubmissionNotices(true);
+        this._loadSystemMessages(false);
 
         form.removeEventListener('submit', handleSubmit);
         skip.removeEventListener('click', handleSkip);
@@ -1092,6 +1102,50 @@ class App {
     } catch {
       // 通知读取失败不影响正常浏览和判题。
     }
+  }
+
+  async _loadSystemMessages(markRead = false) {
+    if (!this.username || this.adminExamPreview || this.adminProblemPreview) return;
+    try {
+      const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'student_messages', username: this.username, markRead }),
+      });
+      if (!response.ok) return;
+      const messages = await response.json();
+      this.systemMessages = Array.isArray(messages) ? messages : [];
+      const unread = this.systemMessages.filter(message => !message.read).length;
+      document.querySelectorAll('.student-message-badge').forEach(badge => {
+        badge.hidden = unread === 0;
+        badge.textContent = unread > 99 ? '99+' : String(unread);
+      });
+      if (markRead) this._renderSystemMessages();
+    } catch {
+      // 消息读取失败不阻塞题目和判题。
+    }
+  }
+
+  async _openSystemMessages() {
+    const modal = document.getElementById('student-message-modal');
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    document.getElementById('student-message-list').innerHTML = '<p class="info">正在加载消息...</p>';
+    await this._loadSystemMessages(true);
+  }
+
+  _closeSystemMessages() {
+    document.getElementById('student-message-modal').hidden = true;
+    document.body.style.removeProperty('overflow');
+  }
+
+  _renderSystemMessages() {
+    const container = document.getElementById('student-message-list');
+    container.innerHTML = this.systemMessages.length ? this.systemMessages.map(message => `
+      <article class="student-message-item${message.read ? '' : ' unread'}">
+        <header><strong>${this._escapeHtml(message.title)}</strong><span>${message.audience === 'all' ? '公共公告' : '个人消息'}</span></header>
+        <p>${this._escapeHtml(message.content)}</p>
+        <footer>${this._escapeHtml(new Date(message.createdAt).toLocaleString())}</footer>
+      </article>`).join('') : '<p class="info">暂无系统消息</p>';
   }
 
   _renderJudgeResult(result) {

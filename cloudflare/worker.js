@@ -269,6 +269,18 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminRequestResubmission(body, env);
+      } else if (body.type === 'admin_message_list') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminMessageList(env);
+      } else if (body.type === 'admin_message_create') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminMessageCreate(body, env);
+      } else if (body.type === 'admin_message_delete') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminMessageDelete(body, env);
       } else if (body.type === 'student_account_status') {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
         if (rateLimitError) return rateLimitError;
@@ -307,6 +319,10 @@ export default {
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
         return await handleStudentResubmissionNotices(body, env);
+      } else if (body.type === 'student_messages') {
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return await handleStudentMessages(body, env);
       } else if (body.type === 'student_skip_login') {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
         if (rateLimitError) return rateLimitError;
@@ -1907,6 +1923,85 @@ async function handleStudentResubmissionNotices(body, env) {
   return jsonResponse((result.results || []).map(row => ({
     problemId: row.problem_id,
     requestedAt: Number(row.requested_at),
+  })));
+}
+
+async function handleAdminMessageList(env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '消息数据库尚未配置' }, 503);
+  const result = await env.OJ_DB.prepare(`
+    SELECT m.id, m.audience, m.username, m.title, m.content, m.created_at,
+           COUNT(r.username) AS read_count
+    FROM system_messages m
+    LEFT JOIN system_message_reads r ON r.message_id = m.id
+    GROUP BY m.id
+    ORDER BY m.created_at DESC, m.id DESC
+    LIMIT 200
+  `).all();
+  return jsonResponse((result.results || []).map(row => ({
+    id: Number(row.id), audience: row.audience, username: row.username,
+    title: row.title, content: row.content, createdAt: Number(row.created_at),
+    readCount: Number(row.read_count || 0),
+  })));
+}
+
+async function handleAdminMessageCreate(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '消息数据库尚未配置' }, 503);
+  const audience = body.audience === 'user' ? 'user' : 'all';
+  const username = audience === 'user' ? normalizeStudentUsername(body.username) : null;
+  const title = normalizeExamText(body.title, 120);
+  const content = normalizeExamText(body.content, 10000);
+  if (!title || !content) return jsonResponse({ error: '请填写消息标题和正文' }, 400);
+  if (audience === 'user') {
+    if (!username) return jsonResponse({ error: '请输入接收学生的用户名' }, 400);
+    const account = await env.OJ_DB.prepare('SELECT 1 AS found FROM student_accounts WHERE username = ?1')
+      .bind(username).first();
+    if (!account) return jsonResponse({ error: '找不到该学生账号，请检查用户名' }, 404);
+  }
+  const result = await env.OJ_DB.prepare(`
+    INSERT INTO system_messages (audience, username, title, content, created_at)
+    VALUES (?1, ?2, ?3, ?4, ?5)
+  `).bind(audience, username, title, content, Date.now()).run();
+  return jsonResponse({ success: true, id: Number(result.meta?.last_row_id || 0) }, 201);
+}
+
+async function handleAdminMessageDelete(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '消息数据库尚未配置' }, 503);
+  const messageId = Number(body.messageId);
+  if (!Number.isInteger(messageId) || messageId < 1) return jsonResponse({ error: '消息编号不正确' }, 400);
+  await env.OJ_DB.batch([
+    env.OJ_DB.prepare('DELETE FROM system_message_reads WHERE message_id = ?1').bind(messageId),
+    env.OJ_DB.prepare('DELETE FROM system_messages WHERE id = ?1').bind(messageId),
+  ]);
+  return jsonResponse({ success: true });
+}
+
+async function handleStudentMessages(body, env) {
+  if (!env.OJ_DB) return jsonResponse([]);
+  const username = normalizeStudentUsername(body.username);
+  const markRead = body.markRead === true;
+  const result = await env.OJ_DB.prepare(`
+    SELECT m.id, m.audience, m.title, m.content, m.created_at,
+           CASE WHEN r.message_id IS NULL THEN 0 ELSE 1 END AS is_read
+    FROM system_messages m
+    LEFT JOIN system_message_reads r ON r.message_id = m.id AND r.username = ?1
+    WHERE m.audience = 'all' OR (m.audience = 'user' AND m.username = ?1)
+    ORDER BY m.created_at DESC, m.id DESC
+    LIMIT 100
+  `).bind(username).all();
+  if (markRead) {
+    const now = Date.now();
+    const unread = (result.results || []).filter(row => Number(row.is_read) !== 1);
+    for (let index = 0; index < unread.length; index += 100) {
+      await env.OJ_DB.batch(unread.slice(index, index + 100).map(row => env.OJ_DB.prepare(`
+        INSERT OR IGNORE INTO system_message_reads (message_id, username, read_at)
+        VALUES (?1, ?2, ?3)
+      `).bind(Number(row.id), username, now)));
+    }
+  }
+  return jsonResponse((result.results || []).map(row => ({
+    id: Number(row.id), audience: row.audience, title: row.title,
+    content: row.content, createdAt: Number(row.created_at),
+    read: markRead ? true : Number(row.is_read) === 1,
   })));
 }
 
