@@ -411,15 +411,12 @@ class App {
       if (this.examUI?.programmingContext) this.examUI.returnFromProgrammingProblem();
       else this.submitCode();
     });
-    document.getElementById('resubmission-notice-btn').addEventListener('click', () => {
-      const notice = this.resubmissionNotices[0];
-      if (!notice) return;
-      const problem = this.problemList.find(item => item.id === notice.problemId);
-      if (problem) this.loadProblem(problem.file);
-      else alert(`管理员要求你重新提交题目 ${notice.problemId}`);
-    });
     document.querySelectorAll('.student-message-button').forEach(button => {
       button.addEventListener('click', () => this._openSystemMessages());
+    });
+    document.getElementById('student-message-list').addEventListener('click', event => {
+      const button = event.target.closest('[data-message-problem]');
+      if (button) this._openMessageProblem(button.dataset.messageGroup, button.dataset.messageProblem);
     });
     document.getElementById('close-student-messages').addEventListener('click', () => this._closeSystemMessages());
     document.getElementById('student-message-modal').addEventListener('click', event => {
@@ -1068,7 +1065,7 @@ class App {
     }
   }
 
-  async _loadResubmissionNotices(showPopup = false) {
+  async _loadResubmissionNotices() {
     if (!this.username || this.adminExamPreview || this.adminProblemPreview) return;
     try {
       const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
@@ -1084,21 +1081,7 @@ class App {
       if (!response.ok) return;
       const notices = await response.json();
       this.resubmissionNotices = Array.isArray(notices) ? notices : [];
-      const menuButton = document.getElementById('resubmission-notice-btn');
-      menuButton.hidden = !this.resubmissionNotices.length;
-      menuButton.textContent = this.resubmissionNotices.length
-        ? `需要重新提交（${this.resubmissionNotices.length}）`
-        : '需要重新提交';
       if (this.problemList.length) this._renderProblemList(this.problemList);
-      if (showPopup && this.resubmissionNotices.length) {
-        const newest = Math.max(...this.resubmissionNotices.map(item => Number(item.requestedAt) || 0));
-        const key = `oj_resubmit_popup:${encodeURIComponent(this.username)}:${this.group}`;
-        const shown = Number(sessionStorage.getItem(key) || 0);
-        if (newest > shown) {
-          sessionStorage.setItem(key, String(newest));
-          alert(`管理员要求你重新提交以下题目：\n${this.resubmissionNotices.map(item => item.problemId).join('、')}\n\n请修改代码后重新提交判题。`);
-        }
-      }
     } catch {
       // 通知读取失败不影响正常浏览和判题。
     }
@@ -1142,10 +1125,22 @@ class App {
     const container = document.getElementById('student-message-list');
     container.innerHTML = this.systemMessages.length ? this.systemMessages.map(message => `
       <article class="student-message-item${message.read ? '' : ' unread'}">
-        <header><strong>${this._escapeHtml(message.title)}</strong><span>${message.audience === 'all' ? '公共公告' : '个人消息'}</span></header>
+        <header><strong>${this._escapeHtml(message.title)}</strong><span>${message.messageType === 'resubmission' ? (message.requiresAction ? '待重新提交' : '已完成') : (message.audience === 'all' ? '公共公告' : '个人消息')}</span></header>
         <p>${this._escapeHtml(message.content)}</p>
-        <footer>${this._escapeHtml(new Date(message.createdAt).toLocaleString())}</footer>
+        <footer><span>${this._escapeHtml(new Date(message.createdAt).toLocaleString())}</span>${message.messageType === 'resubmission' && message.problemId ? `<button type="button" class="btn-small" data-message-group="${this._escapeHtml(message.group || 'control')}" data-message-problem="${this._escapeHtml(message.problemId)}">${message.requiresAction ? '去重新提交' : '查看题目'}</button>` : ''}</footer>
       </article>`).join('') : '<p class="info">暂无系统消息</p>';
+  }
+
+  async _openMessageProblem(group, problemId) {
+    const targetGroup = group === 'vision' ? 'vision' : 'control';
+    if (targetGroup !== this.group) await this.switchGroup(targetGroup);
+    const problem = this.problemList.find(item => item.id === problemId);
+    if (!problem) {
+      alert(`暂时找不到题目 ${problemId}，请刷新页面后重试。`);
+      return;
+    }
+    this._closeSystemMessages();
+    await this.loadProblem(problem.file);
   }
 
   _renderJudgeResult(result) {

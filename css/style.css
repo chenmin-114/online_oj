@@ -243,6 +243,7 @@ body.username-locked { overflow: hidden; }
 .student-message-item header strong { font-size: 14px; }
 .student-message-item header span, .student-message-item footer { color: var(--text-secondary); font-size: 10px; }
 .student-message-item p { color: var(--text-primary); font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.student-message-item footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 .group-switch {
   min-width: 92px;

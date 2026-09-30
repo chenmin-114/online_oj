@@ -207,6 +207,10 @@ CREATE TABLE IF NOT EXISTS system_messages (
   title TEXT NOT NULL,
   content TEXT NOT NULL,
   created_at INTEGER NOT NULL,
+  message_type TEXT NOT NULL DEFAULT 'message',
+  group_name TEXT,
+  problem_id TEXT,
+  resubmission_key TEXT,
   CHECK ((audience = 'all' AND username IS NULL) OR (audience = 'user' AND username IS NOT NULL))
 );
 
@@ -215,6 +219,9 @@ CREATE INDEX IF NOT EXISTS idx_system_messages_created
 
 CREATE INDEX IF NOT EXISTS idx_system_messages_user
   ON system_messages(username, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_system_messages_resubmission
+  ON system_messages(resubmission_key);
 
 CREATE TABLE IF NOT EXISTS system_message_reads (
   message_id INTEGER NOT NULL,

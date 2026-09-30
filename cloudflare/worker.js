@@ -1901,12 +1901,36 @@ async function handleAdminRequestResubmission(body, env) {
   const target = await resolveAdminSubmissionTarget(body, env);
   if (target.error) return jsonResponse({ error: target.error }, 400);
   const now = Date.now();
-  await env.OJ_DB.prepare(`
-    INSERT INTO resubmission_requests (group_name, problem_id, username, requested_at)
-    VALUES (?1, ?2, ?3, ?4)
-    ON CONFLICT(group_name, problem_id, username)
-    DO UPDATE SET requested_at = excluded.requested_at
-  `).bind(target.group, target.problemId, target.username, now).run();
+  const groupLabel = GROUPS[target.group]?.label || target.group;
+  const resubmissionKey = `${target.group}:${target.problemId}:${target.username}`;
+  await env.OJ_DB.batch([
+    env.OJ_DB.prepare(`
+      INSERT INTO resubmission_requests (group_name, problem_id, username, requested_at)
+      VALUES (?1, ?2, ?3, ?4)
+      ON CONFLICT(group_name, problem_id, username)
+      DO UPDATE SET requested_at = excluded.requested_at
+    `).bind(target.group, target.problemId, target.username, now),
+    env.OJ_DB.prepare(`
+      INSERT INTO system_messages (
+        audience, username, title, content, created_at,
+        message_type, group_name, problem_id, resubmission_key
+      ) VALUES ('user', ?1, ?2, ?3, ?4, 'resubmission', ?5, ?6, ?7)
+      ON CONFLICT(resubmission_key) DO UPDATE SET
+        title = excluded.title, content = excluded.content,
+        created_at = excluded.created_at
+    `).bind(
+      target.username,
+      `需要重新提交：${target.problemId}`,
+      `管理员要求你重新提交${groupLabel}题目 ${target.problemId}。请修改代码后重新提交判题。`,
+      now, target.group, target.problemId, resubmissionKey,
+    ),
+    env.OJ_DB.prepare(`
+      DELETE FROM system_message_reads
+      WHERE message_id = (
+        SELECT id FROM system_messages WHERE resubmission_key = ?1
+      ) AND username = ?2
+    `).bind(resubmissionKey, target.username),
+  ]);
   return jsonResponse({ success: true, ...target, requestedAt: now });
 }
 
@@ -1930,6 +1954,7 @@ async function handleAdminMessageList(env) {
   if (!env.OJ_DB) return jsonResponse({ error: '消息数据库尚未配置' }, 503);
   const result = await env.OJ_DB.prepare(`
     SELECT m.id, m.audience, m.username, m.title, m.content, m.created_at,
+           m.message_type, m.group_name, m.problem_id,
            COUNT(r.username) AS read_count
     FROM system_messages m
     LEFT JOIN system_message_reads r ON r.message_id = m.id
@@ -1940,6 +1965,8 @@ async function handleAdminMessageList(env) {
   return jsonResponse((result.results || []).map(row => ({
     id: Number(row.id), audience: row.audience, username: row.username,
     title: row.title, content: row.content, createdAt: Number(row.created_at),
+    messageType: row.message_type || 'message', group: row.group_name,
+    problemId: row.problem_id,
     readCount: Number(row.read_count || 0),
   })));
 }
@@ -1981,9 +2008,16 @@ async function handleStudentMessages(body, env) {
   const markRead = body.markRead === true;
   const result = await env.OJ_DB.prepare(`
     SELECT m.id, m.audience, m.title, m.content, m.created_at,
-           CASE WHEN r.message_id IS NULL THEN 0 ELSE 1 END AS is_read
+           m.message_type, m.group_name, m.problem_id,
+           CASE WHEN r.message_id IS NULL THEN 0 ELSE 1 END AS is_read,
+           CASE WHEN rr.problem_id IS NULL THEN 0 ELSE 1 END AS requires_action
     FROM system_messages m
     LEFT JOIN system_message_reads r ON r.message_id = m.id AND r.username = ?1
+    LEFT JOIN resubmission_requests rr
+      ON m.message_type = 'resubmission'
+     AND rr.username = ?1
+     AND rr.group_name = m.group_name
+     AND rr.problem_id = m.problem_id
     WHERE m.audience = 'all' OR (m.audience = 'user' AND m.username = ?1)
     ORDER BY m.created_at DESC, m.id DESC
     LIMIT 100
@@ -2001,6 +2035,8 @@ async function handleStudentMessages(body, env) {
   return jsonResponse((result.results || []).map(row => ({
     id: Number(row.id), audience: row.audience, title: row.title,
     content: row.content, createdAt: Number(row.created_at),
+    messageType: row.message_type || 'message', group: row.group_name,
+    problemId: row.problem_id, requiresAction: Number(row.requires_action) === 1,
     read: markRead ? true : Number(row.is_read) === 1,
   })));
 }
