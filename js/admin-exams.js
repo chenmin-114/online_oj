@@ -9,6 +9,9 @@ class ExamAdmin {
     this.pendingImportedProblems = [];
     this.rosterWorkbook = null;
     this.rosterExportName = '';
+    this.refreshing = false;
+    this.gradingDirty = false;
+    this.lastRefreshAt = 0;
   }
 
   init() {
@@ -34,6 +37,9 @@ class ExamAdmin {
       if (button) this.selectStudent(Number(button.dataset.gradingStudent));
     });
     document.getElementById('grading-workspace').addEventListener('click', event => this.handleGradingClick(event));
+    document.getElementById('grading-workspace').addEventListener('input', event => {
+      if (event.target.matches('[data-grade-score], [data-grade-feedback]')) this.gradingDirty = true;
+    });
     document.getElementById('grading-prev').addEventListener('click', () => this.selectStudent(this.studentIndex - 1));
     document.getElementById('grading-next').addEventListener('click', () => this.selectStudent(this.studentIndex + 1));
     document.getElementById('admin-preview-body').addEventListener('click', event => {
@@ -46,11 +52,37 @@ class ExamAdmin {
       const part = this.previewPaper?.questions.flatMap(question => question.parts).find(item => item.id === partId);
       if (code && !code.value.trim()) code.value = this.languageTemplate(event.target.value, part);
     });
-    document.querySelector('[data-panel="exams"]').addEventListener('click', () => this.ensureLoaded());
+    document.querySelector('[data-panel="exams"]').addEventListener('click', () => this.ensureLoaded(true, this.loadedGroup === this.group));
+    setInterval(() => this.autoRefresh(), 30000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.autoRefresh();
+    });
+    window.addEventListener('focus', () => this.autoRefresh());
   }
 
   get admin() { return window.ojAdmin; }
   get group() { return this.admin?.group || 'control'; }
+
+  async autoRefresh() {
+    if (document.hidden || this.refreshing || !this.admin || document.body.classList.contains('auth-locked')) return;
+    if (Date.now() - this.lastRefreshAt < 5000) return;
+    if (!document.getElementById('panel-exams').classList.contains('active')) return;
+    this.refreshing = true;
+    this.lastRefreshAt = Date.now();
+    try {
+      const gradingVisible = !document.getElementById('exam-grading-view').hidden;
+      const examId = document.getElementById('grading-exam').value;
+      if (gradingVisible && examId) {
+        if (!this.gradingDirty) await this.loadGrading(examId, { silent: true, preserveSelection: true });
+      } else if (document.getElementById('exam-editor').hidden) {
+        await this.ensureLoaded(true, true);
+      }
+    } catch {
+      // 静默刷新失败时保留当前内容，下次自动重试。
+    } finally {
+      this.refreshing = false;
+    }
+  }
 
   async request(type, payload = {}) {
     const response = await fetch(this.admin.config.workerUrl, {
@@ -65,18 +97,21 @@ class ExamAdmin {
     return result;
   }
 
-  async ensureLoaded(force = false) {
+  async ensureLoaded(force = false, silent = false) {
     if (!this.admin || document.body.classList.contains('auth-locked')) return;
     if (!force && this.loadedGroup === this.group && this.exams.length) return;
+    const requestedGroup = this.group;
     const tbody = document.getElementById('exam-admin-list');
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-cell">正在读取...</td></tr>';
+    if (!silent) tbody.innerHTML = '<tr><td colspan="8" class="empty-cell">正在读取...</td></tr>';
     try {
-      this.exams = await this.request('admin_exam_list');
+      const exams = await this.request('admin_exam_list');
+      if (this.group !== requestedGroup) return;
+      this.exams = exams;
       this.loadedGroup = this.group;
       this.renderList();
       this.populateExamSelector();
     } catch (error) {
-      tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">${this.escape(error.message)}</td></tr>`;
+      if (!silent) tbody.innerHTML = `<tr><td colspan="8" class="empty-cell">${this.escape(error.message)}</td></tr>`;
     }
   }
 
@@ -719,24 +754,32 @@ class ExamAdmin {
     document.getElementById('exam-grading-view').hidden = false;
   }
 
-  async loadGrading(examId) {
+  async loadGrading(examId, { silent = false, preserveSelection = false } = {}) {
     if (!examId) return;
+    const requestedGroup = this.group;
     const workspace = document.getElementById('grading-workspace');
-    workspace.innerHTML = '<p class="empty-cell">正在读取提交...</p>';
+    const selectedId = preserveSelection ? this.submissions[this.studentIndex]?.id : null;
+    const selectedPartId = preserveSelection ? document.getElementById('grading-part').value : '';
+    if (!preserveSelection) this.gradingDirty = false;
+    if (!silent) workspace.innerHTML = '<p class="empty-cell">正在读取提交...</p>';
     try {
-      [this.paper, this.submissions] = await Promise.all([
+      const [paper, submissions] = await Promise.all([
         this.request('admin_exam_get', { examId }),
         this.request('admin_exam_submissions', { examId }),
       ]);
-      this.studentIndex = -1;
+      if (this.group !== requestedGroup || document.getElementById('grading-exam').value !== examId) return;
+      this.paper = paper;
+      this.submissions = submissions;
+      this.studentIndex = selectedId ? this.submissions.findIndex(item => item.id === selectedId) : -1;
       const partSelect = document.getElementById('grading-part');
       partSelect.innerHTML = '<option value="">选择小题</option>' + this.paper.questions.flatMap(question => question.parts.map(part =>
         `<option value="${this.escape(part.id)}">${this.escape(question.title)} · ${this.escape(part.prompt || part.id)}</option>`
       )).join('');
+      if ([...partSelect.options].some(option => option.value === selectedPartId)) partSelect.value = selectedPartId;
       this.renderGrading();
-      if (this.submissions.length) await this.selectStudent(0);
+      if (this.submissions.length) await this.selectStudent(this.studentIndex >= 0 ? this.studentIndex : 0);
     } catch (error) {
-      workspace.innerHTML = `<p class="empty-cell">${this.escape(error.message)}</p>`;
+      if (!silent) workspace.innerHTML = `<p class="empty-cell">${this.escape(error.message)}</p>`;
     }
   }
 
@@ -898,6 +941,7 @@ class ExamAdmin {
       submission.gradingStatus = result.gradingStatus;
       submission.released = result.released;
       this.admin.toast(save ? '评分已保存' : '成绩发布状态已更新');
+      this.gradingDirty = false;
       this.renderGrading();
     } catch (error) {
       this.admin.toast(`保存失败：${error.message}`);

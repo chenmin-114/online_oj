@@ -8,10 +8,13 @@ class ExamUI {
     this.answers = {};
     this.programmingContext = null;
     this.saveTimer = null;
+    this.refreshing = false;
+    this.refreshTimer = null;
+    this.lastRefreshAt = 0;
   }
 
   init() {
-    document.querySelector('[data-view="exams"]').addEventListener('click', () => this.loadList());
+    document.querySelector('[data-view="exams"]').addEventListener('click', () => this.loadList(true, Boolean(this.loadedKey)));
     document.getElementById('back-to-exam-list').addEventListener('click', () => {
       this.saveDraft();
       if (this.app.adminExamPreview) {
@@ -40,6 +43,37 @@ class ExamUI {
       if (this.app.adminProblemPreview) window.close();
       else this.returnFromProgrammingProblem();
     });
+    this.refreshTimer = setInterval(() => this.autoRefresh(), 30000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.autoRefresh();
+    });
+    window.addEventListener('focus', () => this.autoRefresh());
+  }
+
+  async autoRefresh() {
+    if (document.hidden || this.refreshing || this.app.adminExamPreview || this.app.adminProblemPreview) return;
+    if (Date.now() - this.lastRefreshAt < 5000) return;
+    const view = this.app.views.currentView;
+    if (view !== 'exams' && view !== 'exam') return;
+    this.refreshing = true;
+    this.lastRefreshAt = Date.now();
+    try {
+      if (view === 'exams') {
+        await this.loadList(true, true);
+      } else if (this.paper && this.submission) {
+        const result = await this.request('exam_get', { examId: this.paper.id });
+        if (this.app.views.currentView !== 'exam' || result.paper?.id !== this.paper.id) return;
+        this.submission = result.mySubmission;
+        this.renderResult(this.submission);
+        document.getElementById('exam-submit-status').textContent = this.submission
+          ? `已于 ${new Date(this.submission.submittedAt).toLocaleString()} 提交；批改状态会自动更新`
+          : '答案会自动保存在本机；提交整张试卷后才会进入批改';
+      }
+    } catch {
+      // 静默刷新失败时保留当前数据，下次自动重试，不打断学生作答。
+    } finally {
+      this.refreshing = false;
+    }
   }
 
   onGroupChange() {
@@ -80,14 +114,16 @@ class ExamUI {
     return result;
   }
 
-  async loadList(force = false) {
+  async loadList(force = false, silent = false) {
     if (this.app.adminExamPreview) return this.openExam(this.app.adminExamPreview);
     const key = `${this.app.username}:${this.app.group}`;
     if (!force && this.loadedKey === key) return;
     const container = document.getElementById('exam-list');
-    container.innerHTML = '<p class="info">⏳ 正在加载套卷...</p>';
+    if (!silent) container.innerHTML = '<p class="info">⏳ 正在加载套卷...</p>';
     try {
-      this.exams = await this.request('exam_list');
+      const exams = await this.request('exam_list');
+      if (`${this.app.username}:${this.app.group}` !== key) return;
+      this.exams = exams;
       this.loadedKey = key;
       this.renderList();
     } catch (error) {
@@ -95,7 +131,7 @@ class ExamUI {
         await this.app._promptUsername({ verifyCurrent: true });
         return this.loadList(true);
       }
-      container.innerHTML = `<p class="error">套卷加载失败：${this.escape(error.message)}</p>`;
+      if (!silent) container.innerHTML = `<p class="error">套卷加载失败：${this.escape(error.message)}</p>`;
     }
   }
 
