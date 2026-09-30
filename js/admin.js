@@ -1823,7 +1823,7 @@ class OJAdmin {
       this.systemMessages = await this.messageRequest('admin_message_list');
       container.innerHTML = this.systemMessages.length ? this.systemMessages.map(message => `
         <article class="admin-message-item">
-          <header><div><strong>${this.escape(message.title)}</strong><span>${message.audience === 'all' ? '全体学生' : `发送给 ${this.escape(message.username)}`}</span></div><button type="button" class="table-link table-link-button warning" data-delete-message="${this.escape(message.id)}">删除</button></header>
+          <header><div><strong>${this.escape(message.title)}</strong><span>${message.audience === 'all' ? '全体学生' : `发送给 ${this.escape(message.username)}`} · ${message.popupEnabled ? '弹窗提醒' : '仅消息中心'}</span></div><button type="button" class="table-link table-link-button warning" data-delete-message="${this.escape(message.id)}">删除</button></header>
           <p>${this.escape(message.content).replace(/\n/g, '<br>')}</p>
           <footer><span>${this.formatDate(message.createdAt)}</span><span>${this.escape(message.readCount)} 人已读</span></footer>
         </article>`).join('') : '<p class="empty-cell">还没有发布消息</p>';
@@ -1847,6 +1847,7 @@ class OJAdmin {
         username: audience === 'user' ? document.getElementById('admin-message-username').value.trim() : '',
         title: document.getElementById('admin-message-title').value,
         content: document.getElementById('admin-message-content').value,
+        popupEnabled: document.getElementById('admin-message-popup').checked,
       });
       status.textContent = '发布成功';
       document.getElementById('admin-message-title').value = '';

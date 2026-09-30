@@ -323,6 +323,10 @@ export default {
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
         return await handleStudentMessages(body, env);
+      } else if (body.type === 'student_message_read') {
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return await handleStudentMessageRead(body, env);
       } else if (body.type === 'student_skip_login') {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
         if (rateLimitError) return rateLimitError;
@@ -1913,11 +1917,11 @@ async function handleAdminRequestResubmission(body, env) {
     env.OJ_DB.prepare(`
       INSERT INTO system_messages (
         audience, username, title, content, created_at,
-        message_type, group_name, problem_id, resubmission_key
-      ) VALUES ('user', ?1, ?2, ?3, ?4, 'resubmission', ?5, ?6, ?7)
+        message_type, group_name, problem_id, resubmission_key, popup_enabled
+      ) VALUES ('user', ?1, ?2, ?3, ?4, 'resubmission', ?5, ?6, ?7, 1)
       ON CONFLICT(resubmission_key) DO UPDATE SET
         title = excluded.title, content = excluded.content,
-        created_at = excluded.created_at
+        created_at = excluded.created_at, popup_enabled = 1
     `).bind(
       target.username,
       `需要重新提交：${target.problemId}`,
@@ -1954,7 +1958,7 @@ async function handleAdminMessageList(env) {
   if (!env.OJ_DB) return jsonResponse({ error: '消息数据库尚未配置' }, 503);
   const result = await env.OJ_DB.prepare(`
     SELECT m.id, m.audience, m.username, m.title, m.content, m.created_at,
-           m.message_type, m.group_name, m.problem_id,
+           m.message_type, m.group_name, m.problem_id, m.popup_enabled,
            COUNT(r.username) AS read_count
     FROM system_messages m
     LEFT JOIN system_message_reads r ON r.message_id = m.id
@@ -1967,6 +1971,7 @@ async function handleAdminMessageList(env) {
     title: row.title, content: row.content, createdAt: Number(row.created_at),
     messageType: row.message_type || 'message', group: row.group_name,
     problemId: row.problem_id,
+    popupEnabled: Number(row.popup_enabled) === 1,
     readCount: Number(row.read_count || 0),
   })));
 }
@@ -1977,6 +1982,7 @@ async function handleAdminMessageCreate(body, env) {
   const username = audience === 'user' ? normalizeStudentUsername(body.username) : null;
   const title = normalizeExamText(body.title, 120);
   const content = normalizeExamText(body.content, 10000);
+  const popupEnabled = body.popupEnabled === true ? 1 : 0;
   if (!title || !content) return jsonResponse({ error: '请填写消息标题和正文' }, 400);
   if (audience === 'user') {
     if (!username) return jsonResponse({ error: '请输入接收学生的用户名' }, 400);
@@ -1985,9 +1991,9 @@ async function handleAdminMessageCreate(body, env) {
     if (!account) return jsonResponse({ error: '找不到该学生账号，请检查用户名' }, 404);
   }
   const result = await env.OJ_DB.prepare(`
-    INSERT INTO system_messages (audience, username, title, content, created_at)
-    VALUES (?1, ?2, ?3, ?4, ?5)
-  `).bind(audience, username, title, content, Date.now()).run();
+    INSERT INTO system_messages (audience, username, title, content, created_at, popup_enabled)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+  `).bind(audience, username, title, content, Date.now(), popupEnabled).run();
   return jsonResponse({ success: true, id: Number(result.meta?.last_row_id || 0) }, 201);
 }
 
@@ -2008,7 +2014,7 @@ async function handleStudentMessages(body, env) {
   const markRead = body.markRead === true;
   const result = await env.OJ_DB.prepare(`
     SELECT m.id, m.audience, m.title, m.content, m.created_at,
-           m.message_type, m.group_name, m.problem_id,
+           m.message_type, m.group_name, m.problem_id, m.popup_enabled,
            CASE WHEN r.message_id IS NULL THEN 0 ELSE 1 END AS is_read,
            CASE WHEN rr.problem_id IS NULL THEN 0 ELSE 1 END AS requires_action
     FROM system_messages m
@@ -2037,8 +2043,26 @@ async function handleStudentMessages(body, env) {
     content: row.content, createdAt: Number(row.created_at),
     messageType: row.message_type || 'message', group: row.group_name,
     problemId: row.problem_id, requiresAction: Number(row.requires_action) === 1,
+    popupEnabled: Number(row.popup_enabled) === 1,
     read: markRead ? true : Number(row.is_read) === 1,
   })));
+}
+
+async function handleStudentMessageRead(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ success: true });
+  const username = normalizeStudentUsername(body.username);
+  const messageId = Number(body.messageId);
+  if (!Number.isInteger(messageId) || messageId < 1) {
+    return jsonResponse({ error: '消息编号不正确' }, 400);
+  }
+  await env.OJ_DB.prepare(`
+    INSERT OR IGNORE INTO system_message_reads (message_id, username, read_at)
+    SELECT id, ?1, ?2
+    FROM system_messages
+    WHERE id = ?3
+      AND (audience = 'all' OR (audience = 'user' AND username = ?1))
+  `).bind(username, Date.now(), messageId).run();
+  return jsonResponse({ success: true });
 }
 
 /**

@@ -244,6 +244,22 @@ body.username-locked { overflow: hidden; }
 .student-message-item header span, .student-message-item footer { color: var(--text-secondary); font-size: 10px; }
 .student-message-item p { color: var(--text-primary); font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .student-message-item footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.student-alert-modal[hidden] { display: none; }
+.student-alert-modal { position: fixed; inset: 0; z-index: 1300; padding: 24px; display: grid; place-items: center; background: rgba(0,0,0,.7); backdrop-filter: blur(7px); }
+.student-alert-card { width: min(520px, 100%); padding: 22px; display: grid; gap: 17px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-secondary); box-shadow: 0 24px 70px rgba(0,0,0,.55); }
+.student-alert-card header { display: grid; gap: 7px; }
+.student-alert-card header span { color: var(--accent-primary); font-size: 11px; font-weight: 700; }
+.student-alert-card h2 { font-size: 20px; line-height: 1.4; }
+.student-alert-card > p { color: var(--text-primary); font-size: 14px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.student-alert-card footer { padding-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--border-color); }
+.student-alert-card footer time { color: var(--text-secondary); font-size: 10px; }
+.student-alert-card footer div { display: flex; gap: 9px; }
+
+@media (max-width: 560px) {
+  .student-alert-modal { padding: 14px; }
+  .student-alert-card footer { align-items: stretch; flex-direction: column; }
+  .student-alert-card footer div { justify-content: flex-end; }
+}
 
 .group-switch {
   min-width: 92px;

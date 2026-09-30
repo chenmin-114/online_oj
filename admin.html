@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260930-03">
+  <link rel="stylesheet" href="css/admin.css?v=20260930-04">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -329,6 +329,7 @@
             </div>
             <label class="form-field"><span>标题</span><input id="admin-message-title" class="admin-input" maxlength="120" required placeholder="例如：本周考核安排"></label>
             <label class="form-field"><span>正文</span><textarea id="admin-message-content" class="admin-input" maxlength="10000" rows="7" required placeholder="输入公告或消息内容，支持换行"></textarea></label>
+            <label class="message-popup-option"><input id="admin-message-popup" type="checkbox" checked><span><strong>登录后弹窗提醒</strong><small>学生查看或关闭一次后不再自动弹出，消息仍保留在消息中心</small></span></label>
             <div class="problem-form-actions"><span id="admin-message-status"></span><button id="admin-message-submit" type="submit" class="admin-button primary">发布消息</button></div>
           </div>
         </form>
@@ -375,7 +376,7 @@
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20260926-01"></script>
-  <script src="js/admin.js?v=20260930-04"></script>
+  <script src="js/admin.js?v=20260930-05"></script>
   <script src="js/admin-exams.js?v=20260930-03"></script>
 </body>
 </html>

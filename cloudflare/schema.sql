@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS system_messages (
   group_name TEXT,
   problem_id TEXT,
   resubmission_key TEXT,
+  popup_enabled INTEGER NOT NULL DEFAULT 0 CHECK (popup_enabled IN (0, 1)),
   CHECK ((audience = 'all' AND username IS NULL) OR (audience = 'user' AND username IS NOT NULL))
 );
 

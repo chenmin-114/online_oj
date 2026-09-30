@@ -457,3 +457,8 @@ input.admin-input { min-width: 240px; }
   .preview-exam-submit { align-items: stretch; flex-direction: column; }
   .preview-exam-submit span { margin-right: 0; }
 }
+.message-popup-option { padding: 12px 13px; display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--admin-border); border-radius: 8px; background: #0e1526; cursor: pointer; }
+.message-popup-option input { margin-top: 3px; accent-color: var(--admin-blue); }
+.message-popup-option span { display: grid; gap: 3px; }
+.message-popup-option strong { color: var(--admin-text); font-size: 12px; }
+.message-popup-option small { color: var(--admin-muted); font-size: 10px; line-height: 1.5; }

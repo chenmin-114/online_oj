@@ -26,6 +26,8 @@ class App {
     this.analyticsPending = new Set();
     this.resubmissionNotices = [];
     this.systemMessages = [];
+    this.messagePopupQueue = [];
+    this.currentPopupMessage = null;
   }
 
   async init() {
@@ -422,6 +424,8 @@ class App {
     document.getElementById('student-message-modal').addEventListener('click', event => {
       if (event.target.id === 'student-message-modal') this._closeSystemMessages();
     });
+    document.getElementById('close-student-alert').addEventListener('click', () => this._dismissStudentAlert(false));
+    document.getElementById('student-alert-action').addEventListener('click', () => this._dismissStudentAlert(true));
 
     document.querySelectorAll('.nav-link').forEach(link => {
       link.addEventListener('click', () => this.examUI?.leaveProgrammingProblem());
@@ -1087,7 +1091,7 @@ class App {
     }
   }
 
-  async _loadSystemMessages(markRead = false, showResubmissionPopup = false) {
+  async _loadSystemMessages(markRead = false, showPopupMessages = false) {
     if (!this.username || this.adminExamPreview || this.adminProblemPreview) return;
     try {
       const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
@@ -1103,16 +1107,11 @@ class App {
         badge.textContent = unread > 99 ? '99+' : String(unread);
       });
       if (markRead) this._renderSystemMessages();
-      if (showResubmissionPopup) {
-        const notice = this.systemMessages.find(message =>
-          message.messageType === 'resubmission' && message.requiresAction && !message.read);
-        if (notice) {
-          const popupKey = `oj_message_popup:${encodeURIComponent(this.username)}:${notice.id}`;
-          if (sessionStorage.getItem(popupKey) !== '1') {
-            sessionStorage.setItem(popupKey, '1');
-            await this._openSystemMessages();
-          }
-        }
+      if (showPopupMessages) {
+        this.messagePopupQueue = this.systemMessages
+          .filter(message => message.popupEnabled && !message.read)
+          .reverse();
+        this._showNextMessagePopup();
       }
     } catch {
       // 消息读取失败不阻塞题目和判题。
@@ -1140,6 +1139,60 @@ class App {
         <p>${this._escapeHtml(message.content)}</p>
         <footer><span>${this._escapeHtml(new Date(message.createdAt).toLocaleString())}</span>${message.messageType === 'resubmission' && message.problemId ? `<button type="button" class="btn-small" data-message-group="${this._escapeHtml(message.group || 'control')}" data-message-problem="${this._escapeHtml(message.problemId)}">${message.requiresAction ? '去重新提交' : '查看题目'}</button>` : ''}</footer>
       </article>`).join('') : '<p class="info">暂无系统消息</p>';
+  }
+
+  _showNextMessagePopup() {
+    if (this.currentPopupMessage || !this.messagePopupQueue.length) return;
+    const message = this.messagePopupQueue.shift();
+    this.currentPopupMessage = message;
+    document.getElementById('student-alert-type').textContent = message.messageType === 'resubmission'
+      ? '需要重新提交'
+      : (message.audience === 'all' ? '公共公告' : '个人消息');
+    document.getElementById('student-alert-title').textContent = message.title;
+    document.getElementById('student-alert-content').textContent = message.content;
+    document.getElementById('student-alert-time').textContent = new Date(message.createdAt).toLocaleString();
+    const action = document.getElementById('student-alert-action');
+    action.hidden = message.messageType !== 'resubmission' || !message.problemId;
+    action.textContent = message.requiresAction ? '去重新提交' : '查看题目';
+    document.getElementById('student-alert-modal').hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  async _dismissStudentAlert(openProblem) {
+    const message = this.currentPopupMessage;
+    if (!message) return;
+    const closeButton = document.getElementById('close-student-alert');
+    const actionButton = document.getElementById('student-alert-action');
+    closeButton.disabled = true;
+    actionButton.disabled = true;
+    try {
+      const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'student_message_read', username: this.username, messageId: message.id,
+        }),
+      });
+      if (!response.ok) throw new Error('消息已读状态保存失败');
+      message.read = true;
+      const unread = this.systemMessages.filter(item => !item.read).length;
+      document.querySelectorAll('.student-message-badge').forEach(badge => {
+        badge.hidden = unread === 0;
+        badge.textContent = unread > 99 ? '99+' : String(unread);
+      });
+    } catch {
+      // 已关闭的消息本次不再打扰；服务器未确认时下次登录仍会提醒。
+    }
+    document.getElementById('student-alert-modal').hidden = true;
+    document.body.style.removeProperty('overflow');
+    closeButton.disabled = false;
+    actionButton.disabled = false;
+    this.currentPopupMessage = null;
+    if (openProblem && message.problemId) {
+      this.messagePopupQueue = [];
+      await this._openMessageProblem(message.group, message.problemId);
+      return;
+    }
+    this._showNextMessagePopup();
   }
 
   async _openMessageProblem(group, problemId) {

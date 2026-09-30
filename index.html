@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260930-03">
+  <link rel="stylesheet" href="css/style.css?v=20260930-04">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
@@ -204,6 +204,14 @@
     </div>
   </section>
 
+  <section id="student-alert-modal" class="student-alert-modal" hidden aria-modal="true" role="dialog" aria-labelledby="student-alert-title">
+    <article class="student-alert-card">
+      <header><span id="student-alert-type">系统消息</span><h2 id="student-alert-title"></h2></header>
+      <p id="student-alert-content"></p>
+      <footer><time id="student-alert-time"></time><div><button id="student-alert-action" type="button" class="btn btn-secondary" hidden>查看题目</button><button id="close-student-alert" type="button" class="btn btn-primary">我知道了</button></div></footer>
+    </article>
+  </section>
+
   <!-- 脚本加载（顺序很重要） -->
   <script src="js/config.js?v=20260922-9"></script>
   <script src="js/languages.js?v=20260926-01"></script>
@@ -219,6 +227,6 @@
   <script src="vendor/jszip/jszip.min.js?v=3.10.2"></script>
   <script src="js/exam-docx.js?v=20260929-01"></script>
   <script src="js/exams.js?v=20260930-02"></script>
-  <script src="js/app.js?v=20260930-06"></script>
+  <script src="js/app.js?v=20260930-07"></script>
 </body>
 </html>
