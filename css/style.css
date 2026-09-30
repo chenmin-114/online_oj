@@ -357,13 +357,6 @@ body.username-locked { overflow: hidden; }
 }
 
 /* ========== 解题界面 ========== */
-#view-solve {
-  position: relative;
-  left: 50%;
-  width: calc(100vw - 40px);
-  transform: translateX(-50%);
-}
-
 .solve-layout {
   display: grid;
   grid-template-columns: minmax(300px, var(--problem-pane-width, 1fr)) 20px minmax(380px, 1fr);
