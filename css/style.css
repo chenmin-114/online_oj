@@ -535,7 +535,7 @@ body.username-locked { overflow: hidden; }
 
 .toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   align-items: center;
 }
@@ -810,4 +810,8 @@ body.username-locked { overflow: hidden; }
   .exam-programming-link-card, .exam-problem-context { align-items: stretch; flex-direction: column; }
   .exam-submit-bar { align-items: stretch; flex-direction: column; }
   .exam-submit-bar span { margin-right: 0; }
+}
+
+@media (max-width: 600px) {
+  .toolbar { flex-wrap: wrap; }
 }
