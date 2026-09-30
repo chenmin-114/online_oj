@@ -97,7 +97,7 @@ class App {
     // 题目列表与编辑器并行加载；这里只等待首屏真正需要的题目数据。
     await problemListLoading;
     await this._loadResubmissionNotices(true);
-    await this._loadSystemMessages(false);
+    await this._loadSystemMessages(false, true);
 
     // 保留 Promise 引用，避免编辑器初始化失败产生未处理的异步错误。
     this.editorInitialization = editorInitialization;
@@ -1087,7 +1087,7 @@ class App {
     }
   }
 
-  async _loadSystemMessages(markRead = false) {
+  async _loadSystemMessages(markRead = false, showResubmissionPopup = false) {
     if (!this.username || this.adminExamPreview || this.adminProblemPreview) return;
     try {
       const response = await fetch(window.OJ_CONFIG.WORKER_URL, {
@@ -1103,6 +1103,17 @@ class App {
         badge.textContent = unread > 99 ? '99+' : String(unread);
       });
       if (markRead) this._renderSystemMessages();
+      if (showResubmissionPopup) {
+        const notice = this.systemMessages.find(message =>
+          message.messageType === 'resubmission' && message.requiresAction && !message.read);
+        if (notice) {
+          const popupKey = `oj_message_popup:${encodeURIComponent(this.username)}:${notice.id}`;
+          if (sessionStorage.getItem(popupKey) !== '1') {
+            sessionStorage.setItem(popupKey, '1');
+            await this._openSystemMessages();
+          }
+        }
+      }
     } catch {
       // 消息读取失败不阻塞题目和判题。
     }
