@@ -737,8 +737,8 @@ class OJAdmin {
         <td><span class="result-pill ${problem.status === 'draft' ? 'failed' : 'accepted'}">${problem.status === 'draft' ? '草稿' : '已发布'}</span></td>
         <td><span class="difficulty-pill ${this.escape(problem.difficulty)}">${this.escape(this.difficultyText(problem.difficulty))}</span></td>
         <td>${this.escape(counts[problem.id] || 0)}</td>
-        <td>${this.escape(acceptedUsers[problem.id]?.size || 0)}</td>
         <td>${this.escape(Number(visitorCounts[problem.id]) || 0)}</td>
+        <td>${this.escape(acceptedUsers[problem.id]?.size || 0)}</td>
         <td><button type="button" class="table-link table-link-button" data-preview-problem="${this.escape(problem.file)}">预览</button> · <button type="button" class="table-link table-link-button" data-edit-problem="${this.escape(problem.file)}">可视化编辑</button></td>
       </tr>
     `).join('') : '<tr><td colspan="8" class="empty-cell">暂无题目</td></tr>';
