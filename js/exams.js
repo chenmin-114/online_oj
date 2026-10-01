@@ -43,7 +43,7 @@ class ExamUI {
       if (this.app.adminProblemPreview) window.close();
       else this.returnFromProgrammingProblem();
     });
-    this.refreshTimer = setInterval(() => this.autoRefresh(), 30000);
+    this.refreshTimer = setInterval(() => this.autoRefresh(), 600000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) this.autoRefresh();
     });
