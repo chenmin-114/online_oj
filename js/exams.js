@@ -63,7 +63,9 @@ class ExamUI {
       } else if (this.paper && this.submission) {
         const result = await this.request('exam_get', { examId: this.paper.id });
         if (this.app.views.currentView !== 'exam' || result.paper?.id !== this.paper.id) return;
+        const unchanged = this.submissionSignature(result.mySubmission) === this.submissionSignature(this.submission);
         this.submission = result.mySubmission;
+        if (unchanged) return;
         this.renderResult(this.submission);
         document.getElementById('exam-submit-status').textContent = this.submission
           ? `已于 ${new Date(this.submission.submittedAt).toLocaleString()} 提交；批改状态会自动更新`
@@ -74,6 +76,18 @@ class ExamUI {
     } finally {
       this.refreshing = false;
     }
+  }
+
+  submissionSignature(submission) {
+    if (!submission) return '';
+    return JSON.stringify({
+      gradingStatus: submission.gradingStatus,
+      gradedCount: submission.gradedCount,
+      totalParts: submission.totalParts,
+      resultVisible: submission.resultVisible,
+      totalScore: submission.totalScore,
+      grading: submission.grading,
+    });
   }
 
   onGroupChange() {
@@ -123,6 +137,10 @@ class ExamUI {
     try {
       const exams = await this.request('exam_list');
       if (`${this.app.username}:${this.app.group}` !== key) return;
+      if (silent && JSON.stringify(exams) === JSON.stringify(this.exams)) {
+        this.loadedKey = key;
+        return;
+      }
       this.exams = exams;
       this.loadedKey = key;
       this.renderList();

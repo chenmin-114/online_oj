@@ -53,7 +53,7 @@ class ExamAdmin {
       if (code && !code.value.trim()) code.value = this.languageTemplate(event.target.value, part);
     });
     document.querySelector('[data-panel="exams"]').addEventListener('click', () => this.ensureLoaded(true, this.loadedGroup === this.group));
-    setInterval(() => this.autoRefresh(), 30000);
+    setInterval(() => this.autoRefresh(), 120000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) this.autoRefresh();
     });
@@ -106,6 +106,10 @@ class ExamAdmin {
     try {
       const exams = await this.request('admin_exam_list');
       if (this.group !== requestedGroup) return;
+      if (silent && JSON.stringify(exams) === JSON.stringify(this.exams)) {
+        this.loadedGroup = this.group;
+        return;
+      }
       this.exams = exams;
       this.loadedGroup = this.group;
       this.renderList();
@@ -760,6 +764,8 @@ class ExamAdmin {
     const workspace = document.getElementById('grading-workspace');
     const selectedId = preserveSelection ? this.submissions[this.studentIndex]?.id : null;
     const selectedPartId = preserveSelection ? document.getElementById('grading-part').value : '';
+    const previousPaperVersion = this.paper?.id === examId ? this.paper.version : null;
+    const previousSubmissionSignature = this.gradingSubmissionSignature(this.submissions);
     if (!preserveSelection) this.gradingDirty = false;
     if (!silent) workspace.innerHTML = '<p class="empty-cell">正在读取提交...</p>';
     try {
@@ -768,6 +774,9 @@ class ExamAdmin {
         this.request('admin_exam_submissions', { examId }),
       ]);
       if (this.group !== requestedGroup || document.getElementById('grading-exam').value !== examId) return;
+      if (silent
+        && previousPaperVersion === paper.version
+        && previousSubmissionSignature === this.gradingSubmissionSignature(submissions)) return;
       this.paper = paper;
       this.submissions = submissions;
       this.studentIndex = selectedId ? this.submissions.findIndex(item => item.id === selectedId) : -1;
@@ -781,6 +790,22 @@ class ExamAdmin {
     } catch (error) {
       if (!silent) workspace.innerHTML = `<p class="empty-cell">${this.escape(error.message)}</p>`;
     }
+  }
+
+  gradingSubmissionSignature(submissions) {
+    return JSON.stringify((submissions || []).map(submission => ({
+      id: submission.id,
+      username: submission.username,
+      attemptNo: submission.attemptNo,
+      submittedAt: submission.submittedAt,
+      gradedCount: submission.gradedCount,
+      totalParts: submission.totalParts,
+      totalScore: submission.totalScore,
+      gradingStatus: submission.gradingStatus,
+      released: submission.released,
+      preview: submission.preview,
+      updatedAt: submission.updatedAt,
+    })));
   }
 
   renderGrading() {
