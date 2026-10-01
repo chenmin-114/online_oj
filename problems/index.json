@@ -122,5 +122,14 @@
     "file": "p015.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P016",
+    "title": "（Day 11）抢答器的“先声夺人”",
+    "difficulty": "easy",
+    "status": "published",
+    "file": "p0016-example.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
