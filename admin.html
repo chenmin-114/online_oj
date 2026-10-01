@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20260920-7">
-  <link rel="stylesheet" href="css/admin.css?v=20260930-05">
+  <link rel="stylesheet" href="css/admin.css?v=20261001-01">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -75,24 +75,28 @@
           <article class="metric-card green"><span class="metric-icon">✓</span><div><p>通过率</p><strong id="metric-acceptance">—</strong></div></article>
           <article class="metric-card orange"><span class="metric-icon">◎</span><div><p>参与用户</p><strong id="metric-users">—</strong></div></article>
         </div>
-        <div class="admin-grid two-columns">
+        <div class="admin-grid two-columns overview-primary-grid">
           <article class="admin-card">
             <div class="card-heading"><div><h3>最近提交</h3><p>最新 8 条评测记录</p></div><button class="text-button" data-open-panel="submissions">查看全部 →</button></div>
             <div class="table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>题目</th><th>结果</th><th>时间</th></tr></thead><tbody id="recent-submissions"></tbody></table></div>
           </article>
           <article class="admin-card">
-            <div class="card-heading"><div><h3>题目活跃度</h3><p>按实际提交次数统计</p></div></div>
-            <div id="problem-activity" class="activity-list"></div>
-          </article>
-        </div>
-        <div class="analytics-grid">
-          <article class="admin-card">
             <div class="card-heading"><div><h3>近 30 天网站浏览人数</h3><p id="daily-visitors-subtitle">当前组别每日独立用户名</p></div></div>
             <div id="daily-visitors-chart" class="daily-visitors-chart"><p class="empty-cell">正在读取...</p></div>
           </article>
+        </div>
+        <div class="problem-ranking-grid">
           <article class="admin-card">
-            <div class="card-heading"><div><h3>每道题总浏览人数</h3><p id="problem-visitors-subtitle">当前组别的累计独立用户名</p></div></div>
-            <div class="table-wrap"><table class="admin-table"><thead><tr><th>题号</th><th>题目</th><th>浏览人数</th></tr></thead><tbody id="problem-visitors"></tbody></table></div>
+            <div class="card-heading"><div><h3>题目提交次数排行</h3><p id="problem-submissions-subtitle">当前组别的实际提交次数</p></div></div>
+            <div id="problem-activity" class="activity-list ranked-activity-list"></div>
+          </article>
+          <article class="admin-card">
+            <div class="card-heading"><div><h3>题目 AC 人数排行</h3><p id="problem-accepted-subtitle">当前组别每题去重通过人数</p></div></div>
+            <div id="problem-accepted-ranking" class="activity-list ranked-activity-list"></div>
+          </article>
+          <article class="admin-card">
+            <div class="card-heading"><div><h3>题目浏览人数排行</h3><p id="problem-visitors-subtitle">当前组别每题累计独立用户名</p></div></div>
+            <div id="problem-visitors-ranking" class="activity-list ranked-activity-list"></div>
           </article>
         </div>
       </section>
@@ -148,7 +152,7 @@
           </div>
         </div>
         <article class="admin-card">
-          <div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>题目</th><th>状态</th><th>难度</th><th>实际提交</th><th>AC 人数</th><th>操作</th></tr></thead><tbody id="problem-admin-list"></tbody></table></div>
+          <div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>题目</th><th>状态</th><th>难度</th><th>实际提交</th><th>AC 人数</th><th>浏览人数</th><th>操作</th></tr></thead><tbody id="problem-admin-list"></tbody></table></div>
         </article>
 
         <form id="problem-editor" class="admin-card problem-editor" hidden>
@@ -376,7 +380,7 @@
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20260926-01"></script>
-  <script src="js/admin.js?v=20260930-05"></script>
+  <script src="js/admin.js?v=20261001-01"></script>
   <script src="js/admin-exams.js?v=20261001-01"></script>
 </body>
 </html>

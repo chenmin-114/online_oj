@@ -178,6 +178,8 @@
 
 .admin-grid.two-columns { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr); gap: 20px; }
 .analytics-grid { margin-top: 20px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(340px, .65fr); gap: 20px; }
+.overview-primary-grid { grid-template-columns: minmax(0, 1fr) minmax(460px, 1fr) !important; }
+.problem-ranking-grid { margin-top: 20px; display: grid; grid-template-columns: repeat(3, minmax(270px, 1fr)); gap: 20px; }
 .admin-card { border: 1px solid var(--admin-border); border-radius: 13px; background: var(--admin-panel); overflow: hidden; }
 .card-heading { min-height: 68px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--admin-border); }
 .card-heading h3 { font-size: 15px; color: var(--admin-text); }
@@ -260,6 +262,15 @@
 .activity-row-header span:last-child { color: var(--admin-muted); }
 .activity-track { height: 6px; border-radius: 99px; overflow: hidden; background: #202b42; }
 .activity-bar { height: 100%; min-width: 2px; border-radius: inherit; background: linear-gradient(90deg, var(--admin-blue), var(--admin-violet)); }
+.ranked-activity-list { max-height: 430px; overflow-y: auto; align-content: start; }
+.ranked-activity-list .activity-row-header { align-items: center; gap: 10px; }
+.activity-title { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.activity-title > span:last-child { overflow: hidden; color: #cbd5ea; text-overflow: ellipsis; white-space: nowrap; }
+.activity-rank { width: 24px; height: 24px; display: grid; place-items: center; flex: 0 0 24px; border-radius: 7px; background: rgba(91,140,255,.1); color: var(--admin-blue); font-size: 10px; font-weight: 700; }
+.activity-row:nth-child(1) .activity-rank { background: rgba(255,173,102,.15); color: var(--admin-orange); }
+.activity-row:nth-child(2) .activity-rank { background: rgba(203,213,234,.12); color: #cbd5ea; }
+.activity-row:nth-child(3) .activity-rank { background: rgba(167,121,255,.13); color: var(--admin-violet); }
+.activity-value { flex: 0 0 auto; white-space: nowrap; }
 
 .daily-visitors-chart { min-height: 244px; padding: 20px 16px 14px; display: flex; align-items: stretch; gap: 7px; overflow-x: auto; }
 .daily-visitor-column { min-width: 24px; flex: 1 0 24px; display: grid; grid-template-rows: 18px 160px 18px; gap: 5px; color: var(--admin-muted); text-align: center; }
@@ -417,6 +428,8 @@ input.admin-input { min-width: 240px; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-grid.two-columns { grid-template-columns: 1fr; }
   .analytics-grid { grid-template-columns: 1fr; }
+  .overview-primary-grid { grid-template-columns: 1fr !important; }
+  .problem-ranking-grid { grid-template-columns: 1fr; }
   .status-grid { grid-template-columns: 1fr; }
 }
 

@@ -650,16 +650,51 @@ class OJAdmin {
     });
 
     const problemCounts = this.analytics.problems || {};
-    const body = document.getElementById('problem-visitors');
-    body.innerHTML = this.problems.length ? this.problems.map(problem => `
-      <tr>
-        <td><strong>${this.escape(problem.id)}</strong></td>
-        <td>${this.escape(problem.title)}</td>
-        <td>${this.escape(Number(problemCounts[problem.id]) || 0)} 人</td>
-      </tr>
-    `).join('') : '<tr><td colspan="3" class="empty-cell">暂无题目</td></tr>';
+    const acceptedUsers = this.problemAcceptedUsers();
+    this.renderProblemRanking(
+      'problem-accepted-ranking',
+      problem => acceptedUsers[problem.id]?.size || 0,
+      '人'
+    );
+    this.renderProblemRanking(
+      'problem-visitors-ranking',
+      problem => Number(problemCounts[problem.id]) || 0,
+      '人'
+    );
     document.getElementById('daily-visitors-subtitle').textContent = `${this.groupLabel()} · 每日独立用户名`;
-    document.getElementById('problem-visitors-subtitle').textContent = `${this.groupLabel()} · 累计独立用户名`;
+    document.getElementById('problem-submissions-subtitle').textContent = `${this.groupLabel()} · 实际提交次数`;
+    document.getElementById('problem-accepted-subtitle').textContent = `${this.groupLabel()} · 每题去重通过人数`;
+    document.getElementById('problem-visitors-subtitle').textContent = `${this.groupLabel()} · 每题累计独立用户名`;
+  }
+
+  problemAcceptedUsers() {
+    const acceptedUsers = {};
+    this.submissions.filter(item => item.passed).forEach(item => {
+      const problemId = String(item.problemId || '');
+      const username = String(item.username || '').trim().normalize('NFC');
+      if (!problemId || !username) return;
+      if (!acceptedUsers[problemId]) acceptedUsers[problemId] = new Set();
+      acceptedUsers[problemId].add(username);
+    });
+    return acceptedUsers;
+  }
+
+  renderProblemRanking(containerId, valueForProblem, suffix) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const ranked = this.problems
+      .map(problem => ({ ...problem, rankingValue: Number(valueForProblem(problem)) || 0 }))
+      .sort((a, b) => b.rankingValue - a.rankingValue || String(a.id).localeCompare(String(b.id), 'zh-CN', { numeric: true }));
+    const max = Math.max(1, ...ranked.map(problem => problem.rankingValue));
+    container.innerHTML = ranked.length ? ranked.map((problem, index) => `
+      <div class="activity-row">
+        <div class="activity-row-header">
+          <span class="activity-title"><b class="activity-rank">${index + 1}</b><span title="${this.escape(problem.id)} · ${this.escape(problem.title)}">${this.escape(problem.id)} · ${this.escape(problem.title)}</span></span>
+          <span class="activity-value">${this.escape(problem.rankingValue)} ${this.escape(suffix)}</span>
+        </div>
+        <div class="activity-track"><div class="activity-bar" style="width:${Math.max(0, Math.min(100, problem.rankingValue / max * 100))}%"></div></div>
+      </div>
+    `).join('') : '<p class="empty-cell">暂无题目</p>';
   }
 
   renderMetrics() {
@@ -686,33 +721,15 @@ class OJAdmin {
   }
 
   renderProblemActivity() {
-    const container = document.getElementById('problem-activity');
     const counts = this.countBy(this.submissions, item => item.problemId);
-    const max = Math.max(1, ...Object.values(counts));
-    const active = this.problems
-      .map(problem => ({ ...problem, actualCount: counts[problem.id] || 0 }))
-      .sort((a, b) => b.actualCount - a.actualCount)
-      .slice(0, 6);
-
-    container.innerHTML = active.length ? active.map(problem => `
-      <div class="activity-row">
-        <div class="activity-row-header"><span>${this.escape(problem.id)} · ${this.escape(problem.title)}</span><span>${this.escape(problem.actualCount)} 次</span></div>
-        <div class="activity-track"><div class="activity-bar" style="width:${Math.max(0, Math.min(100, Number(problem.actualCount) / max * 100))}%"></div></div>
-      </div>
-    `).join('') : '<p class="empty-cell">暂无题目</p>';
+    this.renderProblemRanking('problem-activity', problem => counts[problem.id] || 0, '次');
   }
 
   renderProblems() {
     const body = document.getElementById('problem-admin-list');
     const counts = this.countBy(this.submissions, item => item.problemId);
-    const acceptedUsers = {};
-    this.submissions.filter(item => item.passed).forEach(item => {
-      const problemId = String(item.problemId || '');
-      const username = String(item.username || '').trim().normalize('NFC');
-      if (!problemId || !username) return;
-      if (!acceptedUsers[problemId]) acceptedUsers[problemId] = new Set();
-      acceptedUsers[problemId].add(username);
-    });
+    const acceptedUsers = this.problemAcceptedUsers();
+    const visitorCounts = this.analytics.problems || {};
     body.innerHTML = this.problems.length ? this.problems.map(problem => `
       <tr>
         <td><strong>${this.escape(problem.id)}</strong></td>
@@ -721,9 +738,10 @@ class OJAdmin {
         <td><span class="difficulty-pill ${this.escape(problem.difficulty)}">${this.escape(this.difficultyText(problem.difficulty))}</span></td>
         <td>${this.escape(counts[problem.id] || 0)}</td>
         <td>${this.escape(acceptedUsers[problem.id]?.size || 0)}</td>
+        <td>${this.escape(Number(visitorCounts[problem.id]) || 0)}</td>
         <td><button type="button" class="table-link table-link-button" data-preview-problem="${this.escape(problem.file)}">预览</button> · <button type="button" class="table-link table-link-button" data-edit-problem="${this.escape(problem.file)}">可视化编辑</button></td>
       </tr>
-    `).join('') : '<tr><td colspan="7" class="empty-cell">暂无题目</td></tr>';
+    `).join('') : '<tr><td colspan="8" class="empty-cell">暂无题目</td></tr>';
   }
 
   showProblemEditor() {
