@@ -28,6 +28,9 @@ class App {
     this.systemMessages = [];
     this.messagePopupQueue = [];
     this.currentPopupMessage = null;
+    this.problemTimingOffset = 0;
+    this.problemTimingTimer = null;
+    this.timedProblemSaveTimer = null;
   }
 
   async init() {
@@ -42,7 +45,10 @@ class App {
     this.editor.setFontSize(this.editorFontSize);
     this.editor.onChange(code => {
       if (this.examUI?.programmingContext) this.examUI.captureProgrammingCode(code);
-      else this._scheduleCodeSave(code);
+      else {
+        this._scheduleCodeSave(code);
+        this._scheduleTimedProblemDraft();
+      }
     });
     const editorInitialization = this.editor.init().catch(err => {
       console.error('代码编辑器加载失败:', err);
@@ -183,6 +189,11 @@ class App {
       const difficulty = ['easy', 'medium', 'hard'].includes(p.difficulty) ? p.difficulty : 'easy';
       const submitCount = Number.isFinite(Number(p.submitCount)) ? Number(p.submitCount) : 0;
       const needsResubmission = this.resubmissionNotices.some(notice => notice.problemId === p.id);
+      const timing = this._timingState(p.availability);
+      const timingText = timing.state === 'upcoming' ? `${new Date(timing.nextStart).toLocaleString()} 开始`
+        : timing.state === 'active' ? '答题中'
+        : timing.state === 'grace' ? '答案已冻结'
+        : timing.state === 'ended' ? '已结束' : '';
       return `
       <div class="problem-card" data-id="${this._escapeHtml(p.id)}" data-file="${this._escapeHtml(p.file)}">
         <div class="problem-header">
@@ -194,6 +205,7 @@ class App {
         <div class="problem-meta">
           <span>通过率: ${this._escapeHtml(p.acceptRate || 'N/A')}</span>
           <span>提交: ${submitCount}</span>
+          ${timingText ? `<span>${this._escapeHtml(timingText)}</span>` : ''}
         </div>
       </div>
     `;
@@ -214,6 +226,9 @@ class App {
   }
 
   async loadProblem(file) {
+    clearInterval(this.problemTimingTimer);
+    clearTimeout(this.problemAutoFinalizeTimer);
+    this.problemAutoFinalizeTimer = null;
     const leavingExamProblem = Boolean(this.examUI?.programmingContext);
     this.examUI?.leaveProgrammingProblem();
     if (!leavingExamProblem) this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
@@ -227,7 +242,7 @@ class App {
         : `${this.group === 'vision' ? 'problems/vision' : 'problems'}/${file}?t=${Date.now()}`;
       const response = await fetch(problemUrl, {
         cache: 'no-store',
-        credentials: this.adminProblemPreview ? 'include' : 'same-origin',
+        credentials: 'include',
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const problem = await response.json();
@@ -235,7 +250,11 @@ class App {
       this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
       clearTimeout(this.codeSaveTimer);
       this.currentProblem = problem;
+      this.lastTimedProblemDraft = problem.timedDraft
+        ? JSON.stringify({ language: problem.timedDraft.language, code: problem.timedDraft.code })
+        : '';
       this._renderProblem();
+      this._startProblemTiming();
       this.views.show('solve');
       this._trackView(problem.id);
     } catch (err) {
@@ -308,6 +327,96 @@ class App {
     document.getElementById('exam-problem-context-label').textContent = `${this.examUI.paper?.title || '套卷'} · ${part.problemId} ${part.problem.title || ''}`;
     document.getElementById('submit-btn').textContent = '保存代码并返回套卷';
     this.views.show('solve');
+    this.examUI.applyTimingState();
+  }
+
+  _timingState(availability, offset = 0) {
+    if (!availability?.enabled || !availability.windows?.length) return { state: 'unrestricted', canEdit: true, canSubmit: true };
+    const now = Date.now() + offset;
+    for (const window of availability.windows) {
+      if (now < window.start) return { state: 'upcoming', nextStart: window.start, canEdit: false, canSubmit: false };
+      if (now < window.end) return { state: 'active', windowStart: window.start, windowEnd: window.end, canEdit: true, canSubmit: true };
+      if (now < window.end + 30000) return { state: 'grace', windowStart: window.start, windowEnd: window.end, graceEndsAt: window.end + 30000, canEdit: false, canSubmit: true };
+    }
+    return { state: 'ended', canEdit: false, canSubmit: false };
+  }
+
+  _duration(ms) {
+    const seconds = Math.max(0, Math.ceil(ms / 1000));
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const rest = seconds % 60;
+    return hours ? `${hours}小时${minutes}分${rest}秒` : minutes ? `${minutes}分${rest}秒` : `${rest}秒`;
+  }
+
+  _startProblemTiming() {
+    clearInterval(this.problemTimingTimer);
+    const serverTime = Number(this.currentProblem?.availability?.status?.serverTime);
+    this.problemTimingOffset = Number.isFinite(serverTime) ? serverTime - Date.now() : 0;
+    this._renderProblemTiming();
+    if (this.currentProblem?.availability?.enabled && !this.adminProblemPreview) {
+      this.problemTimingTimer = setInterval(() => this._renderProblemTiming(), 1000);
+      setTimeout(() => this._saveTimedProblemDraft(), 500);
+    }
+  }
+
+  _renderProblemTiming() {
+    if (!this.currentProblem || this.examUI?.programmingContext) return;
+    const availability = this.currentProblem.availability;
+    const banner = document.getElementById('problem-timing-banner');
+    const state = this._timingState(availability, this.problemTimingOffset);
+    const now = Date.now() + this.problemTimingOffset;
+    banner.hidden = !availability?.enabled;
+    banner.className = `timing-banner ${state.state === 'active' ? 'active' : state.state === 'grace' ? 'warning' : 'closed'}`;
+    if (state.state === 'upcoming') banner.textContent = `尚未开始 · ${new Date(state.nextStart).toLocaleString()} 开放（还有 ${this._duration(state.nextStart - now)}）`;
+    else if (state.state === 'active') banner.textContent = `答题进行中 · 距本时段结束 ${this._duration(state.windowEnd - now)} · 草稿自动保存到服务器`;
+    else if (state.state === 'grace') banner.textContent = `答案已冻结 · 请在 ${this._duration(state.graceEndsAt - now)} 内确认提交，否则系统自动提交`;
+    else if (state.state === 'ended') banner.textContent = '全部答题时间已经结束，当前仅可查看。';
+    const locked = !this.adminProblemPreview && availability?.enabled && !state.canEdit;
+    this.editor?.setReadOnly(locked);
+    ['language-select', 'reset-code-btn', 'run-btn', 'custom-input', 'clear-input-btn'].forEach(id => { const node = document.getElementById(id); if (node) node.disabled = locked; });
+    const submit = document.getElementById('submit-btn');
+    submit.disabled = !this.adminProblemPreview && availability?.enabled && !state.canSubmit;
+    submit.textContent = state.state === 'grace' ? '确认提交冻结答案' : '🏁 提交';
+    if (state.state === 'active' && state.windowEnd - now <= 5000 && this.problemPrecloseSavedFor !== state.windowEnd) {
+      this.problemPrecloseSavedFor = state.windowEnd;
+      this._saveTimedProblemDraft();
+    }
+    if (state.state === 'grace' && !this.problemAutoFinalizeTimer) {
+      this.problemAutoFinalizeTimer = setTimeout(() => this._finalizeTimedProblem(), Math.max(0, state.graceEndsAt - now));
+    }
+  }
+
+  _scheduleTimedProblemDraft() {
+    if (this.examUI?.programmingContext || !this.currentProblem?.availability?.enabled) return;
+    clearTimeout(this.timedProblemSaveTimer);
+    this.timedProblemSaveTimer = setTimeout(() => this._saveTimedProblemDraft(), 700);
+  }
+
+  async _saveTimedProblemDraft() {
+    if (!this.currentProblem || this._timingState(this.currentProblem.availability, this.problemTimingOffset).state !== 'active') return;
+    const payload = { language: document.getElementById('language-select').value, code: this.editor.getCode() };
+    const signature = JSON.stringify(payload);
+    if (signature === this.lastTimedProblemDraft) return;
+    try {
+      const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_draft_save', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group, payload }) });
+      if (response.ok) this.lastTimedProblemDraft = signature;
+    } catch { /* 本地缓存仍保留，下一次修改继续尝试 */ }
+  }
+
+  async _finalizeTimedProblem() {
+    if (!this.currentProblem?.availability?.enabled) return;
+    clearTimeout(this.problemAutoFinalizeTimer);
+    this.problemAutoFinalizeTimer = null;
+    const resultEl = document.getElementById('judge-result');
+    resultEl.innerHTML = '<span class="info">⏳ 正在接收冻结答案...</span>';
+    try {
+      const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_finalize', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || '冻结答案提交失败');
+      resultEl.innerHTML = '<span class="success">✅ 冻结答案已接收，正在排队判题，可在提交记录中查看结果</span>';
+      setTimeout(() => { this.views.show('problems'); this.loadProblemList(); }, 1200);
+    } catch (error) { resultEl.innerHTML = `<span class="error">❌ ${this._escapeHtml(error.message)}</span>`; }
   }
 
   _formatMarkdown(text) {
@@ -428,7 +537,10 @@ class App {
     document.getElementById('student-alert-action').addEventListener('click', () => this._dismissStudentAlert(true));
 
     document.querySelectorAll('.nav-link').forEach(link => {
-      link.addEventListener('click', () => this.examUI?.leaveProgrammingProblem());
+      link.addEventListener('click', () => {
+        this.examUI?.leaveProgrammingProblem();
+        clearInterval(this.problemTimingTimer);
+      });
     });
 
     document.querySelector('[data-view="submissions"]').addEventListener('click', () => {
@@ -891,8 +1003,10 @@ class App {
     } catch (error) {
       console.warn('读取代码本地缓存失败:', error);
     }
+    const serverDraft = this.currentProblem?.timedDraft;
+    const serverCode = serverDraft?.language === languageId && typeof serverDraft.code === 'string' ? serverDraft.code : null;
     this.isRestoringCode = true;
-    this.editor.setCode(cachedCode === null ? template : cachedCode);
+    this.editor.setCode(cachedCode === null ? (serverCode === null ? template : serverCode) : cachedCode);
     this.isRestoringCode = false;
   }
 
@@ -961,6 +1075,11 @@ class App {
   }
 
   async runCode(authRetried = false) {
+    if (!this.examUI?.programmingContext && this.currentProblem?.availability?.enabled
+        && !this._timingState(this.currentProblem.availability, this.problemTimingOffset).canEdit) {
+      document.getElementById('output').innerHTML = '<span class="error">当前不在答题开放时间，不能运行代码</span>';
+      return;
+    }
     const code = this.editor.getCode();
     const customInput = document.getElementById('custom-input').value;
     const langId = document.getElementById('language-select').value;
@@ -1005,6 +1124,12 @@ class App {
   async submitCode(authRetried = false) {
     if (!this.currentProblem) {
       alert('请先选择一道题目');
+      return;
+    }
+    const timing = this._timingState(this.currentProblem.availability, this.problemTimingOffset);
+    if (!this.adminProblemPreview && timing.state === 'grace') return this._finalizeTimedProblem();
+    if (!this.adminProblemPreview && this.currentProblem.availability?.enabled && !timing.canEdit) {
+      alert(timing.state === 'upcoming' ? '尚未到答题开放时间' : '答题时间已经结束');
       return;
     }
 

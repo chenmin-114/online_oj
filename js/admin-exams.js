@@ -15,6 +15,7 @@ class ExamAdmin {
   }
 
   init() {
+    window.AdminSchedule.bind('exam');
     document.getElementById('show-exam-editor').addEventListener('click', () => this.newExam());
     document.getElementById('close-exam-editor').addEventListener('click', () => this.closeEditor());
     document.getElementById('add-exam-question').addEventListener('click', () => this.addQuestion());
@@ -157,6 +158,7 @@ class ExamAdmin {
     this.editingPaper = {
       id: '', title: '', description: '', status: 'draft', resultPolicy: 'after_graded',
       allowedUsers: [],
+      availability: { enabled: false, windows: [], afterEndView: 'none' },
       serialNo: this.nextExamSerial(),
       questions: [this.emptyQuestion(1)],
     };
@@ -218,6 +220,7 @@ class ExamAdmin {
     document.getElementById('exam-description').value = paper.description || '';
     document.getElementById('exam-status').value = paper.status || 'draft';
     document.getElementById('exam-result-policy').value = paper.resultPolicy || 'after_graded';
+    window.AdminSchedule.set('exam', paper.availability || { enabled: false, windows: [], afterEndView: 'none' });
     document.getElementById('exam-roster-users').value = (paper.allowedUsers || []).join('\n');
     document.getElementById('exam-roster-status').textContent = paper.allowedUsers?.length
       ? `当前已额外准入 ${paper.allowedUsers.length} 人，可继续追加导入`
@@ -268,6 +271,7 @@ class ExamAdmin {
     this.editingPaper.description = document.getElementById('exam-description').value;
     this.editingPaper.status = document.getElementById('exam-status').value;
     this.editingPaper.resultPolicy = document.getElementById('exam-result-policy').value;
+    this.editingPaper.availability = window.AdminSchedule.get('exam');
     this.editingPaper.allowedUsers = [...new Set(document.getElementById('exam-roster-users').value
       .split(/\r?\n/).map(value => value.trim().normalize('NFC')).filter(Boolean))];
     this.editingPaper.serialNo = Number(this.editingPaper.serialNo || document.getElementById('exam-editor-title').dataset.serialNo || this.nextExamSerial());

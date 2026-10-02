@@ -33,6 +33,8 @@ const NORMAL_REQUEST_BODY_LIMIT = 2 * 1024 * 1024;
 // 题目图片原文件合计允许 10 MB，Base64 会额外增加约三分之一体积。
 const PROBLEM_UPLOAD_BODY_LIMIT = 16 * 1024 * 1024;
 const LARGE_BODY_REQUEST_TYPES = new Set(['create_problem', 'update_problem']);
+const TIMED_GRACE_MS = 30 * 1000;
+const AFTER_END_VIEW_POLICIES = new Set(['none', 'all', 'authorized']);
 
 const CORS_HEADERS = {
   ...SECURITY_HEADERS,
@@ -348,6 +350,22 @@ export default {
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
         return await handleStudentExamGet(body, env);
+      } else if (body.type === 'timed_draft_save') {
+        const rateLimitError = await enforceRateLimit(
+          env.DRAFT_RATE_LIMITER, request, 'timed-draft', normalizeStudentUsername(body.username), false,
+        );
+        if (rateLimitError) return rateLimitError;
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return await handleTimedDraftSave(body, env);
+      } else if (body.type === 'timed_finalize') {
+        const rateLimitError = await enforceRateLimit(
+          env.DRAFT_RATE_LIMITER, request, 'timed-finalize', normalizeStudentUsername(body.username), false,
+        );
+        if (rateLimitError) return rateLimitError;
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return await handleTimedFinalize(body, env);
       } else if (body.type === 'exam_submit') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
         if (rateLimitError) return rateLimitError;
@@ -420,7 +438,10 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(processNextRejudgeJob(env));
+    ctx.waitUntil(Promise.all([
+      processNextRejudgeJob(env),
+      processNextTimedSubmission(env),
+    ]));
   },
 };
 
@@ -802,6 +823,20 @@ async function requireStudentSession(request, env, suppliedUsername) {
   return null;
 }
 
+async function studentSessionUsername(request, env) {
+  if (!env.OJ_DB) return '';
+  const token = readCookie(request, STUDENT_SESSION_COOKIE);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return '';
+  const session = await env.OJ_DB.prepare(`
+    SELECT s.username, s.expires_at, s.auth_version, a.auth_version AS current_auth_version
+    FROM student_sessions s JOIN student_accounts a ON a.username = s.username
+    WHERE s.session_hash = ?1
+  `).bind(await sha256Hex(token)).first();
+  return session && Number(session.expires_at) > Date.now()
+    && Number(session.auth_version) === Number(session.current_auth_version)
+    ? session.username : '';
+}
+
 function studentAuthRequiredResponse() {
   return jsonResponse({
     error: '该账号需要重新验证密码',
@@ -1014,6 +1049,74 @@ async function secureTextEqual(left, right) {
 const EXAM_PART_TYPES = new Set(['single_choice', 'multiple_choice', 'fill_blank', 'short_answer', 'programming']);
 const EXAM_RESULT_POLICIES = new Set(['immediate', 'after_graded', 'manual']);
 
+function validateAvailability(input) {
+  const enabled = input?.enabled === true;
+  const afterEndView = AFTER_END_VIEW_POLICIES.has(input?.afterEndView) ? input.afterEndView : 'none';
+  if (!enabled) return { enabled: false, windows: [], afterEndView };
+  if (!Array.isArray(input.windows) || input.windows.length < 1 || input.windows.length > 20) {
+    return { error: '启用定时后必须设置 1 到 20 个答题时间段' };
+  }
+  const windows = input.windows.map(item => ({
+    start: Math.trunc(Number(item?.start)),
+    end: Math.trunc(Number(item?.end)),
+  })).sort((left, right) => left.start - right.start);
+  for (let index = 0; index < windows.length; index += 1) {
+    const item = windows[index];
+    if (!Number.isFinite(item.start) || !Number.isFinite(item.end) || item.start < 0 || item.end <= item.start) {
+      return { error: `第 ${index + 1} 个答题时间段不正确` };
+    }
+    if (item.end - item.start < 60 * 1000) return { error: `第 ${index + 1} 个答题时间段不能短于 1 分钟` };
+    if (index > 0 && item.start < windows[index - 1].end + TIMED_GRACE_MS) {
+      return { error: `第 ${index + 1} 个答题时间段与前一个时间段或其 30 秒提交期重叠` };
+    }
+  }
+  return { enabled: true, windows, afterEndView };
+}
+
+function availabilityState(availability, now = Date.now()) {
+  if (!availability?.enabled || !availability.windows?.length) {
+    return { state: 'unrestricted', canEdit: true, canSubmit: true, serverTime: now };
+  }
+  for (const window of availability.windows) {
+    if (now < window.start) {
+      return { state: 'upcoming', canEdit: false, canSubmit: false, nextStart: window.start, serverTime: now };
+    }
+    if (now < window.end) {
+      return {
+        state: 'active', canEdit: true, canSubmit: true,
+        windowStart: window.start, windowEnd: window.end, serverTime: now,
+      };
+    }
+    if (now < window.end + TIMED_GRACE_MS) {
+      return {
+        state: 'grace', canEdit: false, canSubmit: true,
+        windowStart: window.start, windowEnd: window.end,
+        graceEndsAt: window.end + TIMED_GRACE_MS, serverTime: now,
+      };
+    }
+  }
+  const lastEnd = availability.windows[availability.windows.length - 1].end;
+  return { state: 'ended', canEdit: false, canSubmit: false, lastEnd, serverTime: now };
+}
+
+function publicAvailability(availability, now = Date.now()) {
+  const normalized = availability?.enabled ? availability : { enabled: false, windows: [], afterEndView: 'none' };
+  return { ...normalized, status: availabilityState(normalized, now) };
+}
+
+async function isManagedStudent(env, username) {
+  if (!env.OJ_DB || !username) return false;
+  const row = await env.OJ_DB.prepare('SELECT is_managed FROM student_accounts WHERE username = ?1')
+    .bind(username).first();
+  return Number(row?.is_managed) === 1;
+}
+
+function timedAccessError(state) {
+  if (state.state === 'upcoming') return jsonResponse({ error: '尚未到答题开放时间', code: 'NOT_STARTED', timing: state }, 403);
+  if (state.state === 'grace') return jsonResponse({ error: '答题时间已结束，答案已经冻结', code: 'ANSWER_FROZEN', timing: state }, 409);
+  return jsonResponse({ error: '答题时间已经结束', code: 'ANSWER_CLOSED', timing: state }, 403);
+}
+
 function normalizeExamId(value) {
   const id = String(value || '').trim().toUpperCase();
   return /^[A-Z][A-Z0-9_-]{1,31}$/.test(id) ? id : '';
@@ -1033,6 +1136,8 @@ function validateExamPaper(input) {
   const allowedUsers = Array.isArray(input.allowedUsers)
     ? [...new Set(input.allowedUsers.map(normalizeStudentUsername).filter(Boolean))]
     : [];
+  const availability = validateAvailability(input.availability);
+  if (availability.error) return { error: availability.error };
   const serialNo = Number(input.serialNo || 0);
   if (!id || !title) return { error: '试卷编号或名称不正确' };
   if (allowedUsers.length > 2000) return { error: '单张套卷最多额外准入 2000 个账号' };
@@ -1107,7 +1212,7 @@ function validateExamPaper(input) {
   }
   if (totalScore > 10000) return { error: '试卷总分不能超过 10000 分' };
   return {
-    paper: { id, title, description, status, resultPolicy, serialNo, allowedUsers, questions },
+    paper: { id, title, description, status, resultPolicy, serialNo, allowedUsers, availability, questions },
     totalScore: Math.round(totalScore * 100) / 100,
     totalParts,
   };
@@ -1152,6 +1257,7 @@ function parseExamRecord(record) {
     totalScore: Number(record.total_score),
     updatedAt: Number(record.updated_at),
     serialNo: Number(structure.serialNo || record.serial_no || 0),
+    availability: structure.availability || { enabled: false, windows: [], afterEndView: 'none' },
   };
 }
 
@@ -1312,7 +1418,11 @@ async function handleAdminExamSave(body, env) {
   if (existing && existing.group_name !== group) return jsonResponse({ error: '该试卷编号已被其他组别使用' }, 409);
   paper.serialNo = await ensureExamSerial(paper, env, group, existing);
 
-  const structure = JSON.stringify({ serialNo: paper.serialNo, questions: paper.questions });
+  const structure = JSON.stringify({
+    serialNo: paper.serialNo,
+    availability: paper.availability,
+    questions: paper.questions,
+  });
   const structureChanged = !existing || existing.structure_json !== structure;
   const version = existing ? Number(existing.version) + (structureChanged ? 1 : 0) : 1;
   const now = Date.now();
@@ -1349,6 +1459,11 @@ async function handleAdminExamSave(body, env) {
           WHERE s.exam_id = exam_versions.exam_id AND s.exam_version = exam_versions.version
         )
     `).bind(paper.id, version));
+    statements.push(env.OJ_DB.prepare(`
+      DELETE FROM timed_drafts
+      WHERE resource_type = 'exam' AND resource_id = ?1
+        AND status IN ('active', 'queued', 'failed')
+    `).bind(paper.id));
   }
   statements.push(env.OJ_DB.prepare('DELETE FROM exam_roster WHERE exam_id = ?1').bind(paper.id));
   for (const username of paper.allowedUsers) {
@@ -1383,6 +1498,7 @@ async function handleStudentExamList(body, env) {
   const group = normalizeGroup(body.group);
   const result = await env.OJ_DB.prepare(`
     SELECT p.id, p.title, p.description, p.total_score, p.result_policy, p.updated_at,
+           v.structure_json,
            s.id AS submission_id, s.grading_status, s.total_score AS achieved_score,
            s.graded_count, s.total_parts, s.released, s.submitted_at,
            CASE WHEN
@@ -1394,17 +1510,28 @@ async function handleStudentExamList(body, env) {
              )
            THEN 1 ELSE 0 END AS access_allowed
     FROM exam_papers p
+    JOIN exam_versions v ON v.exam_id = p.id AND v.version = p.version
     LEFT JOIN exam_submissions s
       ON s.exam_id = p.id AND s.username = ?1 AND s.is_preview = 0 AND s.is_final = 1
     WHERE p.group_name = ?2 AND p.status = 'published'
     ORDER BY p.updated_at DESC
   `).bind(username, group).all();
-  return jsonResponse((result.results || []).map(row => ({
+  return jsonResponse((result.results || []).map(row => {
+    let availability = { enabled: false, windows: [], afterEndView: 'none' };
+    try { availability = JSON.parse(row.structure_json)?.availability || availability; } catch { /* 使用无限制默认值 */ }
+    const timing = publicAvailability(availability).status;
+    const answerAccess = Number(row.access_allowed) === 1;
+    const viewAccess = timing.state !== 'ended'
+      ? answerAccess
+      : availability.afterEndView === 'all' || (availability.afterEndView === 'authorized' && answerAccess);
+    return {
     id: row.id,
     title: row.title,
     description: row.description,
     totalScore: Number(row.total_score),
-    accessAllowed: Number(row.access_allowed) === 1,
+    accessAllowed: viewAccess,
+    answerAllowed: answerAccess,
+    timing,
     submittedAt: row.submitted_at ? Number(row.submitted_at) : null,
     gradingStatus: row.grading_status || null,
     gradedCount: Number(row.graded_count || 0),
@@ -1412,7 +1539,8 @@ async function handleStudentExamList(body, env) {
     resultVisible: isExamResultVisible(row.result_policy, row.grading_status, Number(row.released)),
     achievedScore: isExamResultVisible(row.result_policy, row.grading_status, Number(row.released))
       ? Number(row.achieved_score) : null,
-  })));
+    };
+  }));
 }
 
 function isExamResultVisible(policy, gradingStatus, released) {
@@ -1427,8 +1555,16 @@ async function handleStudentExamGet(body, env) {
   if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
   const record = await readExamRecord(env, examId);
   if (!record || record.status !== 'published') return jsonResponse({ error: '试卷不存在或尚未发布' }, 404);
-  if (!await canStudentAccessExam(env, examId, username)) return jsonResponse({ error: '你不在这张套卷的准入范围内' }, 403);
   const paper = parseExamRecord(record);
+  const timing = availabilityState(paper.availability);
+  const answerAccess = await canStudentAccessExam(env, examId, username);
+  const postViewAllowed = timing.state === 'ended'
+    && (paper.availability.afterEndView === 'all'
+      || (paper.availability.afterEndView === 'authorized' && answerAccess));
+  if (!answerAccess && !postViewAllowed) return jsonResponse({ error: '你不在这张套卷的准入范围内' }, 403);
+  if (timing.state === 'ended' && !postViewAllowed) {
+    return jsonResponse({ error: '这张套卷已经结束且未开放观看', code: 'VIEW_CLOSED', timing }, 403);
+  }
   await enrichExamProgrammingParts(paper, env, record.group_name);
   const submission = await env.OJ_DB.prepare(`
     SELECT * FROM exam_submissions
@@ -1451,7 +1587,21 @@ async function handleStudentExamGet(body, env) {
       } : {}),
     };
   }
-  return jsonResponse({ paper: publicExamPaper(paper), mySubmission });
+  let timedDraft = null;
+  if (timing.windowStart) {
+    const draft = await env.OJ_DB.prepare(`
+      SELECT payload_json, status, updated_at FROM timed_drafts
+      WHERE resource_type = 'exam' AND group_name = ?1 AND resource_id = ?2
+        AND resource_version = ?3 AND username = ?4 AND window_start = ?5
+    `).bind(record.group_name, examId, paper.version, username, timing.windowStart).first();
+    if (draft) timedDraft = {
+      answers: JSON.parse(draft.payload_json), status: draft.status, updatedAt: Number(draft.updated_at),
+    };
+  }
+  return jsonResponse({
+    paper: { ...publicExamPaper(paper), availability: publicAvailability(paper.availability) },
+    mySubmission, timedDraft, timing, answerAllowed: answerAccess,
+  });
 }
 
 async function handleAdminExamPreviewGet(body, env) {
@@ -1589,6 +1739,94 @@ async function gradeExamAnswers(paper, answers, username, group, env) {
   return partResults;
 }
 
+async function timedResource(body, env) {
+  const resourceType = body.resourceType === 'exam' ? 'exam' : body.resourceType === 'problem' ? 'problem' : '';
+  const group = normalizeGroup(body.group);
+  const username = normalizeStudentUsername(body.username);
+  if (!resourceType || !username) return { error: jsonResponse({ error: '定时草稿参数不正确' }, 400) };
+  if (resourceType === 'exam') {
+    const resourceId = normalizeExamId(body.resourceId);
+    const record = resourceId ? await readExamRecord(env, resourceId) : null;
+    if (!record || record.status !== 'published' || record.group_name !== group) {
+      return { error: jsonResponse({ error: '套卷不存在或尚未发布' }, 404) };
+    }
+    if (!await canStudentAccessExam(env, resourceId, username)) {
+      return { error: jsonResponse({ error: '你不在这张套卷的准入范围内' }, 403) };
+    }
+    const paper = parseExamRecord(record);
+    return { resourceType, resourceId, version: paper.version, group, username, availability: paper.availability, paper };
+  }
+  const resourceId = String(body.resourceId || '').trim().toUpperCase();
+  const problem = await readHiddenProblem(resourceId, env, group);
+  if (!problem || problem.status === 'draft') return { error: jsonResponse({ error: '题目不存在或尚未发布' }, 404) };
+  return { resourceType, resourceId, version: 1, group, username, availability: problem.availability, problem };
+}
+
+async function handleTimedDraftSave(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '定时草稿数据库尚未配置' }, 503);
+  const resource = await timedResource(body, env);
+  if (resource.error) return resource.error;
+  const timing = availabilityState(resource.availability);
+  if (timing.state !== 'active') return timedAccessError(timing);
+  let payload;
+  if (resource.resourceType === 'exam') {
+    payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload) ? body.payload : null;
+  } else {
+    const language = String(body.payload?.language || '');
+    const code = typeof body.payload?.code === 'string' ? body.payload.code : '';
+    payload = SUBMISSION_LANGUAGE_IDS[language] && code.length <= 200000 ? { language, code } : null;
+  }
+  if (!payload) return jsonResponse({ error: '草稿内容格式不正确' }, 400);
+  const payloadJson = JSON.stringify(payload);
+  if (payloadJson.length > 600000) return jsonResponse({ error: '草稿不能超过 600 KB' }, 413);
+  const now = Date.now();
+  await env.OJ_DB.prepare(`
+    INSERT INTO timed_drafts (
+      resource_type, group_name, resource_id, resource_version, username,
+      window_start, window_end, payload_json, status, updated_at, last_error
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'active', ?9, '')
+    ON CONFLICT(resource_type, group_name, resource_id, resource_version, username, window_start)
+    DO UPDATE SET payload_json = excluded.payload_json, window_end = excluded.window_end,
+      updated_at = excluded.updated_at, last_error = ''
+    WHERE timed_drafts.status = 'active'
+  `).bind(
+    resource.resourceType, resource.group, resource.resourceId, resource.version, resource.username,
+    timing.windowStart, timing.windowEnd, payloadJson, now,
+  ).run();
+  return jsonResponse({ success: true, updatedAt: now, timing });
+}
+
+async function handleTimedFinalize(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '定时草稿数据库尚未配置' }, 503);
+  const resource = await timedResource(body, env);
+  if (resource.error) return resource.error;
+  const timing = availabilityState(resource.availability);
+  if (timing.state !== 'grace' && timing.state !== 'ended') {
+    return jsonResponse({ error: '当前不在冻结提交阶段', code: 'NOT_IN_GRACE', timing }, 409);
+  }
+  const endedWindow = [...(resource.availability.windows || [])].reverse().find(item => Date.now() >= item.end);
+  if (!endedWindow) return jsonResponse({ error: '找不到已结束的答题时间段' }, 409);
+  const now = Date.now();
+  const result = await env.OJ_DB.prepare(`
+    UPDATE timed_drafts SET status = 'queued', queued_at = COALESCE(queued_at, ?7), last_error = ''
+    WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
+      AND resource_version = ?4 AND username = ?5 AND window_start = ?6
+      AND status IN ('active', 'failed')
+  `).bind(
+    resource.resourceType, resource.group, resource.resourceId, resource.version,
+    resource.username, endedWindow.start, now,
+  ).run();
+  const draft = await env.OJ_DB.prepare(`
+    SELECT status FROM timed_drafts WHERE resource_type = ?1 AND group_name = ?2
+      AND resource_id = ?3 AND resource_version = ?4 AND username = ?5 AND window_start = ?6
+  `).bind(
+    resource.resourceType, resource.group, resource.resourceId, resource.version,
+    resource.username, endedWindow.start,
+  ).first();
+  if (!draft) return jsonResponse({ error: '服务器还没有收到可提交的草稿，请联系管理员', code: 'NO_SERVER_DRAFT' }, 409);
+  return jsonResponse({ success: true, queued: draft.status !== 'submitted', status: draft.status, acceptedAt: now });
+}
+
 async function handleAdminExamPreviewGrade(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
   const examId = normalizeExamId(body.examId);
@@ -1672,7 +1910,7 @@ async function handleAdminExamPreviewSubmit(body, env) {
   });
 }
 
-async function handleStudentExamSubmit(body, env) {
+async function handleStudentExamSubmit(body, env, options = {}) {
   if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
   const examId = normalizeExamId(body.examId);
   const username = normalizeStudentUsername(body.username);
@@ -1686,6 +1924,8 @@ async function handleStudentExamSubmit(body, env) {
   const group = record.group_name;
   if (body.group && normalizeGroup(body.group) !== group) return jsonResponse({ error: '试卷组别不正确' }, 400);
   const paper = parseExamRecord(record);
+  const currentTiming = availabilityState(paper.availability);
+  if (!options.bypassTiming && !currentTiming.canEdit) return timedAccessError(currentTiming);
   const validPartIds = new Set(paper.questions.flatMap(question => question.parts.map(part => part.id)));
   for (const key of Object.keys(answers)) {
     if (!validPartIds.has(key)) delete answers[key];
@@ -1733,6 +1973,13 @@ async function handleStudentExamSubmit(body, env) {
       DELETE FROM resubmission_requests
       WHERE group_name = ?1 AND problem_id = ?2 AND username = ?3
     `).bind(group, problemId, username));
+  }
+  if (!options.bypassTiming && currentTiming.state === 'active') {
+    statements.push(env.OJ_DB.prepare(`
+      UPDATE timed_drafts SET status = 'submitted', submitted_at = ?6
+      WHERE resource_type = 'exam' AND group_name = ?1 AND resource_id = ?2
+        AND resource_version = ?3 AND username = ?4 AND window_start = ?5 AND status = 'active'
+    `).bind(group, examId, paper.version, username, currentTiming.windowStart, now));
   }
   await env.OJ_DB.batch(statements);
   const visible = isExamResultVisible(paper.resultPolicy, scores.gradingStatus, 0);
@@ -2279,11 +2526,29 @@ async function handleData(request, env) {
       problem.testCases = hiddenProblem.testCases;
     } else {
       if (problem.status === 'draft') return jsonResponse({ error: '题目不存在或尚未发布' }, 404);
+      const timing = availabilityState(problem.availability);
+      const username = await studentSessionUsername(request, env);
+      if (timing.state === 'ended') {
+        const policy = problem.availability?.afterEndView || 'none';
+        const canView = policy === 'all' || (policy === 'authorized' && await isManagedStudent(env, username));
+        if (!canView) return jsonResponse({ error: '这道题已经结束且未开放观看', code: 'VIEW_CLOSED', timing }, 403);
+      }
+      if (username && timing.windowStart && env.OJ_DB) {
+        const draft = await env.OJ_DB.prepare(`
+          SELECT payload_json, status, updated_at FROM timed_drafts
+          WHERE resource_type = 'problem' AND group_name = ?1 AND resource_id = ?2
+            AND resource_version = 1 AND username = ?3 AND window_start = ?4
+        `).bind(group, problem.id, username, timing.windowStart).first();
+        if (draft) {
+          try { problem.timedDraft = { ...JSON.parse(draft.payload_json), status: draft.status, updatedAt: Number(draft.updated_at) }; } catch { /* 忽略损坏草稿 */ }
+        }
+      }
       // 学生只能读取公开题面，隐藏测试点只保存在 KV 中。
       delete problem.testCases;
     }
 
     problem.group = group;
+    problem.availability = publicAvailability(problem.availability);
     return jsonResponse(problem);
   }
 
@@ -2781,6 +3046,7 @@ async function handleCreateProblem(body, env) {
     title: problem.title,
     difficulty: problem.difficulty,
     status: problem.status,
+    availability: problem.availability,
     file,
     acceptRate: '0%',
     submitCount: 0,
@@ -2920,6 +3186,7 @@ async function handleUpdateProblem(body, env) {
   indexItem.title = problem.title;
   indexItem.difficulty = problem.difficulty;
   indexItem.status = problem.status;
+  indexItem.availability = problem.availability;
   const updateIndexRes = await fetch(indexUrl, {
     method: 'PUT',
     headers,
@@ -2931,6 +3198,16 @@ async function handleUpdateProblem(body, env) {
   });
   if (!updateIndexRes.ok) {
     return githubErrorResponse(updateIndexRes, '题目内容已更新，但同步题目列表失败，请重试');
+  }
+
+  const availabilityChanged = JSON.stringify(previousHiddenProblem?.availability || { enabled: false, windows: [], afterEndView: 'none' })
+    !== JSON.stringify(problem.availability);
+  if (availabilityChanged && env.OJ_DB) {
+    await env.OJ_DB.prepare(`
+      DELETE FROM timed_drafts
+      WHERE resource_type = 'problem' AND group_name = ?1 AND resource_id = ?2
+        AND status IN ('active', 'queued', 'failed')
+    `).bind(group, problem.id).run();
   }
 
   const rejudge = testCasesChanged
@@ -3029,6 +3306,67 @@ async function processNextRejudgeJob(env) {
       Number(job.requested_at),
     ).run();
     console.error(`自动重判任务 ${job.id} 失败:`, error);
+  }
+}
+
+async function processNextTimedSubmission(env) {
+  if (!env.OJ_DB) return;
+  const now = Date.now();
+  // 浏览器在线时会在 30 秒整主动排队；此处是断网、关页等情况的服务端兜底。
+  await env.OJ_DB.prepare(`
+    UPDATE timed_drafts SET status = 'queued', queued_at = ?1
+    WHERE status = 'active' AND window_end + ?2 <= ?1
+  `).bind(now, TIMED_GRACE_MS).run();
+  const draft = await env.OJ_DB.prepare(`
+    SELECT * FROM timed_drafts WHERE status = 'queued'
+    ORDER BY queued_at ASC, updated_at ASC LIMIT 1
+  `).first();
+  if (!draft) return;
+  const keyBindings = [
+    draft.resource_type, draft.group_name, draft.resource_id, Number(draft.resource_version),
+    draft.username, Number(draft.window_start),
+  ];
+  try {
+    const payload = JSON.parse(draft.payload_json);
+    if (draft.resource_type === 'problem') {
+      const currentProblem = await readHiddenProblem(draft.resource_id, env, draft.group_name);
+      const windowStillValid = currentProblem?.availability?.windows?.some(item =>
+        Number(item.start) === Number(draft.window_start) && Number(item.end) === Number(draft.window_end));
+      if (!windowStillValid) throw new Error('题目答题时间已经被管理员修改，旧草稿不再自动提交');
+      await runJudgeSubmission({
+        username: draft.username,
+        problemId: draft.resource_id,
+        group: draft.group_name,
+        language: payload.language,
+        code: payload.code,
+      }, env, null, true, true);
+    } else {
+      const currentExam = await readExamRecord(env, draft.resource_id);
+      if (!currentExam || Number(currentExam.version) !== Number(draft.resource_version)) {
+        throw new Error('套卷版本已经更新，旧草稿不再自动提交');
+      }
+      const response = await handleStudentExamSubmit({
+        username: draft.username,
+        examId: draft.resource_id,
+        group: draft.group_name,
+        answers: payload,
+      }, env, { bypassTiming: true });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({}));
+        throw new Error(failure.error || `自动提交失败 (${response.status})`);
+      }
+    }
+    await env.OJ_DB.prepare(`
+      UPDATE timed_drafts SET status = 'submitted', submitted_at = ?7, last_error = ''
+      WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
+        AND resource_version = ?4 AND username = ?5 AND window_start = ?6
+    `).bind(...keyBindings, Date.now()).run();
+  } catch (error) {
+    await env.OJ_DB.prepare(`
+      UPDATE timed_drafts SET status = 'failed', last_error = ?7
+      WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
+        AND resource_version = ?4 AND username = ?5 AND window_start = ?6
+    `).bind(...keyBindings, String(error?.message || error).slice(0, 1000)).run();
   }
 }
 
@@ -3172,6 +3510,8 @@ function validateProblem(input, requestedFile) {
   }
 
   const pythonJudgeMode = input.pythonJudgeMode === 'function' ? 'function' : 'standard';
+  const availability = validateAvailability(input.availability);
+  if (availability.error) return { error: availability.error };
   let pythonFunction = null;
   if (pythonJudgeMode === 'function') {
     const functionValidation = normalizePythonFunctionSignature(input.pythonFunctionSignature);
@@ -3200,6 +3540,7 @@ function validateProblem(input, requestedFile) {
     hints: Array.isArray(input.hints)
       ? input.hints.map(item => String(item).trim()).filter(Boolean).slice(0, 20)
       : [],
+    availability,
     pythonJudgeMode,
     ...(pythonFunction ? { pythonFunction } : {}),
   };
@@ -3512,6 +3853,16 @@ async function prepareJudgeSubmission(body, env, allowDraft = false) {
   if (problem?.status === 'draft' && !allowDraft) {
     throw judgeError('题目不存在或尚未发布', 404, 'PROBLEM_NOT_PUBLISHED');
   }
+  if (!allowDraft) {
+    const timing = availabilityState(problem?.availability);
+    if (!timing.canEdit) {
+      throw judgeError(
+        timing.state === 'upcoming' ? '尚未到答题开放时间' : '答题时间已经结束，答案已冻结',
+        timing.state === 'grace' ? 409 : 403,
+        timing.state === 'upcoming' ? 'NOT_STARTED' : 'ANSWER_CLOSED',
+      );
+    }
+  }
   const testCases = problem?.testCases;
   if (!Array.isArray(testCases) || testCases.length === 0 || testCases.length > 50) {
     throw judgeError('题目隐藏测试数据不可用', 503, 'TESTS_UNAVAILABLE');
@@ -3651,6 +4002,14 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
     if (!saveResponse.ok) {
       const saveError = await saveResponse.json();
       throw judgeError(saveError.error || '保存提交记录失败', saveResponse.status, saveError.code || 'SAVE_FAILED');
+    }
+    const timing = availabilityState(problem.availability, result.timestamp);
+    if (env.OJ_DB && timing.state === 'active') {
+      await env.OJ_DB.prepare(`
+        UPDATE timed_drafts SET status = 'submitted', submitted_at = ?5
+        WHERE resource_type = 'problem' AND group_name = ?1 AND resource_id = ?2
+          AND resource_version = 1 AND username = ?3 AND window_start = ?4 AND status = 'active'
+      `).bind(group, problemId, username, timing.windowStart, result.timestamp).run();
     }
   }
 

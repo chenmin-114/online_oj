@@ -60,3 +60,12 @@ namespace_id = "1005"
   [ratelimits.simple]
   limit = 10
   period = 60
+
+[[ratelimits]]
+name = "DRAFT_RATE_LIMITER"
+namespace_id = "1006"
+
+  [ratelimits.simple]
+  # 按用户名限流而不是按 IP，避免学校同一出口下 250 人互相影响。
+  limit = 120
+  period = 60

@@ -131,6 +131,7 @@ class OJAdmin {
   }
 
   bindControls() {
+    window.AdminSchedule.bind('problem');
     document.querySelectorAll('.admin-group-switch').forEach(button => {
       button.addEventListener('click', () => this.switchGroup(button.dataset.group));
     });
@@ -819,6 +820,7 @@ class OJAdmin {
     document.getElementById('sample-editor').innerHTML = '';
     document.getElementById('test-case-editor').innerHTML = '';
     document.getElementById('problem-save-status').textContent = '';
+    window.AdminSchedule.set('problem', { enabled: false, windows: [], afterEndView: 'none' });
     document.getElementById('problem-import-status').textContent = '可粘贴完整题面或单独的某个部分；只更新本次识别到的内容，样例和测试点会追加';
     this.clearProblemImages();
     this.addSample();
@@ -878,6 +880,7 @@ class OJAdmin {
       document.getElementById('problem-hints').value = Array.isArray(problem.hints) ? problem.hints.join('\n') : '';
       document.getElementById('problem-python-judge-mode').value = problem.pythonJudgeMode === 'function' ? 'function' : 'standard';
       document.getElementById('problem-python-function-signature').value = problem.pythonFunction?.signature || '';
+      window.AdminSchedule.set('problem', problem.availability || { enabled: false, windows: [], afterEndView: 'none' });
       this.updatePythonJudgeModeFields();
 
       const sampleEditor = document.getElementById('sample-editor');
@@ -1491,6 +1494,7 @@ class OJAdmin {
       hints: document.getElementById('problem-hints').value.split('\n').map(item => item.trim()).filter(Boolean),
       pythonJudgeMode: document.getElementById('problem-python-judge-mode').value,
       pythonFunctionSignature: document.getElementById('problem-python-function-signature').value,
+      availability: window.AdminSchedule.get('problem'),
     };
 
     const saveButton = document.getElementById('save-problem');

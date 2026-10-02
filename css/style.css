@@ -721,6 +721,10 @@ body.username-locked { overflow: hidden; }
 .info {
   color: var(--info);
 }
+.timing-banner { margin: 0 0 12px; padding: 11px 14px; border: 1px solid var(--border-color); border-left: 3px solid var(--info); border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; }
+.timing-banner.active { border-left-color: var(--success); }
+.timing-banner.warning { border-left-color: var(--warning); }
+.timing-banner.closed { border-left-color: var(--error); }
 
 /* ========== 套卷模式 ========== */
 .exam-list { margin-top: 16px; display: grid; gap: 12px; }

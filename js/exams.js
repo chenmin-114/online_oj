@@ -11,11 +11,16 @@ class ExamUI {
     this.refreshing = false;
     this.refreshTimer = null;
     this.lastRefreshAt = 0;
+    this.timingOffset = 0;
+    this.timingTimer = null;
+    this.autoFinalizeTimer = null;
+    this.serverDraft = null;
   }
 
   init() {
     document.querySelector('[data-view="exams"]').addEventListener('click', () => this.loadList(true, Boolean(this.loadedKey)));
     document.getElementById('back-to-exam-list').addEventListener('click', () => {
+      clearInterval(this.timingTimer);
       this.saveDraft();
       if (this.app.adminExamPreview) {
         window.close();
@@ -166,21 +171,31 @@ class ExamUI {
         : exam.submittedAt
         ? exam.gradingStatus === 'completed' ? '批改完成' : `批改中 ${exam.gradedCount}/${exam.totalParts}`
         : '未提交';
+      const timingText = this.listTimingText(exam.timing);
       return `<button type="button" class="exam-card${allowed ? '' : ' is-locked'}" data-open-exam="${this.escape(exam.id)}" data-access-allowed="${allowed ? '1' : '0'}" aria-disabled="${allowed ? 'false' : 'true'}">
         <div><span class="problem-id">${this.escape(exam.id)}</span><strong>${this.escape(exam.title)}</strong>${allowed ? '' : '<span class="exam-card-lock">🔒 无权限</span>'}</div>
         <p>${this.escape(exam.description || '综合套卷')}</p>
-        <footer><span>总分 ${this.escape(exam.totalScore)}</span><span>${this.escape(status)}</span>${exam.resultVisible ? `<b>${this.escape(exam.achievedScore)} 分</b>` : ''}</footer>
+        <footer><span>总分 ${this.escape(exam.totalScore)}</span>${timingText ? `<span>${this.escape(timingText)}</span>` : ''}<span>${this.escape(status)}</span>${exam.resultVisible ? `<b>${this.escape(exam.achievedScore)} 分</b>` : ''}</footer>
       </button>`;
     }).join('');
     container.querySelectorAll('[data-open-exam]').forEach(button => {
       button.addEventListener('click', () => {
         if (button.dataset.accessAllowed !== '1') {
-          alert('暂无权限，请向管理员申请');
+          const exam = this.exams.find(item => item.id === button.dataset.openExam);
+          alert(exam?.timing?.state === 'ended' ? '这张套卷已经结束，管理员没有开放观看权限' : '暂无权限，请向管理员申请');
           return;
         }
         this.openExam(button.dataset.openExam);
       });
     });
+  }
+
+  listTimingText(timing) {
+    if (!timing || timing.state === 'unrestricted') return '';
+    if (timing.state === 'upcoming') return `${new Date(timing.nextStart).toLocaleString()} 开始`;
+    if (timing.state === 'active') return '答题中';
+    if (timing.state === 'grace') return '答案已冻结';
+    return '已结束';
   }
 
   async openExam(examId) {
@@ -193,6 +208,9 @@ class ExamUI {
       const result = await this.request('exam_get', { examId });
       this.paper = result.paper;
       this.submission = result.mySubmission;
+      this.serverDraft = result.timedDraft;
+      this.lastServerDraft = this.serverDraft?.answers ? JSON.stringify(this.serverDraft.answers) : '';
+      this.timingOffset = Number(result.timing?.serverTime || this.paper.availability?.status?.serverTime || Date.now()) - Date.now();
       this.app._trackExamView(this.paper.id);
       this.renderPaper();
       document.getElementById('download-exam-docx').disabled = false;
@@ -202,6 +220,7 @@ class ExamUI {
           ? '当前以 admin 身份预览；答案会自动保存在本机，提交后可在管理端批改页查看'
           : '答案会自动保存在本机；提交整张试卷后才会进入批改';
       this.renderResult(this.submission);
+      this.startTiming();
     } catch (error) {
       status.textContent = `读取失败：${error.message}`;
     }
@@ -248,7 +267,7 @@ class ExamUI {
   loadAnswers() {
     let draft = null;
     try { draft = JSON.parse(localStorage.getItem(this.draftKey()) || 'null'); } catch { /* 忽略损坏的本地草稿 */ }
-    return draft && typeof draft === 'object' ? draft : (this.submission?.answers || {});
+    return draft && typeof draft === 'object' ? draft : (this.serverDraft?.answers || this.submission?.answers || {});
   }
 
   renderPaper() {
@@ -401,6 +420,7 @@ class ExamUI {
     this.clearProgrammingContext();
     this.renderPaper();
     this.app.views.show('exam');
+    this.applyTimingState();
   }
 
   leaveProgrammingProblem() {
@@ -420,11 +440,88 @@ class ExamUI {
 
   saveDraft() {
     if (!this.paper || !document.getElementById('student-exam-form').children.length) return;
-    try { localStorage.setItem(this.draftKey(), JSON.stringify(this.collectAnswers())); } catch { /* 本机空间不足不阻塞作答 */ }
+    const answers = this.collectAnswers();
+    try { localStorage.setItem(this.draftKey(), JSON.stringify(answers)); } catch { /* 本机空间不足不阻塞作答 */ }
+    clearTimeout(this.serverSaveTimer);
+    this.serverSaveTimer = setTimeout(() => this.saveServerDraft(answers), 800);
+  }
+
+  async saveServerDraft(answers = this.collectAnswers()) {
+    const state = this.currentTiming();
+    if (!this.paper?.availability?.enabled || state.state !== 'active' || this.app.adminExamPreview) return;
+    const signature = JSON.stringify(answers);
+    if (signature === this.lastServerDraft) return;
+    try {
+      await this.request('timed_draft_save', { resourceType: 'exam', resourceId: this.paper.id, payload: answers });
+      this.lastServerDraft = signature;
+    } catch { /* 本机草稿保留，下次修改继续尝试 */ }
+  }
+
+  currentTiming() {
+    return this.app._timingState(this.paper?.availability, this.timingOffset);
+  }
+
+  startTiming() {
+    clearInterval(this.timingTimer);
+    clearTimeout(this.autoFinalizeTimer);
+    this.autoFinalizeTimer = null;
+    this.applyTimingState();
+    if (this.paper?.availability?.enabled && !this.app.adminExamPreview) {
+      this.timingTimer = setInterval(() => this.applyTimingState(), 1000);
+      setTimeout(() => this.saveServerDraft(), 500);
+    }
+  }
+
+  applyTimingState() {
+    if (!this.paper) return;
+    const state = this.currentTiming();
+    const banner = document.getElementById(this.programmingContext ? 'problem-timing-banner' : 'exam-timing-banner');
+    const now = Date.now() + this.timingOffset;
+    banner.hidden = !this.paper.availability?.enabled;
+    banner.className = `timing-banner ${state.state === 'active' ? 'active' : state.state === 'grace' ? 'warning' : 'closed'}`;
+    if (state.state === 'upcoming') banner.textContent = `尚未开始 · ${new Date(state.nextStart).toLocaleString()} 开放（还有 ${this.app._duration(state.nextStart - now)}）`;
+    else if (state.state === 'active') banner.textContent = `答题进行中 · 距本时段结束 ${this.app._duration(state.windowEnd - now)} · 草稿自动保存到服务器`;
+    else if (state.state === 'grace') banner.textContent = `答案已冻结 · 请在 ${this.app._duration(state.graceEndsAt - now)} 内确认提交，否则系统自动提交`;
+    else if (state.state === 'ended') banner.textContent = '全部答题时间已经结束，当前仅可查看。';
+    const locked = !this.app.adminExamPreview && this.paper.availability?.enabled && !state.canEdit;
+    document.querySelectorAll('#student-exam-form input, #student-exam-form textarea, #student-exam-form button').forEach(node => { node.disabled = locked; });
+    document.getElementById('import-exam-docx').disabled = locked;
+    if (this.programmingContext) {
+      this.app.editor?.setReadOnly(locked);
+      ['language-select', 'reset-code-btn', 'run-btn', 'custom-input', 'clear-input-btn'].forEach(id => { const node = document.getElementById(id); if (node) node.disabled = locked; });
+    }
+    const submit = document.getElementById('submit-exam');
+    submit.disabled = !this.app.adminExamPreview && this.paper.availability?.enabled && !state.canSubmit;
+    submit.textContent = state.state === 'grace' ? '确认提交冻结答案' : '提交整张试卷';
+    if (state.state === 'active' && state.windowEnd - now <= 5000 && this.precloseSavedFor !== state.windowEnd) {
+      this.precloseSavedFor = state.windowEnd;
+      this.saveServerDraft();
+    }
+    if (state.state === 'grace' && !this.autoFinalizeTimer) {
+      this.autoFinalizeTimer = setTimeout(() => this.finalizeTimed(), Math.max(0, state.graceEndsAt - now));
+    }
+  }
+
+  async finalizeTimed() {
+    if (!this.paper?.availability?.enabled || this.app.adminExamPreview) return;
+    clearTimeout(this.autoFinalizeTimer);
+    this.autoFinalizeTimer = null;
+    const status = document.getElementById('exam-submit-status');
+    status.textContent = '正在接收冻结答案...';
+    try {
+      const result = await this.request('timed_finalize', { resourceType: 'exam', resourceId: this.paper.id });
+      status.textContent = result.status === 'submitted' ? '冻结答案已经提交完成。' : '冻结答案已接收，正在排队自动批改。';
+      localStorage.removeItem(this.draftKey());
+      clearInterval(this.timingTimer);
+      setTimeout(() => { this.clearProgrammingContext(); this.app.views.show('exams'); this.loadList(true); }, 1200);
+    } catch (error) { status.textContent = `冻结答案提交失败：${error.message}`; }
   }
 
   async submit() {
     if (!this.paper) return;
+    const timing = this.currentTiming();
+    if (!this.app.adminExamPreview && timing.state === 'grace') return this.finalizeTimed();
+    if (!this.app.adminExamPreview && this.paper.availability?.enabled && !timing.canEdit) return;
     const button = document.getElementById('submit-exam');
     const status = document.getElementById('exam-submit-status');
     const answers = this.collectAnswers();

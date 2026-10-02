@@ -482,3 +482,12 @@ input.admin-input { min-width: 240px; }
 .message-popup-option span { display: grid; gap: 3px; }
 .message-popup-option strong { color: var(--admin-text); font-size: 12px; }
 .message-popup-option small { color: var(--admin-muted); font-size: 10px; line-height: 1.5; }
+.schedule-editor { border: 1px solid var(--admin-border); border-radius: 12px; padding: 16px; background: rgba(255,255,255,.02); }
+.schedule-enable { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-weight: 700; }
+.schedule-window-list { display: grid; gap: 10px; margin-top: 14px; }
+.schedule-window-row { display: grid; grid-template-columns: minmax(210px,1fr) auto minmax(210px,1fr) auto; gap: 10px; align-items: end; }
+.schedule-window-row .form-field { margin: 0; }
+.schedule-window-arrow { padding-bottom: 11px; color: var(--admin-muted); }
+.schedule-actions { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-top: 14px; }
+.schedule-actions .form-field { min-width: 290px; margin: 0; }
+@media (max-width: 760px) { .schedule-window-row { grid-template-columns: 1fr; } .schedule-window-arrow { display:none; } .schedule-actions { align-items: stretch; flex-direction: column; } }

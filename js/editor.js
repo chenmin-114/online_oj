@@ -88,6 +88,10 @@ class EditorManager {
     if (this.editor) this.editor.updateOptions({ fontSize: size });
   }
 
+  setReadOnly(readOnly) {
+    if (this.editor) this.editor.updateOptions({ readOnly: Boolean(readOnly) });
+  }
+
   onChange(listener) {
     if (typeof listener === 'function') this.changeListeners.push(listener);
   }

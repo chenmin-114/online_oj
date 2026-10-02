@@ -171,6 +171,27 @@ CREATE INDEX IF NOT EXISTS idx_exam_submissions_exam_final
 CREATE INDEX IF NOT EXISTS idx_exam_submissions_user_final
   ON exam_submissions(username, is_final, submitted_at DESC);
 
+-- 定时答题只保存每个账号在每个开放时段中的最新草稿，避免按键级历史占用空间。
+CREATE TABLE IF NOT EXISTS timed_drafts (
+  resource_type TEXT NOT NULL CHECK (resource_type IN ('problem', 'exam')),
+  group_name TEXT NOT NULL CHECK (group_name IN ('control', 'vision')),
+  resource_id TEXT NOT NULL,
+  resource_version INTEGER NOT NULL DEFAULT 1,
+  username TEXT NOT NULL,
+  window_start INTEGER NOT NULL,
+  window_end INTEGER NOT NULL,
+  payload_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'queued', 'submitted', 'failed')),
+  updated_at INTEGER NOT NULL,
+  queued_at INTEGER,
+  submitted_at INTEGER,
+  last_error TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (resource_type, group_name, resource_id, resource_version, username, window_start)
+);
+
+CREATE INDEX IF NOT EXISTS idx_timed_drafts_due
+  ON timed_drafts(status, window_end, updated_at);
+
 -- 测试点变化后的后台重判队列。成功任务会立即删除，只保留待处理或失败任务。
 CREATE TABLE IF NOT EXISTS rejudge_queue (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

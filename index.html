@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20260930-08">
+  <link rel="stylesheet" href="css/style.css?v=20261002-01">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
@@ -98,6 +98,7 @@
         </div>
         <div><h2 id="student-exam-title">套卷</h2><p id="student-exam-meta"></p></div>
       </div>
+      <div id="exam-timing-banner" class="timing-banner" hidden></div>
       <p id="exam-answer-sheet-status" class="exam-answer-sheet-status" aria-live="polite"></p>
       <div id="student-exam-description" class="exam-description problem-content"></div>
       <form id="student-exam-form" class="student-exam-form"></form>
@@ -114,6 +115,7 @@
         <div><strong>正在完成套卷编程题</strong><span id="exam-problem-context-label"></span></div>
         <button id="back-to-exam-from-problem" type="button" class="btn btn-secondary">← 保存代码并返回套卷</button>
       </div>
+      <div id="problem-timing-banner" class="timing-banner" hidden></div>
       <div class="solve-layout">
         <!-- 左侧：题目描述 -->
         <div class="problem-panel">
@@ -218,7 +220,7 @@
   <!-- 脚本加载（顺序很重要） -->
   <script src="js/config.js?v=20260922-9"></script>
   <script src="js/languages.js?v=20260926-01"></script>
-  <script src="js/editor.js?v=20260927-02"></script>
+  <script src="js/editor.js?v=20261002-01"></script>
   <script src="js/runner.js?v=20260929-01"></script>
   <script src="js/github.js?v=20260929-02"></script>
   <script src="js/views.js?v=20260927-07"></script>
@@ -229,7 +231,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="vendor/jszip/jszip.min.js?v=3.10.2"></script>
   <script src="js/exam-docx.js?v=20260929-01"></script>
-  <script src="js/exams.js?v=20261001-02"></script>
-  <script src="js/app.js?v=20260930-07"></script>
+  <script src="js/exams.js?v=20261002-01"></script>
+  <script src="js/app.js?v=20261002-01"></script>
 </body>
 </html>
