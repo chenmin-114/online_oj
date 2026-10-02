@@ -33,6 +33,12 @@ class App {
     this.timedProblemSaveTimer = null;
     this.timedProblemSaveInFlight = null;
     this.problemGraceSavedFor = null;
+    this.problemFinalizeInFlight = null;
+    this.problemFinalizeSucceeded = false;
+    this.problemFinalizeError = '';
+    this.problemFinalizeRetryTimer = null;
+    this.problemFinalizeDeadlineTimer = null;
+    this.problemExitTimer = null;
     this.timeSyncTimer = null;
     this.timeSyncInFlight = null;
     this.lastTimeSyncAt = 0;
@@ -235,7 +241,17 @@ class App {
     clearInterval(this.problemTimingTimer);
     clearTimeout(this.timeSyncTimer);
     clearTimeout(this.problemAutoFinalizeTimer);
+    clearInterval(this.problemFinalizeRetryTimer);
+    clearTimeout(this.problemFinalizeDeadlineTimer);
+    clearTimeout(this.problemExitTimer);
     this.problemAutoFinalizeTimer = null;
+    this.problemGraceSavedFor = null;
+    this.problemFinalizeInFlight = null;
+    this.problemFinalizeSucceeded = false;
+    this.problemFinalizeError = '';
+    this.problemFinalizeRetryTimer = null;
+    this.problemFinalizeDeadlineTimer = null;
+    this.problemExitTimer = null;
     const leavingExamProblem = Boolean(this.examUI?.programmingContext);
     this.examUI?.leaveProgrammingProblem();
     if (!leavingExamProblem) this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
@@ -478,7 +494,7 @@ class App {
     banner.className = `timing-banner ${state.state === 'active' ? 'active' : state.state === 'grace' ? 'warning' : 'closed'}`;
     if (state.state === 'upcoming') banner.textContent = `尚未开始 · ${new Date(state.nextStart).toLocaleString()} 开放（还有 ${this._duration(state.nextStart - now)}）`;
     else if (state.state === 'active') banner.textContent = `答题进行中 · 距本时段结束 ${this._duration(state.windowEnd - now)} · 草稿自动保存到服务器`;
-    else if (state.state === 'grace') banner.textContent = `答案已锁定 · 正在上传截止时的草稿 · ${this._duration(state.graceEndsAt - now)} 后自动提交`;
+    else if (state.state === 'grace') banner.textContent = `答案已锁定 · ${this._duration(state.graceEndsAt - now)} 后自动提交`;
     else if (state.state === 'ended') banner.textContent = '全部答题时间已经结束，当前仅可查看。';
     const locked = !this.adminProblemPreview && availability?.enabled && !state.canEdit;
     this.editor?.setReadOnly(locked);
@@ -491,12 +507,14 @@ class App {
       this._saveTimedProblemDraft();
     }
     if (state.state === 'grace' && this.problemGraceSavedFor !== state.windowEnd) {
-      this._saveTimedProblemDraft(true).then(saved => {
-        if (saved) this.problemGraceSavedFor = state.windowEnd;
-      });
+      this.problemGraceSavedFor = state.windowEnd;
+      this._submitTimedProblemInBackground();
     }
     if (state.state === 'grace' && !this.problemAutoFinalizeTimer) {
-      this.problemAutoFinalizeTimer = setTimeout(() => this._finalizeTimedProblem(), Math.max(0, state.graceEndsAt - now));
+      this.problemAutoFinalizeTimer = setTimeout(
+        () => this._beginTimedProblemAutoReport(state.windowEnd),
+        Math.max(0, state.graceEndsAt - now),
+      );
     }
   }
 
@@ -532,21 +550,71 @@ class App {
     return this.timedProblemSaveInFlight;
   }
 
-  async _finalizeTimedProblem() {
-    if (!this.currentProblem?.availability?.enabled) return;
-    clearTimeout(this.problemAutoFinalizeTimer);
-    this.problemAutoFinalizeTimer = null;
-    const resultEl = document.getElementById('judge-result');
-    resultEl.innerHTML = '<span class="info">⏳ 正在接收冻结答案...</span>';
-    try {
-      await this._saveTimedProblemDraft(true);
+  _submitTimedProblemInBackground() {
+    if (this.problemFinalizeSucceeded) return Promise.resolve({ success: true });
+    if (this.problemFinalizeInFlight) return this.problemFinalizeInFlight;
+    this.problemFinalizeInFlight = (async () => {
+      const saved = await this._saveTimedProblemDraft(true);
+      if (!saved && this._withinServerDraftUploadWindow(this.currentProblem?.availability, this.problemTimingOffset)) {
+        throw new Error('截止答案还未上传成功');
+      }
       const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_finalize', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || '冻结答案提交失败');
-      resultEl.innerHTML = '<span class="success">✅ 冻结答案已接收，正在排队判题，可在提交记录中查看结果</span>';
+      this.problemFinalizeSucceeded = true;
+      this.problemFinalizeError = '';
+      return { success: true, result };
+    })().catch(error => {
+      this.problemFinalizeError = error?.message || '提交失败';
+      return { success: false, error: this.problemFinalizeError };
+    }).finally(() => { this.problemFinalizeInFlight = null; });
+    return this.problemFinalizeInFlight;
+  }
+
+  _finishTimedProblemAndExit(success, message) {
+    if (this.problemExitTimer) return;
+    clearInterval(this.problemFinalizeRetryTimer);
+    clearTimeout(this.problemFinalizeDeadlineTimer);
+    clearTimeout(this.problemAutoFinalizeTimer);
+    const resultEl = document.getElementById('judge-result');
+    resultEl.innerHTML = `<span class="${success ? 'success' : 'error'}">${success ? '✅' : '❌'} ${this._escapeHtml(message)}，5 秒后退出答题页面</span>`;
+    this.problemExitTimer = setTimeout(() => {
+      clearInterval(this.problemTimingTimer);
       clearTimeout(this.timeSyncTimer);
-      setTimeout(() => { this.views.show('problems'); this.loadProblemList(); }, 1200);
-    } catch (error) { resultEl.innerHTML = `<span class="error">❌ ${this._escapeHtml(error.message)}</span>`; }
+      this.views.show('problems');
+      this.loadProblemList();
+    }, 5000);
+  }
+
+  _beginTimedProblemAutoReport(windowEnd) {
+    if (this.problemExitTimer) return;
+    const resultEl = document.getElementById('judge-result');
+    resultEl.innerHTML = '<span class="info">⏳ 正在自动提交截止答案...</span>';
+    const attempt = () => this._submitTimedProblemInBackground().then(outcome => {
+      if (outcome.success) {
+        this._finishTimedProblemAndExit(true, '自动提交成功');
+      } else if (!this.problemExitTimer) {
+        resultEl.innerHTML = `<span class="error">❌ 暂未提交成功：${this._escapeHtml(outcome.error)}，将在后台继续重试</span>`;
+      }
+    });
+    attempt();
+    this.problemFinalizeRetryTimer = setInterval(attempt, 5000);
+    const finalAt = windowEnd + 60 * 1000;
+    const remaining = Math.max(0, finalAt - (Date.now() + this.problemTimingOffset));
+    this.problemFinalizeDeadlineTimer = setTimeout(() => {
+      clearInterval(this.problemFinalizeRetryTimer);
+      if (this.problemFinalizeSucceeded) this._finishTimedProblemAndExit(true, '自动提交成功');
+      else this._finishTimedProblemAndExit(false, `自动提交未成功：${this.problemFinalizeError || '网络超时'}`);
+    }, remaining);
+  }
+
+  async _finalizeTimedProblem() {
+    if (!this.currentProblem?.availability?.enabled) return;
+    const resultEl = document.getElementById('judge-result');
+    resultEl.innerHTML = '<span class="info">⏳ 正在确认截止答案...</span>';
+    const outcome = await this._submitTimedProblemInBackground();
+    if (outcome.success) this._finishTimedProblemAndExit(true, '提交成功');
+    else resultEl.innerHTML = `<span class="error">❌ 提交失败：${this._escapeHtml(outcome.error)}，系统会在剩余时间内继续重试</span>`;
   }
 
   _formatMarkdown(text) {

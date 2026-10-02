@@ -17,12 +17,21 @@ class ExamUI {
     this.serverDraft = null;
     this.serverSaveInFlight = null;
     this.graceSavedFor = null;
+    this.finalizeInFlight = null;
+    this.finalizeSucceeded = false;
+    this.finalizeError = '';
+    this.finalizeRetryTimer = null;
+    this.finalizeDeadlineTimer = null;
+    this.exitTimer = null;
   }
 
   init() {
     document.querySelector('[data-view="exams"]').addEventListener('click', () => this.loadList(true, Boolean(this.loadedKey)));
     document.getElementById('back-to-exam-list').addEventListener('click', () => {
       clearInterval(this.timingTimer);
+      clearInterval(this.finalizeRetryTimer);
+      clearTimeout(this.finalizeDeadlineTimer);
+      clearTimeout(this.exitTimer);
       clearTimeout(this.app.timeSyncTimer);
       this.saveDraft();
       if (this.app.adminExamPreview) {
@@ -202,6 +211,17 @@ class ExamUI {
   }
 
   async openExam(examId) {
+    clearTimeout(this.autoFinalizeTimer);
+    clearInterval(this.finalizeRetryTimer);
+    clearTimeout(this.finalizeDeadlineTimer);
+    clearTimeout(this.exitTimer);
+    this.graceSavedFor = null;
+    this.finalizeInFlight = null;
+    this.finalizeSucceeded = false;
+    this.finalizeError = '';
+    this.finalizeRetryTimer = null;
+    this.finalizeDeadlineTimer = null;
+    this.exitTimer = null;
     const status = document.getElementById('exam-submit-status');
     document.getElementById('exam-answer-sheet-status').textContent = '';
     document.getElementById('download-exam-docx').disabled = true;
@@ -499,7 +519,7 @@ class ExamUI {
     banner.className = `timing-banner ${state.state === 'active' ? 'active' : state.state === 'grace' ? 'warning' : 'closed'}`;
     if (state.state === 'upcoming') banner.textContent = `尚未开始 · ${new Date(state.nextStart).toLocaleString()} 开放（还有 ${this.app._duration(state.nextStart - now)}）`;
     else if (state.state === 'active') banner.textContent = `答题进行中 · 距本时段结束 ${this.app._duration(state.windowEnd - now)} · 草稿自动保存到服务器`;
-    else if (state.state === 'grace') banner.textContent = `答案已锁定 · 正在上传截止时的草稿 · ${this.app._duration(state.graceEndsAt - now)} 后自动提交`;
+    else if (state.state === 'grace') banner.textContent = `答案已锁定 · ${this.app._duration(state.graceEndsAt - now)} 后自动提交`;
     else if (state.state === 'ended') banner.textContent = '全部答题时间已经结束，当前仅可查看。';
     const locked = !this.app.adminExamPreview && this.paper.availability?.enabled && !state.canEdit;
     document.querySelectorAll('#student-exam-form input, #student-exam-form textarea, #student-exam-form button').forEach(node => { node.disabled = locked; });
@@ -516,30 +536,82 @@ class ExamUI {
       this.saveServerDraft();
     }
     if (state.state === 'grace' && this.graceSavedFor !== state.windowEnd) {
-      this.saveServerDraft(this.collectAnswers(), true).then(saved => {
-        if (saved) this.graceSavedFor = state.windowEnd;
-      });
+      this.graceSavedFor = state.windowEnd;
+      this.submitTimedInBackground();
     }
     if (state.state === 'grace' && !this.autoFinalizeTimer) {
-      this.autoFinalizeTimer = setTimeout(() => this.finalizeTimed(), Math.max(0, state.graceEndsAt - now));
+      this.autoFinalizeTimer = setTimeout(
+        () => this.beginTimedAutoReport(state.windowEnd),
+        Math.max(0, state.graceEndsAt - now),
+      );
     }
+  }
+
+  submitTimedInBackground() {
+    if (this.finalizeSucceeded) return Promise.resolve({ success: true });
+    if (this.finalizeInFlight) return this.finalizeInFlight;
+    this.finalizeInFlight = (async () => {
+      const saved = await this.saveServerDraft(this.collectAnswers(), true);
+      if (!saved && this.app._withinServerDraftUploadWindow(this.paper?.availability, this.timingOffset)) {
+        throw new Error('截止答案还未上传成功');
+      }
+      const result = await this.request('timed_finalize', { resourceType: 'exam', resourceId: this.paper.id });
+      this.finalizeSucceeded = true;
+      this.finalizeError = '';
+      return { success: true, result };
+    })().catch(error => {
+      this.finalizeError = error?.message || '提交失败';
+      return { success: false, error: this.finalizeError };
+    }).finally(() => { this.finalizeInFlight = null; });
+    return this.finalizeInFlight;
+  }
+
+  finishTimedAndExit(success, message) {
+    if (this.exitTimer) return;
+    clearInterval(this.finalizeRetryTimer);
+    clearTimeout(this.finalizeDeadlineTimer);
+    clearTimeout(this.autoFinalizeTimer);
+    const status = document.getElementById('exam-submit-status');
+    status.textContent = `${success ? '✅' : '❌'} ${message}，5 秒后退出答题页面`;
+    if (success) localStorage.removeItem(this.draftKey());
+    this.exitTimer = setTimeout(() => {
+      clearInterval(this.timingTimer);
+      clearTimeout(this.app.timeSyncTimer);
+      this.clearProgrammingContext();
+      this.app.views.show('exams');
+      this.loadList(true);
+    }, 5000);
+  }
+
+  beginTimedAutoReport(windowEnd) {
+    if (this.exitTimer) return;
+    const status = document.getElementById('exam-submit-status');
+    status.textContent = '⏳ 正在自动提交截止答案...';
+    const attempt = () => this.submitTimedInBackground().then(outcome => {
+      if (outcome.success) {
+        this.finishTimedAndExit(true, '自动提交成功');
+      } else if (!this.exitTimer) {
+        status.textContent = `❌ 暂未提交成功：${outcome.error}，将在后台继续重试`;
+      }
+    });
+    attempt();
+    this.finalizeRetryTimer = setInterval(attempt, 5000);
+    const finalAt = windowEnd + 60 * 1000;
+    const remaining = Math.max(0, finalAt - (Date.now() + this.timingOffset));
+    this.finalizeDeadlineTimer = setTimeout(() => {
+      clearInterval(this.finalizeRetryTimer);
+      if (this.finalizeSucceeded) this.finishTimedAndExit(true, '自动提交成功');
+      else this.finishTimedAndExit(false, `自动提交未成功：${this.finalizeError || '网络超时'}`);
+    }, remaining);
   }
 
   async finalizeTimed() {
     if (!this.paper?.availability?.enabled || this.app.adminExamPreview) return;
-    clearTimeout(this.autoFinalizeTimer);
-    this.autoFinalizeTimer = null;
     const status = document.getElementById('exam-submit-status');
-    status.textContent = '正在接收冻结答案...';
-    try {
-      await this.saveServerDraft(this.collectAnswers(), true);
-      const result = await this.request('timed_finalize', { resourceType: 'exam', resourceId: this.paper.id });
-      status.textContent = result.status === 'submitted' ? '冻结答案已经提交完成。' : '冻结答案已接收，正在排队自动批改。';
-      localStorage.removeItem(this.draftKey());
-      clearInterval(this.timingTimer);
-      clearTimeout(this.app.timeSyncTimer);
-      setTimeout(() => { this.clearProgrammingContext(); this.app.views.show('exams'); this.loadList(true); }, 1200);
-    } catch (error) { status.textContent = `冻结答案提交失败：${error.message}`; }
+    status.textContent = '⏳ 正在确认截止答案...';
+    const outcome = await this.submitTimedInBackground();
+    if (outcome.success) this.finishTimedAndExit(true, '提交成功');
+    else status.textContent = `❌ 提交失败：${outcome.error}，系统会在剩余时间内继续重试`;
   }
 
   async submit() {
