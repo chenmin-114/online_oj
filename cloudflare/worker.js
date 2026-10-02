@@ -1976,7 +1976,7 @@ async function handleStudentExamSubmit(body, env, options = {}) {
   }
   if (!options.bypassTiming && currentTiming.state === 'active') {
     statements.push(env.OJ_DB.prepare(`
-      UPDATE timed_drafts SET status = 'submitted', submitted_at = ?6
+      UPDATE timed_drafts SET status = 'submitted', submitted_at = ?6, payload_json = '{}'
       WHERE resource_type = 'exam' AND group_name = ?1 AND resource_id = ?2
         AND resource_version = ?3 AND username = ?4 AND window_start = ?5 AND status = 'active'
     `).bind(group, examId, paper.version, username, currentTiming.windowStart, now));
@@ -3357,7 +3357,7 @@ async function processNextTimedSubmission(env) {
       }
     }
     await env.OJ_DB.prepare(`
-      UPDATE timed_drafts SET status = 'submitted', submitted_at = ?7, last_error = ''
+      UPDATE timed_drafts SET status = 'submitted', submitted_at = ?7, payload_json = '{}', last_error = ''
       WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
         AND resource_version = ?4 AND username = ?5 AND window_start = ?6
     `).bind(...keyBindings, Date.now()).run();
@@ -4006,7 +4006,7 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
     const timing = availabilityState(problem.availability, result.timestamp);
     if (env.OJ_DB && timing.state === 'active') {
       await env.OJ_DB.prepare(`
-        UPDATE timed_drafts SET status = 'submitted', submitted_at = ?5
+        UPDATE timed_drafts SET status = 'submitted', submitted_at = ?5, payload_json = '{}'
         WHERE resource_type = 'problem' AND group_name = ?1 AND resource_id = ?2
           AND resource_version = 1 AND username = ?3 AND window_start = ?4 AND status = 'active'
       `).bind(group, problemId, username, timing.windowStart, result.timestamp).run();
