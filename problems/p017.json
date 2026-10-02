@@ -1,0 +1,28 @@
+{
+  "id": "P017",
+  "title": "（Day 12）“我睡了多久？”",
+  "difficulty": "easy",
+  "status": "published",
+  "description": "小明用手机记录自己的睡眠：睡前看一眼时间，醒来再看一眼，时间都是 24 小时制（时:分）。\n\n有个小麻烦：他经常晚上 11 点入睡、第二天早上才醒。也就是说，如果**醒来时刻的数字比入睡时刻小**，说明这一觉睡过了半夜 0 点，得把第二天的时间补回来算。\n\n**要求**\n\n给你入睡的时刻和醒来的时刻，保证这一觉不足 24 小时（但至少有 1 分钟），求小明一共睡了多少分钟。",
+  "inputFormat": "- 一行四个整数 `h1 m1 h2 m2`，表示入睡时:分和醒来时:分",
+  "outputFormat": "一个整数，表示睡眠总分钟数",
+  "constraints": "- 0 ≤ h1, h2 ≤ 23\n- 0 ≤ m1, m2 ≤ 59\n- 0 < 睡眠时长 < 1440",
+  "sampleExplanation": "**样例 #1**\n\n- 23:50 入睡，6:30 醒来，跨过了半夜 0 点\n- 23:50 到 24:00 是 10 分钟，0:00 到 6:30 是 390 分钟\n- 10 + 390 = 400 分钟\n\n**样例 #2**\n\n- 22:00 到 23:15，没跨天\n- 1 小时 15 分钟 = 75 分钟",
+  "sampleInput": "23 50 6 30",
+  "sampleOutput": "400",
+  "samples": [
+    {
+      "input": "23 50 6 30",
+      "output": "400"
+    },
+    {
+      "input": "22 0 23 15",
+      "output": "75"
+    }
+  ],
+  "showTestDetails": true,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "pythonJudgeMode": "standard",
+  "group": "control"
+}
