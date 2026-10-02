@@ -181,7 +181,7 @@
               <label class="form-field"><span>发布状态</span><select id="problem-status" class="admin-input"><option value="published">发布给学生</option><option value="draft">草稿（仅管理员可见）</option></select><small>草稿可在管理端预览和测试，学生无法查看或提交。</small></label>
             </div>
             <section class="schedule-editor">
-              <div class="card-heading"><div><strong>定时答题（可选）</strong><p>时间以服务器为准；每段结束立即冻结，30 秒后自动提交</p></div><label class="schedule-enable"><input id="problem-schedule-enabled" type="checkbox"> 启用定时</label></div>
+              <div class="card-heading"><div><strong>定时答题（可选）</strong><p>时间以服务器为准；每段结束立即锁定，预留 60 秒上传草稿后自动提交</p></div><label class="schedule-enable"><input id="problem-schedule-enabled" type="checkbox"> 启用定时</label></div>
               <div id="problem-schedule-settings" hidden><div id="problem-schedule-windows" class="schedule-window-list"></div><div class="schedule-actions"><button id="add-problem-schedule-window" type="button" class="admin-button secondary">＋ 添加时间段</button><label class="form-field"><span>最后时段结束后</span><select id="problem-after-end-view" class="admin-input"><option value="none">禁止观看</option><option value="all">所有登录用户可观看</option><option value="authorized">仅批量注册的正式账号可观看</option></select></label></div></div>
             </section>
             <label class="form-field"><span>文件名 *</span><input id="problem-file" class="admin-input" required placeholder="p006-multiply.json"><small>只使用小写字母、数字和短横线</small></label>
@@ -265,7 +265,7 @@
               <label class="form-field"><span>试卷说明</span><textarea id="exam-description" class="admin-input" rows="4" maxlength="10000" placeholder="支持 Markdown，可填写考试说明和注意事项"></textarea></label>
               <label class="form-field"><span>学生查看批改结果</span><select id="exam-result-policy" class="admin-input"><option value="immediate">提交后立即显示当前批改结果</option><option value="after_graded" selected>全部批改完成后显示</option><option value="manual">管理员手动发布后显示</option></select></label>
               <section class="schedule-editor">
-                <div class="card-heading"><div><strong>定时答题（可选）</strong><p>支持多个时间段；截止后冻结答案，30 秒内可确认提交</p></div><label class="schedule-enable"><input id="exam-schedule-enabled" type="checkbox"> 启用定时</label></div>
+                <div class="card-heading"><div><strong>定时答题（可选）</strong><p>支持多个时间段；截止后立即锁定，预留 60 秒上传草稿</p></div><label class="schedule-enable"><input id="exam-schedule-enabled" type="checkbox"> 启用定时</label></div>
                 <div id="exam-schedule-settings" hidden><div id="exam-schedule-windows" class="schedule-window-list"></div><div class="schedule-actions"><button id="add-exam-schedule-window" type="button" class="admin-button secondary">＋ 添加时间段</button><label class="form-field"><span>最后时段结束后</span><select id="exam-after-end-view" class="admin-input"><option value="none">禁止观看</option><option value="all">所有登录用户可观看</option><option value="authorized">仅套卷准入账号可观看</option></select></label></div></div>
               </section>
               <section class="exam-access-editor">

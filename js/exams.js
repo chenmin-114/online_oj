@@ -15,6 +15,8 @@ class ExamUI {
     this.timingTimer = null;
     this.autoFinalizeTimer = null;
     this.serverDraft = null;
+    this.serverSaveInFlight = null;
+    this.graceSavedFor = null;
   }
 
   init() {
@@ -448,16 +450,24 @@ class ExamUI {
     this.serverSaveTimer = setTimeout(() => this.saveServerDraft(answers), 800);
   }
 
-  async saveServerDraft(answers = this.collectAnswers()) {
+  async saveServerDraft(answers = this.collectAnswers(), force = false) {
     const state = this.currentTiming();
-    if (!this.paper?.availability?.enabled || state.state !== 'active' || this.app.adminExamPreview) return;
+    if (!this.paper?.availability?.enabled || !['active', 'grace'].includes(state.state) || this.app.adminExamPreview) return false;
+    if (this.serverSaveInFlight) {
+      await this.serverSaveInFlight;
+      const latestAnswers = this.collectAnswers();
+      if (JSON.stringify(latestAnswers) !== this.lastServerDraft) return this.saveServerDraft(latestAnswers, false);
+      return true;
+    }
     const signature = JSON.stringify(answers);
-    if (signature === this.lastServerDraft) return;
-    try {
+    if (signature === this.lastServerDraft) return true;
+    this.serverSaveInFlight = (async () => {
       const result = await this.request('timed_draft_save', { resourceType: 'exam', resourceId: this.paper.id, payload: answers });
       this.lastServerDraft = signature;
       this.app._applyServerTime(result.timing?.serverTime || result.updatedAt, 'exam');
-    } catch { /* 本机草稿保留，下次修改继续尝试 */ }
+      return true;
+    })().catch(() => false).finally(() => { this.serverSaveInFlight = null; });
+    return this.serverSaveInFlight;
   }
 
   currentTiming() {
@@ -485,7 +495,7 @@ class ExamUI {
     banner.className = `timing-banner ${state.state === 'active' ? 'active' : state.state === 'grace' ? 'warning' : 'closed'}`;
     if (state.state === 'upcoming') banner.textContent = `尚未开始 · ${new Date(state.nextStart).toLocaleString()} 开放（还有 ${this.app._duration(state.nextStart - now)}）`;
     else if (state.state === 'active') banner.textContent = `答题进行中 · 距本时段结束 ${this.app._duration(state.windowEnd - now)} · 草稿自动保存到服务器`;
-    else if (state.state === 'grace') banner.textContent = `答案已冻结 · 请在 ${this.app._duration(state.graceEndsAt - now)} 内确认提交，否则系统自动提交`;
+    else if (state.state === 'grace') banner.textContent = `答案已锁定 · 正在上传截止时的草稿 · ${this.app._duration(state.graceEndsAt - now)} 后自动提交`;
     else if (state.state === 'ended') banner.textContent = '全部答题时间已经结束，当前仅可查看。';
     const locked = !this.app.adminExamPreview && this.paper.availability?.enabled && !state.canEdit;
     document.querySelectorAll('#student-exam-form input, #student-exam-form textarea, #student-exam-form button').forEach(node => { node.disabled = locked; });
@@ -501,6 +511,11 @@ class ExamUI {
       this.precloseSavedFor = state.windowEnd;
       this.saveServerDraft();
     }
+    if (state.state === 'grace' && this.graceSavedFor !== state.windowEnd) {
+      this.saveServerDraft(this.collectAnswers(), true).then(saved => {
+        if (saved) this.graceSavedFor = state.windowEnd;
+      });
+    }
     if (state.state === 'grace' && !this.autoFinalizeTimer) {
       this.autoFinalizeTimer = setTimeout(() => this.finalizeTimed(), Math.max(0, state.graceEndsAt - now));
     }
@@ -513,6 +528,7 @@ class ExamUI {
     const status = document.getElementById('exam-submit-status');
     status.textContent = '正在接收冻结答案...';
     try {
+      await this.saveServerDraft(this.collectAnswers(), true);
       const result = await this.request('timed_finalize', { resourceType: 'exam', resourceId: this.paper.id });
       status.textContent = result.status === 'submitted' ? '冻结答案已经提交完成。' : '冻结答案已接收，正在排队自动批改。';
       localStorage.removeItem(this.draftKey());

@@ -31,6 +31,8 @@ class App {
     this.problemTimingOffset = 0;
     this.problemTimingTimer = null;
     this.timedProblemSaveTimer = null;
+    this.timedProblemSaveInFlight = null;
+    this.problemGraceSavedFor = null;
     this.timeSyncTimer = null;
     this.timeSyncInFlight = null;
     this.lastTimeSyncAt = 0;
@@ -341,7 +343,7 @@ class App {
     for (const window of availability.windows) {
       if (now < window.start) return { state: 'upcoming', nextStart: window.start, canEdit: false, canSubmit: false };
       if (now < window.end) return { state: 'active', windowStart: window.start, windowEnd: window.end, canEdit: true, canSubmit: true };
-      if (now < window.end + 30000) return { state: 'grace', windowStart: window.start, windowEnd: window.end, graceEndsAt: window.end + 30000, canEdit: false, canSubmit: true };
+      if (now < window.end + 60000) return { state: 'grace', windowStart: window.start, windowEnd: window.end, graceEndsAt: window.end + 60000, canEdit: false, canSubmit: true };
     }
     return { state: 'ended', canEdit: false, canSubmit: false };
   }
@@ -470,7 +472,7 @@ class App {
     banner.className = `timing-banner ${state.state === 'active' ? 'active' : state.state === 'grace' ? 'warning' : 'closed'}`;
     if (state.state === 'upcoming') banner.textContent = `尚未开始 · ${new Date(state.nextStart).toLocaleString()} 开放（还有 ${this._duration(state.nextStart - now)}）`;
     else if (state.state === 'active') banner.textContent = `答题进行中 · 距本时段结束 ${this._duration(state.windowEnd - now)} · 草稿自动保存到服务器`;
-    else if (state.state === 'grace') banner.textContent = `答案已冻结 · 请在 ${this._duration(state.graceEndsAt - now)} 内确认提交，否则系统自动提交`;
+    else if (state.state === 'grace') banner.textContent = `答案已锁定 · 正在上传截止时的草稿 · ${this._duration(state.graceEndsAt - now)} 后自动提交`;
     else if (state.state === 'ended') banner.textContent = '全部答题时间已经结束，当前仅可查看。';
     const locked = !this.adminProblemPreview && availability?.enabled && !state.canEdit;
     this.editor?.setReadOnly(locked);
@@ -481,6 +483,11 @@ class App {
     if (state.state === 'active' && state.windowEnd - now <= 5000 && this.problemPrecloseSavedFor !== state.windowEnd) {
       this.problemPrecloseSavedFor = state.windowEnd;
       this._saveTimedProblemDraft();
+    }
+    if (state.state === 'grace' && this.problemGraceSavedFor !== state.windowEnd) {
+      this._saveTimedProblemDraft(true).then(saved => {
+        if (saved) this.problemGraceSavedFor = state.windowEnd;
+      });
     }
     if (state.state === 'grace' && !this.problemAutoFinalizeTimer) {
       this.problemAutoFinalizeTimer = setTimeout(() => this._finalizeTimedProblem(), Math.max(0, state.graceEndsAt - now));
@@ -493,19 +500,28 @@ class App {
     this.timedProblemSaveTimer = setTimeout(() => this._saveTimedProblemDraft(), 700);
   }
 
-  async _saveTimedProblemDraft() {
-    if (!this.currentProblem || this._timingState(this.currentProblem.availability, this.problemTimingOffset).state !== 'active') return;
+  async _saveTimedProblemDraft(force = false) {
+    if (!this.currentProblem) return false;
+    const state = this._timingState(this.currentProblem.availability, this.problemTimingOffset);
+    if (state.state !== 'active' && state.state !== 'grace') return false;
+    if (this.timedProblemSaveInFlight) {
+      await this.timedProblemSaveInFlight;
+      const latestPayload = { language: document.getElementById('language-select').value, code: this.editor.getCode() };
+      if (JSON.stringify(latestPayload) !== this.lastTimedProblemDraft) return this._saveTimedProblemDraft(false);
+      return true;
+    }
     const payload = { language: document.getElementById('language-select').value, code: this.editor.getCode() };
     const signature = JSON.stringify(payload);
-    if (signature === this.lastTimedProblemDraft) return;
-    try {
+    if (signature === this.lastTimedProblemDraft) return true;
+    this.timedProblemSaveInFlight = (async () => {
       const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_draft_save', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group, payload }) });
-      if (response.ok) {
-        this.lastTimedProblemDraft = signature;
-        const result = await response.json();
-        this._applyServerTime(result.timing?.serverTime || result.updatedAt, 'problem');
-      }
-    } catch { /* 本地缓存仍保留，下一次修改继续尝试 */ }
+      if (!response.ok) return false;
+      this.lastTimedProblemDraft = signature;
+      const result = await response.json();
+      this._applyServerTime(result.timing?.serverTime || result.updatedAt, 'problem');
+      return true;
+    })().catch(() => false).finally(() => { this.timedProblemSaveInFlight = null; });
+    return this.timedProblemSaveInFlight;
   }
 
   async _finalizeTimedProblem() {
@@ -515,6 +531,7 @@ class App {
     const resultEl = document.getElementById('judge-result');
     resultEl.innerHTML = '<span class="info">⏳ 正在接收冻结答案...</span>';
     try {
+      await this._saveTimedProblemDraft(true);
       const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_finalize', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || '冻结答案提交失败');

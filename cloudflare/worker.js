@@ -33,7 +33,7 @@ const NORMAL_REQUEST_BODY_LIMIT = 2 * 1024 * 1024;
 // 题目图片原文件合计允许 10 MB，Base64 会额外增加约三分之一体积。
 const PROBLEM_UPLOAD_BODY_LIMIT = 16 * 1024 * 1024;
 const LARGE_BODY_REQUEST_TYPES = new Set(['create_problem', 'update_problem']);
-const TIMED_GRACE_MS = 30 * 1000;
+const TIMED_GRACE_MS = 60 * 1000;
 const AFTER_END_VIEW_POLICIES = new Set(['none', 'all', 'authorized']);
 
 const CORS_HEADERS = {
@@ -1075,7 +1075,7 @@ function validateAvailability(input) {
     }
     if (item.end - item.start < 60 * 1000) return { error: `第 ${index + 1} 个答题时间段不能短于 1 分钟` };
     if (index > 0 && item.start < windows[index - 1].end + TIMED_GRACE_MS) {
-      return { error: `第 ${index + 1} 个答题时间段与前一个时间段或其 30 秒提交期重叠` };
+      return { error: `第 ${index + 1} 个答题时间段与前一个时间段或其 60 秒上传期重叠` };
     }
   }
   return { enabled: true, windows, afterEndView };
@@ -1775,7 +1775,8 @@ async function handleTimedDraftSave(body, env) {
   const resource = await timedResource(body, env);
   if (resource.error) return resource.error;
   const timing = availabilityState(resource.availability);
-  if (timing.state !== 'active') return timedAccessError(timing);
+  // 截止后的宽限期只用于接收客户端已经锁定的最后草稿。
+  if (timing.state !== 'active' && timing.state !== 'grace') return timedAccessError(timing);
   let payload;
   if (resource.resourceType === 'exam') {
     payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload) ? body.payload : null;
@@ -3320,7 +3321,7 @@ async function processNextRejudgeJob(env) {
 async function processNextTimedSubmission(env) {
   if (!env.OJ_DB) return;
   const now = Date.now();
-  // 浏览器在线时会在 30 秒整主动排队；此处是断网、关页等情况的服务端兜底。
+  // 浏览器在线时会在 60 秒上传期结束时主动排队；此处是断网、关页等情况的服务端兜底。
   await env.OJ_DB.prepare(`
     UPDATE timed_drafts SET status = 'queued', queued_at = ?1
     WHERE status = 'active' AND window_end + ?2 <= ?1
