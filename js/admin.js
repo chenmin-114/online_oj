@@ -25,6 +25,7 @@ class OJAdmin {
     this.studentAccountWorkbook = null;
     this.studentAccountExportName = '';
     this.systemMessages = [];
+    this.timedExtensions = [];
     this.controlsBound = false;
   }
 
@@ -123,6 +124,10 @@ class OJAdmin {
       button.addEventListener('click', () => {
         this.openPanel(button.dataset.panel);
         if (button.dataset.panel === 'messages') this.loadAdminMessages();
+        if (button.dataset.panel === 'accounts') {
+          this.populateTimedExtensionResources(true);
+          this.loadTimedExtensions();
+        }
       });
     });
     document.querySelectorAll('[data-open-panel]').forEach(button => {
@@ -154,6 +159,10 @@ class OJAdmin {
       input.select();
     });
     document.getElementById('reset-student-account-form').addEventListener('submit', event => this.resetStudentAccount(event));
+    document.getElementById('timed-extension-form').addEventListener('submit', event => this.grantTimedExtension(event));
+    document.getElementById('timed-extension-type').addEventListener('change', () => this.populateTimedExtensionResources(true));
+    document.getElementById('refresh-timed-extensions').addEventListener('click', () => this.loadTimedExtensions());
+    document.getElementById('timed-extension-list').addEventListener('click', event => this.revokeTimedExtension(event));
     document.getElementById('admin-message-audience').addEventListener('change', event => {
       const targeted = event.target.value === 'user';
       document.getElementById('admin-message-user-field').hidden = !targeted;
@@ -238,6 +247,8 @@ class OJAdmin {
     this.resetProblemEditor();
     this.renderGroupSwitcher();
     window.examAdmin?.onGroupChange();
+    this.timedExtensions = [];
+    this.populateTimedExtensionResources();
     document.getElementById('sync-status').textContent = `正在切换到${this.groupLabel()}...`;
     await this.loadAll();
   }
@@ -286,6 +297,7 @@ class OJAdmin {
     }
 
     this.renderAll();
+    this.populateTimedExtensionResources();
     this.updateDataStatus({ submissionsResult, rankingResult });
     this.setStatus('worker', null, '正在检查连接...');
     workerCheck.then(result => {
@@ -394,6 +406,118 @@ class OJAdmin {
       status.className = 'account-import-status error';
       status.textContent = error.message || '账号更新失败';
     } finally {
+      button.disabled = false;
+    }
+  }
+
+  async timedExtensionRequest(type, payload = {}) {
+    const response = await fetch(this.config.workerUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, group: this.group, ...payload }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.status === 401) this.lockExpiredSession();
+    if (!response.ok) throw new Error(result.error || `请求失败 (${response.status})`);
+    return result;
+  }
+
+  async populateTimedExtensionResources(loadExams = false) {
+    const select = document.getElementById('timed-extension-resource');
+    if (!select) return;
+    const type = document.getElementById('timed-extension-type').value;
+    const current = select.value;
+    if (type === 'exam' && loadExams && window.examAdmin) {
+      try { await window.examAdmin.ensureLoaded(true, true); } catch { /* 下方保留可重试提示 */ }
+    }
+    const resources = type === 'exam'
+      ? (window.examAdmin?.exams || []).filter(item => item.status === 'published').map(item => ({ id: item.id, title: item.title }))
+      : this.problems.filter(item => item.status !== 'draft').map(item => ({ id: item.id, title: item.title }));
+    select.innerHTML = '<option value="">请选择</option>' + resources.map(item =>
+      `<option value="${this.escape(item.id)}">${this.escape(item.id)} · ${this.escape(item.title)}</option>`
+    ).join('');
+    if (resources.some(item => item.id === current)) select.value = current;
+    if (!resources.length) select.innerHTML = `<option value="">当前${type === 'exam' ? '没有已发布套卷' : '没有已发布题目'}</option>`;
+  }
+
+  async loadTimedExtensions() {
+    const body = document.getElementById('timed-extension-list');
+    const status = document.getElementById('timed-extension-status');
+    if (!body || document.body.classList.contains('auth-locked')) return;
+    try {
+      this.timedExtensions = await this.timedExtensionRequest('admin_timed_extension_list');
+      this.renderTimedExtensions();
+    } catch (error) {
+      status.className = 'account-import-status error';
+      status.textContent = `读取补时记录失败：${error.message}`;
+    }
+  }
+
+  renderTimedExtensions() {
+    const body = document.getElementById('timed-extension-list');
+    const rows = this.timedExtensions || [];
+    body.innerHTML = rows.length ? rows.map(item => `
+      <tr>
+        <td>${item.resourceType === 'exam' ? '套卷' : '编程题'}</td>
+        <td><strong>${this.escape(item.resourceId)}</strong></td>
+        <td>${this.escape(item.username)}</td>
+        <td>${this.formatDate(item.startsAt)}</td>
+        <td>${this.formatDate(item.endsAt)}</td>
+        <td><span class="result-pill ${item.active ? 'accepted' : 'failed'}">${item.active ? '进行中' : '已结束'}</span></td>
+        <td><button type="button" class="table-link table-link-button warning" data-revoke-extension="1" data-resource-type="${this.escape(item.resourceType)}" data-resource-id="${this.escape(item.resourceId)}" data-username="${this.escape(item.username)}">撤销</button></td>
+      </tr>`).join('') : '<tr><td colspan="7" class="empty-cell">暂无补时记录</td></tr>';
+  }
+
+  async grantTimedExtension(event) {
+    event.preventDefault();
+    const button = document.getElementById('grant-timed-extension');
+    const status = document.getElementById('timed-extension-status');
+    const resourceType = document.getElementById('timed-extension-type').value;
+    const resourceId = document.getElementById('timed-extension-resource').value;
+    const username = document.getElementById('timed-extension-username').value.trim().normalize('NFC');
+    const minutes = Number(document.getElementById('timed-extension-minutes').value);
+    if (!resourceId || !username || !Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+      status.className = 'account-import-status error';
+      status.textContent = '请选择题目或套卷，填写学生用户名及 1 到 1440 的整数分钟数。';
+      return;
+    }
+    if (!confirm(`确定从现在起给“${username}”开放 ${resourceId} 共 ${minutes} 分钟吗？`)) return;
+    button.disabled = true;
+    status.className = 'account-import-status';
+    status.textContent = '正在按服务器时间授权...';
+    try {
+      const result = await this.timedExtensionRequest('admin_timed_extension_grant', {
+        resourceType, resourceId, username, minutes,
+      });
+      status.className = 'account-import-status success';
+      status.textContent = `授权成功：${result.username} 可从现在答题至 ${new Date(result.endsAt).toLocaleString()}。请让学生重新进入对应页面，或切回该浏览器标签页。`;
+      await this.loadTimedExtensions();
+    } catch (error) {
+      status.className = 'account-import-status error';
+      status.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async revokeTimedExtension(event) {
+    const button = event.target.closest('[data-revoke-extension]');
+    if (!button) return;
+    if (!confirm(`确定撤销“${button.dataset.username}”对 ${button.dataset.resourceId} 的临时补时吗？`)) return;
+    button.disabled = true;
+    try {
+      await this.timedExtensionRequest('admin_timed_extension_revoke', {
+        resourceType: button.dataset.resourceType,
+        resourceId: button.dataset.resourceId,
+        username: button.dataset.username,
+      });
+      document.getElementById('timed-extension-status').className = 'account-import-status success';
+      document.getElementById('timed-extension-status').textContent = '补时已撤销，服务器将立即拒绝后续修改和提交。';
+      await this.loadTimedExtensions();
+    } catch (error) {
+      document.getElementById('timed-extension-status').className = 'account-import-status error';
+      document.getElementById('timed-extension-status').textContent = `撤销失败：${error.message}`;
       button.disabled = false;
     }
   }

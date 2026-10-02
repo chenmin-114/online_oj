@@ -289,6 +289,10 @@ input.admin-input { min-width: 240px; }
 
 .account-import-body { padding: 22px; display: grid; gap: 18px; }
 .account-reset-card { margin-bottom: 18px; }
+.timed-extension-card { margin-bottom: 18px; }
+.timed-extension-form { padding: 20px; display: grid; grid-template-columns: .65fr 1.1fr 1fr .65fr auto; align-items: end; gap: 12px; }
+.timed-extension-form + .account-import-status { padding: 0 20px 14px; }
+.timed-extension-form input.admin-input, .timed-extension-form select.admin-input { width: 100%; min-width: 0; }
 .account-reset-body { padding: 22px; display: grid; grid-template-columns: minmax(220px, .8fr) minmax(300px, 1.2fr) auto; align-items: end; gap: 14px; }
 .account-reset-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .account-reset-body .account-import-status { grid-column: 1 / -1; }
@@ -306,6 +310,10 @@ input.admin-input { min-width: 240px; }
 .account-import-summary > div { padding: 15px; display: grid; gap: 4px; border: 1px solid var(--admin-border); border-radius: 9px; background: #0e1526; }
 .account-import-summary span { color: var(--admin-muted); font-size: 10px; }
 .account-import-summary strong { color: var(--admin-text); font-size: 21px; }
+@media (max-width: 1100px) {
+  .timed-extension-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .timed-extension-form .admin-button { justify-self: start; }
+}
 .message-editor-card { margin-bottom: 18px; }
 .message-editor-body { padding: 20px; display: grid; gap: 16px; }
 .message-editor-body textarea { width: 100%; padding: 11px; resize: vertical; line-height: 1.6; }

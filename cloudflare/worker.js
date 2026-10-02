@@ -215,6 +215,18 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminResetStudentAccount(body, env);
+      } else if (body.type === 'admin_timed_extension_list') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminTimedExtensionList(body, env);
+      } else if (body.type === 'admin_timed_extension_grant') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminTimedExtensionGrant(body, env);
+      } else if (body.type === 'admin_timed_extension_revoke') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminTimedExtensionRevoke(body, env);
       } else if (body.type === 'admin_exam_list') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -365,7 +377,7 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
-        return jsonResponse({ serverTime: Date.now() });
+        return await handleTimeSync(body, env);
       } else if (body.type === 'timed_finalize') {
         const rateLimitError = await enforceRateLimit(
           env.DRAFT_RATE_LIMITER, request, 'timed-finalize', normalizeStudentUsername(body.username), false,
@@ -933,6 +945,91 @@ async function handleAdminResetStudentAccount(body, env) {
   });
 }
 
+function normalizeTimedExtensionTarget(body) {
+  const resourceType = body.resourceType === 'problem' ? 'problem' : body.resourceType === 'exam' ? 'exam' : '';
+  const resourceId = resourceType === 'exam'
+    ? normalizeExamId(body.resourceId)
+    : String(body.resourceId || '').trim().toUpperCase();
+  const username = normalizeStudentUsername(body.username);
+  const minutes = Number(body.minutes);
+  return { resourceType, resourceId, username, minutes };
+}
+
+async function handleAdminTimedExtensionList(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '补时数据库尚未配置' }, 503);
+  const group = normalizeGroup(body.group);
+  const now = Date.now();
+  await env.OJ_DB.prepare('DELETE FROM timed_extensions WHERE ends_at < ?1')
+    .bind(now - 7 * 24 * 60 * 60 * 1000).run();
+  const result = await env.OJ_DB.prepare(`
+    SELECT resource_type, resource_id, username, starts_at, ends_at, created_at
+    FROM timed_extensions WHERE group_name = ?1
+    ORDER BY ends_at DESC LIMIT 200
+  `).bind(group).all();
+  return jsonResponse((result.results || []).map(row => ({
+    resourceType: row.resource_type,
+    resourceId: row.resource_id,
+    username: row.username,
+    startsAt: Number(row.starts_at),
+    endsAt: Number(row.ends_at),
+    createdAt: Number(row.created_at),
+    active: Number(row.ends_at) > now,
+  })));
+}
+
+async function handleAdminTimedExtensionGrant(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '补时数据库尚未配置' }, 503);
+  const group = normalizeGroup(body.group);
+  const { resourceType, resourceId, username, minutes } = normalizeTimedExtensionTarget(body);
+  if (!resourceType || !username || !Number.isInteger(minutes) || minutes < 1 || minutes > 1440
+      || (resourceType === 'problem' && !/^(?:P\d{3,6}|T\d{3})$/.test(resourceId))) {
+    return jsonResponse({ error: '补时参数不正确；分钟数必须为 1 到 1440' }, 400);
+  }
+  const account = await env.OJ_DB.prepare('SELECT 1 AS found FROM student_accounts WHERE username = ?1')
+    .bind(username).first();
+  if (!account) return jsonResponse({ error: '该学生账号不存在，请先注册账号' }, 404);
+
+  let availability;
+  if (resourceType === 'exam') {
+    const record = await readExamRecord(env, resourceId);
+    if (!record || record.status !== 'published' || record.group_name !== group) {
+      return jsonResponse({ error: '套卷不存在、未发布或不属于当前组别' }, 404);
+    }
+    if (!await canStudentAccessExam(env, resourceId, username)) {
+      return jsonResponse({ error: '该学生没有这张套卷的准入权限，请先赋予准入权限' }, 403);
+    }
+    availability = parseExamRecord(record).availability;
+  } else {
+    const problem = await readHiddenProblem(resourceId, env, group);
+    if (!problem || problem.status === 'draft') return jsonResponse({ error: '题目不存在或尚未发布' }, 404);
+    availability = problem.availability;
+  }
+  if (!availability?.enabled) return jsonResponse({ error: '该题目或套卷没有启用定时答题，无需补时' }, 409);
+
+  const startsAt = Date.now();
+  const endsAt = startsAt + minutes * 60 * 1000;
+  await env.OJ_DB.prepare(`
+    INSERT INTO timed_extensions (
+      resource_type, group_name, resource_id, username, starts_at, ends_at, created_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?5)
+    ON CONFLICT(resource_type, group_name, resource_id, username)
+    DO UPDATE SET starts_at = excluded.starts_at, ends_at = excluded.ends_at, created_at = excluded.created_at
+  `).bind(resourceType, group, resourceId, username, startsAt, endsAt).run();
+  return jsonResponse({ success: true, resourceType, resourceId, username, startsAt, endsAt, minutes });
+}
+
+async function handleAdminTimedExtensionRevoke(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '补时数据库尚未配置' }, 503);
+  const group = normalizeGroup(body.group);
+  const { resourceType, resourceId, username } = normalizeTimedExtensionTarget(body);
+  if (!resourceType || !resourceId || !username) return jsonResponse({ error: '撤销参数不正确' }, 400);
+  await env.OJ_DB.prepare(`
+    DELETE FROM timed_extensions
+    WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3 AND username = ?4
+  `).bind(resourceType, group, resourceId, username).run();
+  return jsonResponse({ success: true });
+}
+
 async function readStudentAccountStates(env, usernames) {
   const states = new Map();
   for (let index = 0; index < usernames.length; index += 100) {
@@ -1110,6 +1207,37 @@ function availabilityState(availability, now = Date.now()) {
 function publicAvailability(availability, now = Date.now()) {
   const normalized = availability?.enabled ? availability : { enabled: false, windows: [], afterEndView: 'none' };
   return { ...normalized, status: availabilityState(normalized, now) };
+}
+
+function availabilityWithExtension(availability, extension, now = Date.now()) {
+  const normalized = availability?.enabled
+    ? availability
+    : { enabled: false, windows: [], afterEndView: 'none' };
+  if (!extension || now >= Number(extension.ends_at) + TIMED_GRACE_MS) return normalized;
+  return {
+    enabled: true,
+    windows: [{ start: Number(extension.starts_at), end: Number(extension.ends_at) }],
+    afterEndView: normalized.afterEndView || 'none',
+    personalExtension: true,
+  };
+}
+
+async function studentAvailability(availability, resourceType, group, resourceId, username, env, now = Date.now()) {
+  if (!env.OJ_DB || !username) return availability?.enabled ? availability : { enabled: false, windows: [], afterEndView: 'none' };
+  const extension = await env.OJ_DB.prepare(`
+    SELECT starts_at, ends_at FROM timed_extensions
+    WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3 AND username = ?4
+  `).bind(resourceType, group, resourceId, username).first();
+  return availabilityWithExtension(availability, extension, now);
+}
+
+async function studentExtensionMap(env, username, group, now = Date.now()) {
+  if (!env.OJ_DB || !username) return new Map();
+  const result = await env.OJ_DB.prepare(`
+    SELECT resource_type, resource_id, starts_at, ends_at FROM timed_extensions
+    WHERE group_name = ?1 AND username = ?2 AND ends_at + ?3 > ?4
+  `).bind(group, username, TIMED_GRACE_MS, now).all();
+  return new Map((result.results || []).map(row => [`${row.resource_type}:${row.resource_id}`, row]));
 }
 
 async function isManagedStudent(env, username) {
@@ -1504,6 +1632,8 @@ async function handleStudentExamList(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
   const username = normalizeStudentUsername(body.username);
   const group = normalizeGroup(body.group);
+  const now = Date.now();
+  const extensions = await studentExtensionMap(env, username, group, now);
   const result = await env.OJ_DB.prepare(`
     SELECT p.id, p.title, p.description, p.total_score, p.result_policy, p.updated_at,
            v.structure_json,
@@ -1527,7 +1657,8 @@ async function handleStudentExamList(body, env) {
   return jsonResponse((result.results || []).map(row => {
     let availability = { enabled: false, windows: [], afterEndView: 'none' };
     try { availability = JSON.parse(row.structure_json)?.availability || availability; } catch { /* 使用无限制默认值 */ }
-    const timing = publicAvailability(availability).status;
+    const effectiveAvailability = availabilityWithExtension(availability, extensions.get(`exam:${row.id}`), now);
+    const timing = publicAvailability(effectiveAvailability, now).status;
     const answerAccess = Number(row.access_allowed) === 1;
     const viewAccess = timing.state !== 'ended'
       ? answerAccess
@@ -1564,7 +1695,10 @@ async function handleStudentExamGet(body, env) {
   const record = await readExamRecord(env, examId);
   if (!record || record.status !== 'published') return jsonResponse({ error: '试卷不存在或尚未发布' }, 404);
   const paper = parseExamRecord(record);
-  const timing = availabilityState(paper.availability);
+  const effectiveAvailability = await studentAvailability(
+    paper.availability, 'exam', record.group_name, examId, username, env,
+  );
+  const timing = availabilityState(effectiveAvailability);
   const answerAccess = await canStudentAccessExam(env, examId, username);
   const postViewAllowed = timing.state === 'ended'
     && (paper.availability.afterEndView === 'all'
@@ -1607,7 +1741,7 @@ async function handleStudentExamGet(body, env) {
     };
   }
   return jsonResponse({
-    paper: { ...publicExamPaper(paper), availability: publicAvailability(paper.availability) },
+    paper: { ...publicExamPaper(paper), availability: publicAvailability(effectiveAvailability) },
     mySubmission, timedDraft, timing, answerAllowed: answerAccess,
   });
 }
@@ -1762,12 +1896,14 @@ async function timedResource(body, env) {
       return { error: jsonResponse({ error: '你不在这张套卷的准入范围内' }, 403) };
     }
     const paper = parseExamRecord(record);
-    return { resourceType, resourceId, version: paper.version, group, username, availability: paper.availability, paper };
+    const availability = await studentAvailability(paper.availability, resourceType, group, resourceId, username, env);
+    return { resourceType, resourceId, version: paper.version, group, username, availability, paper };
   }
   const resourceId = String(body.resourceId || '').trim().toUpperCase();
   const problem = await readHiddenProblem(resourceId, env, group);
   if (!problem || problem.status === 'draft') return { error: jsonResponse({ error: '题目不存在或尚未发布' }, 404) };
-  return { resourceType, resourceId, version: 1, group, username, availability: problem.availability, problem };
+  const availability = await studentAvailability(problem.availability, resourceType, group, resourceId, username, env);
+  return { resourceType, resourceId, version: 1, group, username, availability, problem };
 }
 
 async function handleTimedDraftSave(body, env) {
@@ -1803,6 +1939,17 @@ async function handleTimedDraftSave(body, env) {
     timing.windowStart, timing.windowEnd, payloadJson, now,
   ).run();
   return jsonResponse({ success: true, updatedAt: now, timing });
+}
+
+async function handleTimeSync(body, env) {
+  const now = Date.now();
+  if (!body.resourceType || !body.resourceId) return jsonResponse({ serverTime: now });
+  const resource = await timedResource(body, env);
+  if (resource.error) return resource.error;
+  return jsonResponse({
+    serverTime: now,
+    availability: publicAvailability(resource.availability, now),
+  });
 }
 
 async function handleTimedFinalize(body, env) {
@@ -1933,7 +2080,10 @@ async function handleStudentExamSubmit(body, env, options = {}) {
   const group = record.group_name;
   if (body.group && normalizeGroup(body.group) !== group) return jsonResponse({ error: '试卷组别不正确' }, 400);
   const paper = parseExamRecord(record);
-  const currentTiming = availabilityState(paper.availability);
+  const effectiveAvailability = await studentAvailability(
+    paper.availability, 'exam', group, examId, username, env,
+  );
+  const currentTiming = availabilityState(effectiveAvailability);
   if (!options.bypassTiming && !currentTiming.canEdit) return timedAccessError(currentTiming);
   const validPartIds = new Set(paper.questions.flatMap(question => question.parts.map(part => part.id)));
   for (const key of Object.keys(answers)) {
@@ -2483,11 +2633,23 @@ async function handleData(request, env) {
       let problems = JSON.parse(rawContent);
       if (!Array.isArray(problems)) throw new Error('题目索引必须是数组');
       const hasAdminSession = Boolean(readCookie(request, ADMIN_SESSION_COOKIE));
+      let studentExtensions = new Map();
       if (hasAdminSession) {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
       } else {
         problems = problems.filter(problem => problem.status !== 'draft');
+        const username = await studentSessionUsername(request, env);
+        studentExtensions = await studentExtensionMap(env, username, group);
+        const now = Date.now();
+        for (const problem of problems) {
+          const effective = availabilityWithExtension(
+            problem.availability,
+            studentExtensions.get(`problem:${problem.id}`),
+            now,
+          );
+          problem.availability = publicAvailability(effective, now);
+        }
       }
       if (env.OJ_DB) {
         const statsResult = await env.OJ_DB.prepare(`
@@ -2535,13 +2697,17 @@ async function handleData(request, env) {
       problem.testCases = hiddenProblem.testCases;
     } else {
       if (problem.status === 'draft') return jsonResponse({ error: '题目不存在或尚未发布' }, 404);
-      const timing = availabilityState(problem.availability);
       const username = await studentSessionUsername(request, env);
+      const effectiveAvailability = await studentAvailability(
+        problem.availability, 'problem', group, problem.id, username, env,
+      );
+      const timing = availabilityState(effectiveAvailability);
       if (timing.state === 'ended') {
         const policy = problem.availability?.afterEndView || 'none';
         const canView = policy === 'all' || (policy === 'authorized' && await isManagedStudent(env, username));
         if (!canView) return jsonResponse({ error: '这道题已经结束且未开放观看', code: 'VIEW_CLOSED', timing }, 403);
       }
+      problem.availability = effectiveAvailability;
       if (username && timing.windowStart && env.OJ_DB) {
         const draft = await env.OJ_DB.prepare(`
           SELECT payload_json, status, updated_at FROM timed_drafts
@@ -3339,8 +3505,19 @@ async function processNextTimedSubmission(env) {
     const payload = JSON.parse(draft.payload_json);
     if (draft.resource_type === 'problem') {
       const currentProblem = await readHiddenProblem(draft.resource_id, env, draft.group_name);
-      const windowStillValid = currentProblem?.availability?.windows?.some(item =>
+      let windowStillValid = currentProblem?.availability?.windows?.some(item =>
         Number(item.start) === Number(draft.window_start) && Number(item.end) === Number(draft.window_end));
+      if (!windowStillValid) {
+        const extension = await env.OJ_DB.prepare(`
+          SELECT 1 AS found FROM timed_extensions
+          WHERE resource_type = 'problem' AND group_name = ?1 AND resource_id = ?2
+            AND username = ?3 AND starts_at = ?4 AND ends_at = ?5
+        `).bind(
+          draft.group_name, draft.resource_id, draft.username,
+          Number(draft.window_start), Number(draft.window_end),
+        ).first();
+        windowStillValid = Boolean(extension);
+      }
       if (!windowStillValid) throw new Error('题目答题时间已经被管理员修改，旧草稿不再自动提交');
       await runJudgeSubmission({
         username: draft.username,
@@ -3354,6 +3531,21 @@ async function processNextTimedSubmission(env) {
       if (!currentExam || Number(currentExam.version) !== Number(draft.resource_version)) {
         throw new Error('套卷版本已经更新，旧草稿不再自动提交');
       }
+      const currentPaper = parseExamRecord(currentExam);
+      let windowStillValid = currentPaper.availability?.windows?.some(item =>
+        Number(item.start) === Number(draft.window_start) && Number(item.end) === Number(draft.window_end));
+      if (!windowStillValid) {
+        const extension = await env.OJ_DB.prepare(`
+          SELECT 1 AS found FROM timed_extensions
+          WHERE resource_type = 'exam' AND group_name = ?1 AND resource_id = ?2
+            AND username = ?3 AND starts_at = ?4 AND ends_at = ?5
+        `).bind(
+          draft.group_name, draft.resource_id, draft.username,
+          Number(draft.window_start), Number(draft.window_end),
+        ).first();
+        windowStillValid = Boolean(extension);
+      }
+      if (!windowStillValid) throw new Error('套卷答题时间已经被管理员修改或撤销，旧草稿不再自动提交');
       const response = await handleStudentExamSubmit({
         username: draft.username,
         examId: draft.resource_id,
@@ -3863,7 +4055,10 @@ async function prepareJudgeSubmission(body, env, allowDraft = false) {
     throw judgeError('题目不存在或尚未发布', 404, 'PROBLEM_NOT_PUBLISHED');
   }
   if (!allowDraft) {
-    const timing = availabilityState(problem?.availability);
+    const effectiveAvailability = await studentAvailability(
+      problem?.availability, 'problem', group, problemId, username, env,
+    );
+    const timing = availabilityState(effectiveAvailability);
     if (!timing.canEdit) {
       throw judgeError(
         timing.state === 'upcoming' ? '尚未到答题开放时间' : '答题时间已经结束，答案已冻结',
@@ -4012,7 +4207,10 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
       const saveError = await saveResponse.json();
       throw judgeError(saveError.error || '保存提交记录失败', saveResponse.status, saveError.code || 'SAVE_FAILED');
     }
-    const timing = availabilityState(problem.availability, result.timestamp);
+    const effectiveAvailability = await studentAvailability(
+      problem.availability, 'problem', group, problemId, username, env, result.timestamp,
+    );
+    const timing = availabilityState(effectiveAvailability, result.timestamp);
     if (env.OJ_DB && timing.state === 'active') {
       await env.OJ_DB.prepare(`
         UPDATE timed_drafts SET status = 'submitted', submitted_at = ?5, payload_json = '{}'

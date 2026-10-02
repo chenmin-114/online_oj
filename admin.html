@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20261002-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261002-01">
+  <link rel="stylesheet" href="css/admin.css?v=20261002-02">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -119,6 +119,21 @@
             <p id="reset-student-status" class="account-import-status" role="status">操作后该账号会退出原有登录；请将页面中的新密码妥善交给学生。</p>
           </div>
         </form>
+        <article class="admin-card timed-extension-card">
+          <div class="card-heading">
+            <div><h3>学生临时补时</h3><p>从点击授权的服务器时间开始，单独开放指定分钟；不会改变原定截止时间和其他学生</p></div>
+            <button id="refresh-timed-extensions" type="button" class="text-button">刷新记录</button>
+          </div>
+          <form id="timed-extension-form" class="timed-extension-form">
+            <label class="form-field"><span>类型</span><select id="timed-extension-type" class="admin-input"><option value="exam">套卷</option><option value="problem">编程题</option></select></label>
+            <label class="form-field"><span>题目或套卷</span><select id="timed-extension-resource" class="admin-input" required><option value="">请选择</option></select></label>
+            <label class="form-field"><span>学生用户名</span><input id="timed-extension-username" class="admin-input" maxlength="50" autocomplete="off" required placeholder="请输入学生用户名"></label>
+            <label class="form-field"><span>开放分钟数</span><input id="timed-extension-minutes" class="admin-input" type="number" min="1" max="1440" step="1" value="5" required></label>
+            <button id="grant-timed-extension" type="submit" class="admin-button primary">立即授权</button>
+          </form>
+          <p id="timed-extension-status" class="account-import-status" role="status">学生重新进入对应题目或套卷后，会看到以本次授权时间为起点的独立倒计时。</p>
+          <div class="table-wrap"><table class="admin-table"><thead><tr><th>类型</th><th>编号</th><th>学生</th><th>授权时间</th><th>截止时间</th><th>状态</th><th>操作</th></tr></thead><tbody id="timed-extension-list"><tr><td colspan="7" class="empty-cell">暂无补时记录</td></tr></tbody></table></div>
+        </article>
         <article class="admin-card account-import-card">
           <div class="card-heading">
             <div><h3>导入学生名单</h3><p>优先识别“账号/登录账号/用户名”，没有时读取“姓名/名字”；其他工作表及列保持不变</p></div>
@@ -389,7 +404,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20260926-01"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
-  <script src="js/admin.js?v=20261002-01"></script>
-  <script src="js/admin-exams.js?v=20261002-01"></script>
+  <script src="js/admin.js?v=20261002-02"></script>
+  <script src="js/admin-exams.js?v=20261002-02"></script>
 </body>
 </html>

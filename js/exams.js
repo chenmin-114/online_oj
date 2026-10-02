@@ -498,6 +498,25 @@ class ExamUI {
     return this.app._timingState(this.paper?.availability, this.timingOffset);
   }
 
+  applyServerAvailability(availability) {
+    if (!this.paper || !availability) return;
+    const changed = JSON.stringify(this.paper.availability?.windows || [])
+      !== JSON.stringify(availability.windows || []);
+    this.paper.availability = availability;
+    if (!changed) return;
+    clearTimeout(this.autoFinalizeTimer);
+    clearInterval(this.finalizeRetryTimer);
+    clearTimeout(this.finalizeDeadlineTimer);
+    clearTimeout(this.exitTimer);
+    this.autoFinalizeTimer = null;
+    this.graceSavedFor = null;
+    this.precloseSavedFor = null;
+    this.finalizeInFlight = null;
+    this.finalizeSucceeded = false;
+    this.finalizeError = '';
+    this.exitTimer = null;
+  }
+
   startTiming() {
     clearInterval(this.timingTimer);
     clearTimeout(this.autoFinalizeTimer);

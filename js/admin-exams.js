@@ -115,6 +115,7 @@ class ExamAdmin {
       this.loadedGroup = this.group;
       this.renderList();
       this.populateExamSelector();
+      this.admin?.populateTimedExtensionResources();
     } catch (error) {
       if (!silent) tbody.innerHTML = `<tr><td colspan="8" class="empty-cell">${this.escape(error.message)}</td></tr>`;
     }

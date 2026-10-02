@@ -192,6 +192,21 @@ CREATE TABLE IF NOT EXISTS timed_drafts (
 CREATE INDEX IF NOT EXISTS idx_timed_drafts_due
   ON timed_drafts(status, window_end, updated_at);
 
+-- 管理员可从授权时刻起，单独给某个学生开放几分钟补交时间。
+CREATE TABLE IF NOT EXISTS timed_extensions (
+  resource_type TEXT NOT NULL CHECK (resource_type IN ('problem', 'exam')),
+  group_name TEXT NOT NULL CHECK (group_name IN ('control', 'vision')),
+  resource_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  starts_at INTEGER NOT NULL,
+  ends_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (resource_type, group_name, resource_id, username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_timed_extensions_lookup
+  ON timed_extensions(group_name, username, ends_at);
+
 -- 测试点变化后的后台重判队列。成功任务会立即删除，只保留待处理或失败任务。
 CREATE TABLE IF NOT EXISTS rejudge_queue (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

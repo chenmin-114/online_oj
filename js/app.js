@@ -409,6 +409,8 @@ class App {
     if (examActive && this.examUI.paper.availability?.enabled) {
       return {
         kind: 'exam',
+        resourceType: 'exam',
+        resourceId: this.examUI.paper.id,
         availability: this.examUI.paper.availability,
         offset: this.examUI.timingOffset,
       };
@@ -416,6 +418,8 @@ class App {
     if (this.views.currentView === 'solve' && this.currentProblem?.availability?.enabled) {
       return {
         kind: 'problem',
+        resourceType: 'problem',
+        resourceId: this.currentProblem.id,
         availability: this.currentProblem.availability,
         offset: this.problemTimingOffset,
       };
@@ -423,14 +427,16 @@ class App {
     return null;
   }
 
-  _applyServerTime(serverTime, kind = this._timingTarget()?.kind) {
+  _applyServerTime(serverTime, kind = this._timingTarget()?.kind, availability = null) {
     const value = Number(serverTime);
     if (!Number.isFinite(value)) return;
     const offset = value - Date.now();
     if (kind === 'exam' && this.examUI?.paper) {
+      if (availability) this.examUI.applyServerAvailability(availability);
       this.examUI.timingOffset = offset;
       this.examUI.applyTimingState();
     } else if (kind === 'problem' && this.currentProblem) {
+      if (availability) this._applyProblemServerAvailability(availability);
       this.problemTimingOffset = offset;
       this._renderProblemTiming();
     } else {
@@ -438,6 +444,25 @@ class App {
     }
     this.lastTimeSyncAt = Date.now();
     this._scheduleServerTimeSync();
+  }
+
+  _applyProblemServerAvailability(availability) {
+    if (!this.currentProblem || !availability) return;
+    const changed = JSON.stringify(this.currentProblem.availability?.windows || [])
+      !== JSON.stringify(availability.windows || []);
+    this.currentProblem.availability = availability;
+    if (!changed) return;
+    clearTimeout(this.problemAutoFinalizeTimer);
+    clearInterval(this.problemFinalizeRetryTimer);
+    clearTimeout(this.problemFinalizeDeadlineTimer);
+    clearTimeout(this.problemExitTimer);
+    this.problemAutoFinalizeTimer = null;
+    this.problemGraceSavedFor = null;
+    this.problemPrecloseSavedFor = null;
+    this.problemFinalizeInFlight = null;
+    this.problemFinalizeSucceeded = false;
+    this.problemFinalizeError = '';
+    this.problemExitTimer = null;
   }
 
   _scheduleServerTimeSync() {
@@ -469,12 +494,18 @@ class App {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'time_sync', username: this.username }),
+      body: JSON.stringify({
+        type: 'time_sync',
+        username: this.username,
+        group: this.group,
+        resourceType: target.resourceType,
+        resourceId: target.resourceId,
+      }),
     })
       .then(async response => {
         if (!response.ok) return;
         const result = await response.json();
-        this._applyServerTime(result.serverTime, targetKind);
+        this._applyServerTime(result.serverTime, targetKind, result.availability);
       })
       .catch(() => { /* 校时失败不打断作答，下一周期重试 */ })
       .finally(() => {
