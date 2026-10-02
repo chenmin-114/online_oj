@@ -21,6 +21,7 @@ class ExamUI {
     document.querySelector('[data-view="exams"]').addEventListener('click', () => this.loadList(true, Boolean(this.loadedKey)));
     document.getElementById('back-to-exam-list').addEventListener('click', () => {
       clearInterval(this.timingTimer);
+      clearTimeout(this.app.timeSyncTimer);
       this.saveDraft();
       if (this.app.adminExamPreview) {
         window.close();
@@ -211,6 +212,7 @@ class ExamUI {
       this.serverDraft = result.timedDraft;
       this.lastServerDraft = this.serverDraft?.answers ? JSON.stringify(this.serverDraft.answers) : '';
       this.timingOffset = Number(result.timing?.serverTime || this.paper.availability?.status?.serverTime || Date.now()) - Date.now();
+      this.app.lastTimeSyncAt = Date.now();
       this.app._trackExamView(this.paper.id);
       this.renderPaper();
       document.getElementById('download-exam-docx').disabled = false;
@@ -452,8 +454,9 @@ class ExamUI {
     const signature = JSON.stringify(answers);
     if (signature === this.lastServerDraft) return;
     try {
-      await this.request('timed_draft_save', { resourceType: 'exam', resourceId: this.paper.id, payload: answers });
+      const result = await this.request('timed_draft_save', { resourceType: 'exam', resourceId: this.paper.id, payload: answers });
       this.lastServerDraft = signature;
+      this.app._applyServerTime(result.timing?.serverTime || result.updatedAt, 'exam');
     } catch { /* 本机草稿保留，下次修改继续尝试 */ }
   }
 
@@ -469,6 +472,7 @@ class ExamUI {
     if (this.paper?.availability?.enabled && !this.app.adminExamPreview) {
       this.timingTimer = setInterval(() => this.applyTimingState(), 1000);
       setTimeout(() => this.saveServerDraft(), 500);
+      this.app._scheduleServerTimeSync();
     }
   }
 
@@ -513,6 +517,7 @@ class ExamUI {
       status.textContent = result.status === 'submitted' ? '冻结答案已经提交完成。' : '冻结答案已接收，正在排队自动批改。';
       localStorage.removeItem(this.draftKey());
       clearInterval(this.timingTimer);
+      clearTimeout(this.app.timeSyncTimer);
       setTimeout(() => { this.clearProgrammingContext(); this.app.views.show('exams'); this.loadList(true); }, 1200);
     } catch (error) { status.textContent = `冻结答案提交失败：${error.message}`; }
   }

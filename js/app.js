@@ -31,6 +31,9 @@ class App {
     this.problemTimingOffset = 0;
     this.problemTimingTimer = null;
     this.timedProblemSaveTimer = null;
+    this.timeSyncTimer = null;
+    this.timeSyncInFlight = null;
+    this.lastTimeSyncAt = 0;
   }
 
   async init() {
@@ -60,6 +63,7 @@ class App {
 
     // 绑定事件
     this._bindEvents();
+    this._bindTimeSyncEvents();
     this._updateFontSizeDisplay();
     this._initSolveResizer();
     this._renderGroupSwitcher();
@@ -227,6 +231,7 @@ class App {
 
   async loadProblem(file) {
     clearInterval(this.problemTimingTimer);
+    clearTimeout(this.timeSyncTimer);
     clearTimeout(this.problemAutoFinalizeTimer);
     this.problemAutoFinalizeTimer = null;
     const leavingExamProblem = Boolean(this.examUI?.programmingContext);
@@ -254,8 +259,8 @@ class App {
         ? JSON.stringify({ language: problem.timedDraft.language, code: problem.timedDraft.code })
         : '';
       this._renderProblem();
-      this._startProblemTiming();
       this.views.show('solve');
+      this._startProblemTiming();
       this._trackView(problem.id);
     } catch (err) {
       if (requestSequence !== this.problemRequestSequence || requestedGroup !== this.group) return;
@@ -353,11 +358,106 @@ class App {
     clearInterval(this.problemTimingTimer);
     const serverTime = Number(this.currentProblem?.availability?.status?.serverTime);
     this.problemTimingOffset = Number.isFinite(serverTime) ? serverTime - Date.now() : 0;
+    if (Number.isFinite(serverTime)) this.lastTimeSyncAt = Date.now();
     this._renderProblemTiming();
     if (this.currentProblem?.availability?.enabled && !this.adminProblemPreview) {
       this.problemTimingTimer = setInterval(() => this._renderProblemTiming(), 1000);
       setTimeout(() => this._saveTimedProblemDraft(), 500);
+      this._scheduleServerTimeSync();
     }
+  }
+
+  _bindTimeSyncEvents() {
+    if (this.adminExamPreview || this.adminProblemPreview) return;
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this._syncServerTime(true);
+    });
+    window.addEventListener('focus', () => this._syncServerTime(true));
+    window.addEventListener('online', () => this._syncServerTime(true));
+    window.addEventListener('pageshow', event => {
+      if (event.persisted) this._syncServerTime(true);
+    });
+  }
+
+  _timingTarget() {
+    const examActive = this.examUI?.paper
+      && (this.views.currentView === 'exam' || Boolean(this.examUI.programmingContext));
+    if (examActive && this.examUI.paper.availability?.enabled) {
+      return {
+        kind: 'exam',
+        availability: this.examUI.paper.availability,
+        offset: this.examUI.timingOffset,
+      };
+    }
+    if (this.views.currentView === 'solve' && this.currentProblem?.availability?.enabled) {
+      return {
+        kind: 'problem',
+        availability: this.currentProblem.availability,
+        offset: this.problemTimingOffset,
+      };
+    }
+    return null;
+  }
+
+  _applyServerTime(serverTime, kind = this._timingTarget()?.kind) {
+    const value = Number(serverTime);
+    if (!Number.isFinite(value)) return;
+    const offset = value - Date.now();
+    if (kind === 'exam' && this.examUI?.paper) {
+      this.examUI.timingOffset = offset;
+      this.examUI.applyTimingState();
+    } else if (kind === 'problem' && this.currentProblem) {
+      this.problemTimingOffset = offset;
+      this._renderProblemTiming();
+    } else {
+      return;
+    }
+    this.lastTimeSyncAt = Date.now();
+    this._scheduleServerTimeSync();
+  }
+
+  _scheduleServerTimeSync() {
+    clearTimeout(this.timeSyncTimer);
+    this.timeSyncTimer = null;
+    const target = this._timingTarget();
+    if (!target || !this.username) return;
+    const state = this._timingState(target.availability, target.offset);
+    const now = Date.now() + target.offset;
+    const nearDeadline = state.state === 'active'
+      && state.windowEnd - now <= 5 * 60 * 1000;
+    const interval = nearDeadline ? 60 * 1000 : 5 * 60 * 1000;
+    const jitter = Math.floor(Math.random() * (nearDeadline ? 3000 : 10000));
+    const untilFrequentSync = state.state === 'active'
+      ? Math.max(1000, state.windowEnd - now - 5 * 60 * 1000)
+      : interval;
+    const delay = nearDeadline ? interval : Math.min(interval, untilFrequentSync);
+    this.timeSyncTimer = setTimeout(() => this._syncServerTime(), delay + jitter);
+  }
+
+  _syncServerTime(immediate = false) {
+    const target = this._timingTarget();
+    if (!target || !this.username) return Promise.resolve();
+    if (this.timeSyncInFlight) return this.timeSyncInFlight;
+    if (immediate && Date.now() - this.lastTimeSyncAt < 3000) return Promise.resolve();
+
+    const targetKind = target.kind;
+    this.timeSyncInFlight = fetch(window.OJ_CONFIG.WORKER_URL, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'time_sync', username: this.username }),
+    })
+      .then(async response => {
+        if (!response.ok) return;
+        const result = await response.json();
+        this._applyServerTime(result.serverTime, targetKind);
+      })
+      .catch(() => { /* 校时失败不打断作答，下一周期重试 */ })
+      .finally(() => {
+        this.timeSyncInFlight = null;
+        this._scheduleServerTimeSync();
+      });
+    return this.timeSyncInFlight;
   }
 
   _renderProblemTiming() {
@@ -400,7 +500,11 @@ class App {
     if (signature === this.lastTimedProblemDraft) return;
     try {
       const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_draft_save', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group, payload }) });
-      if (response.ok) this.lastTimedProblemDraft = signature;
+      if (response.ok) {
+        this.lastTimedProblemDraft = signature;
+        const result = await response.json();
+        this._applyServerTime(result.timing?.serverTime || result.updatedAt, 'problem');
+      }
     } catch { /* 本地缓存仍保留，下一次修改继续尝试 */ }
   }
 
@@ -415,6 +519,7 @@ class App {
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || '冻结答案提交失败');
       resultEl.innerHTML = '<span class="success">✅ 冻结答案已接收，正在排队判题，可在提交记录中查看结果</span>';
+      clearTimeout(this.timeSyncTimer);
       setTimeout(() => { this.views.show('problems'); this.loadProblemList(); }, 1200);
     } catch (error) { resultEl.innerHTML = `<span class="error">❌ ${this._escapeHtml(error.message)}</span>`; }
   }
@@ -540,6 +645,7 @@ class App {
       link.addEventListener('click', () => {
         this.examUI?.leaveProgrammingProblem();
         clearInterval(this.problemTimingTimer);
+        clearTimeout(this.timeSyncTimer);
       });
     });
 

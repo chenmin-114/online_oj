@@ -358,6 +358,14 @@ export default {
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
         return await handleTimedDraftSave(body, env);
+      } else if (body.type === 'time_sync') {
+        const rateLimitError = await enforceRateLimit(
+          env.DRAFT_RATE_LIMITER, request, 'time-sync', normalizeStudentUsername(body.username), false,
+        );
+        if (rateLimitError) return rateLimitError;
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return jsonResponse({ serverTime: Date.now() });
       } else if (body.type === 'timed_finalize') {
         const rateLimitError = await enforceRateLimit(
           env.DRAFT_RATE_LIMITER, request, 'timed-finalize', normalizeStudentUsername(body.username), false,
