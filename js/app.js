@@ -343,7 +343,7 @@ class App {
     for (const window of availability.windows) {
       if (now < window.start) return { state: 'upcoming', nextStart: window.start, canEdit: false, canSubmit: false };
       if (now < window.end) return { state: 'active', windowStart: window.start, windowEnd: window.end, canEdit: true, canSubmit: true };
-      if (now < window.end + 60000) return { state: 'grace', windowStart: window.start, windowEnd: window.end, graceEndsAt: window.end + 60000, canEdit: false, canSubmit: true };
+      if (now < window.end + 30000) return { state: 'grace', windowStart: window.start, windowEnd: window.end, graceEndsAt: window.end + 30000, canEdit: false, canSubmit: true };
     }
     return { state: 'ended', canEdit: false, canSubmit: false };
   }
@@ -354,6 +354,12 @@ class App {
     const minutes = Math.floor((seconds % 3600) / 60);
     const rest = seconds % 60;
     return hours ? `${hours}小时${minutes}分${rest}秒` : minutes ? `${minutes}分${rest}秒` : `${rest}秒`;
+  }
+
+  _withinServerDraftUploadWindow(availability, offset = 0) {
+    const now = Date.now() + offset;
+    return Boolean(availability?.enabled && availability.windows?.some(window =>
+      now >= window.start && now < window.end + 60 * 1000));
   }
 
   _startProblemTiming() {
@@ -503,11 +509,13 @@ class App {
   async _saveTimedProblemDraft(force = false) {
     if (!this.currentProblem) return false;
     const state = this._timingState(this.currentProblem.availability, this.problemTimingOffset);
-    if (state.state !== 'active' && state.state !== 'grace') return false;
+    const mayUseServerUploadBuffer = force
+      && this._withinServerDraftUploadWindow(this.currentProblem.availability, this.problemTimingOffset);
+    if (state.state !== 'active' && state.state !== 'grace' && !mayUseServerUploadBuffer) return false;
     if (this.timedProblemSaveInFlight) {
       await this.timedProblemSaveInFlight;
       const latestPayload = { language: document.getElementById('language-select').value, code: this.editor.getCode() };
-      if (JSON.stringify(latestPayload) !== this.lastTimedProblemDraft) return this._saveTimedProblemDraft(false);
+      if (JSON.stringify(latestPayload) !== this.lastTimedProblemDraft) return this._saveTimedProblemDraft(force);
       return true;
     }
     const payload = { language: document.getElementById('language-select').value, code: this.editor.getCode() };

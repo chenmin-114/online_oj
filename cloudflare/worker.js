@@ -3321,7 +3321,7 @@ async function processNextRejudgeJob(env) {
 async function processNextTimedSubmission(env) {
   if (!env.OJ_DB) return;
   const now = Date.now();
-  // 浏览器在线时会在 60 秒上传期结束时主动排队；此处是断网、关页等情况的服务端兜底。
+  // 学生端在 30 秒时主动排队，后台仍保留到 60 秒接收在途草稿；此处是断网、关页等情况的服务端兜底。
   await env.OJ_DB.prepare(`
     UPDATE timed_drafts SET status = 'queued', queued_at = ?1
     WHERE status = 'active' AND window_end + ?2 <= ?1

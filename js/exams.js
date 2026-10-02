@@ -452,11 +452,15 @@ class ExamUI {
 
   async saveServerDraft(answers = this.collectAnswers(), force = false) {
     const state = this.currentTiming();
-    if (!this.paper?.availability?.enabled || !['active', 'grace'].includes(state.state) || this.app.adminExamPreview) return false;
+    const mayUseServerUploadBuffer = force
+      && this.app._withinServerDraftUploadWindow(this.paper?.availability, this.timingOffset);
+    if (!this.paper?.availability?.enabled
+      || (!['active', 'grace'].includes(state.state) && !mayUseServerUploadBuffer)
+      || this.app.adminExamPreview) return false;
     if (this.serverSaveInFlight) {
       await this.serverSaveInFlight;
       const latestAnswers = this.collectAnswers();
-      if (JSON.stringify(latestAnswers) !== this.lastServerDraft) return this.saveServerDraft(latestAnswers, false);
+      if (JSON.stringify(latestAnswers) !== this.lastServerDraft) return this.saveServerDraft(latestAnswers, force);
       return true;
     }
     const signature = JSON.stringify(answers);
