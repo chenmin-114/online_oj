@@ -391,6 +391,12 @@ input.admin-input { min-width: 240px; }
 .grading-part-title b { color: var(--admin-blue); white-space: nowrap; }
 .grading-answer { max-height: 320px; padding: 12px; overflow: auto; border-radius: 7px; background: #080d18; color: #cbd5ea; font: 12px/1.6 Consolas, Monaco, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .grading-programming-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.grading-ai-suggestion { padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; align-items: center; border: 1px solid rgba(167,139,250,.34); border-radius: 8px; background: rgba(139,92,246,.08); }
+.grading-ai-suggestion > div { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.grading-ai-suggestion strong { color: #c4b5fd; font-size: 12px; }
+.grading-ai-suggestion span { color: var(--admin-muted); font-size: 10px; }
+.grading-ai-suggestion p { grid-column: 1; margin: 0; color: #d8def0; font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
+.grading-ai-suggestion .admin-button { grid-column: 2; grid-row: 1 / span 2; }
 .grading-form { display: grid; grid-template-columns: 140px minmax(200px, 1fr) auto; gap: 10px; align-items: end; }
 .grading-form input.admin-input { min-width: 0; }
 .preview-open { overflow: hidden; }
@@ -473,6 +479,8 @@ input.admin-input { min-width: 240px; }
   .exam-programming-actions { align-items: stretch; flex-direction: column; }
   .exam-problem-editor-modal { padding: 8px; }
   .grading-form { grid-template-columns: 1fr; }
+  .grading-ai-suggestion { grid-template-columns: 1fr; }
+  .grading-ai-suggestion p, .grading-ai-suggestion .admin-button { grid-column: 1; grid-row: auto; }
   .grading-score-summary { align-items: flex-start; flex-direction: column; }
   .grading-score-summary label { margin-left: 0; }
   .grading-bulk-actions { align-items: stretch; flex-direction: column; }

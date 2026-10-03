@@ -33,6 +33,8 @@ class ExamAdmin {
     document.getElementById('grading-exam').addEventListener('change', event => this.loadGrading(event.target.value));
     document.getElementById('grading-mode').addEventListener('change', () => this.renderGrading());
     document.getElementById('grading-part').addEventListener('change', () => this.renderGrading());
+    document.getElementById('export-ai-grading').addEventListener('click', () => this.exportAiGrading());
+    document.getElementById('import-ai-grading-file').addEventListener('change', event => this.importAiGrading(event.target));
     document.getElementById('grading-student-list').addEventListener('click', event => {
       const button = event.target.closest('[data-grading-student]');
       if (button) this.selectStudent(Number(button.dataset.gradingStudent));
@@ -186,6 +188,7 @@ class ExamAdmin {
       options: type.includes('choice') ? ['选项 A', '选项 B'] : undefined,
       correctAnswers: type.includes('choice') ? ['选项 A'] : type === 'fill_blank' ? [''] : undefined,
       caseSensitive: false,
+      gradingGuide: type === 'fill_blank' || type === 'short_answer' ? '' : undefined,
       problemId: type === 'programming' ? '' : undefined,
     };
   }
@@ -261,6 +264,7 @@ class ExamAdmin {
       <label class="form-field"><span>小题内容</span><textarea class="admin-input" rows="3" data-p-field="prompt">${this.escape(part.prompt || '')}</textarea></label>
       ${isChoice ? `<div class="form-grid two-columns"><label class="form-field"><span>选项（每行一个）</span><textarea class="admin-input" rows="4" data-p-field="options">${this.escape((part.options || []).join('\n'))}</textarea></label><label class="form-field"><span>正确答案（每行一个，文字须与选项一致）</span><textarea class="admin-input" rows="4" data-p-field="correctAnswers">${this.escape((part.correctAnswers || []).join('\n'))}</textarea></label></div>` : ''}
       ${part.type === 'fill_blank' ? `<label class="form-field"><span>可接受答案（每行一个）</span><textarea class="admin-input" rows="4" data-p-field="correctAnswers">${this.escape((part.correctAnswers || []).join('\n'))}</textarea></label><label class="test-visibility-option compact"><input type="checkbox" data-p-field="caseSensitive" ${part.caseSensitive ? 'checked' : ''}><span><strong>区分大小写</strong><small>不勾选时会忽略首尾空格和大小写</small></span></label>` : ''}
+      ${part.type === 'fill_blank' || part.type === 'short_answer' ? `<label class="form-field"><span>参考答案 / 评分细则（仅管理员与 Claude 可见）</span><textarea class="admin-input" rows="4" data-p-field="gradingGuide" placeholder="建议按评分点写明每项分值、必要条件和可接受表述">${this.escape(part.gradingGuide || '')}</textarea></label>` : ''}
       ${part.type === 'programming' ? `<div class="exam-programming-source"><label class="form-field"><span>关联编程题</span><select class="admin-input" data-p-field="problemId"><option value="">请选择题目</option>${problemOptions}${part.problemId && !this.admin.problems.some(problem => problem.id === part.problemId) ? `<option value="${this.escape(part.problemId)}" selected>${this.escape(part.problemId)} · 待创建</option>` : ''}</select><small>套卷题默认保存为草稿，但发布套卷后仍可正常作答和判题。</small></label><div class="exam-programming-actions"><button type="button" class="admin-button primary" data-create-programming="${questionIndex}:${partIndex}">＋ 使用完整编辑器出题</button>${part.problemId && this.admin.problems.some(problem => problem.id === part.problemId) ? `<button type="button" class="admin-button secondary" data-edit-programming="${questionIndex}:${partIndex}">编辑关联题目</button>` : ''}</div></div>` : ''}
     </section>`;
   }
@@ -546,6 +550,7 @@ class ExamAdmin {
         lines.push(`### ${questionIndex + 1}.${partIndex + 1} ${typeNames[part.type] || '小题'}（${part.points} 分）`, '', part.prompt || '', '');
         if (part.options?.length) lines.push(...part.options.map((option, index) => `- ${String.fromCharCode(65 + index)}. ${option}`), '');
         if (part.correctAnswers?.length) lines.push(`**参考答案：** ${part.correctAnswers.join(' / ')}`, '');
+        if (part.gradingGuide) lines.push('**评分细则：**', '', part.gradingGuide, '');
         if (part.type === 'programming') {
           const problem = problemMap.get(part.problemId);
           if (problem) {
@@ -813,9 +818,55 @@ class ExamAdmin {
     })));
   }
 
+  async exportAiGrading() {
+    const examId = this.paper?.id;
+    const partId = document.getElementById('grading-part').value;
+    const status = document.getElementById('ai-grading-status');
+    if (!examId || !partId) return this.admin.toast('请先选择一道填空题或简答题');
+    status.textContent = '正在整理待批改答案...';
+    try {
+      const payload = await this.request('admin_exam_ai_export', { examId, partId });
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${examId.toLowerCase()}-${partId.replace(/[^A-Za-z0-9_-]/g, '_')}-claude-input.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      status.textContent = `已导出 ${payload.submissionCount} 份答案；在项目目录运行 node scripts/claude-grade.js “文件路径”`;
+    } catch (error) {
+      status.textContent = `导出失败：${error.message}`;
+    }
+  }
+
+  async importAiGrading(input) {
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const status = document.getElementById('ai-grading-status');
+    if (file.size > 900 * 1024) {
+      status.textContent = '导入失败：结果文件不能超过 900 KB';
+      return;
+    }
+    status.textContent = '正在校验并导入 Claude 建议...';
+    try {
+      const payload = JSON.parse(await file.text());
+      const result = await this.request('admin_exam_ai_import', { payload });
+      status.textContent = `已导入 ${result.imported} 条建议${result.skipped ? `，跳过 ${result.skipped} 条已变化或无效结果` : ''}`;
+      await this.loadGrading(this.paper.id, { preserveSelection: true });
+    } catch (error) {
+      status.textContent = `导入失败：${error.message}`;
+    }
+  }
+
   renderGrading() {
     const mode = document.getElementById('grading-mode').value;
     document.getElementById('grading-part').hidden = mode !== 'part';
+    const selectedPartId = document.getElementById('grading-part').value;
+    const selectedPart = selectedPartId && this.paper ? this.findPart(selectedPartId)?.part : null;
+    const aiEligible = mode === 'part' && ['fill_blank', 'short_answer'].includes(selectedPart?.type);
+    document.getElementById('export-ai-grading').hidden = !aiEligible;
+    document.getElementById('import-ai-grading-label').hidden = !aiEligible;
+    if (!aiEligible) document.getElementById('ai-grading-status').textContent = '';
     const formalSubmissions = this.submissions.filter(item => !item.preview);
     const completed = formalSubmissions.filter(item => item.gradingStatus === 'completed').length;
     document.getElementById('grading-summary').textContent = this.paper
@@ -888,17 +939,36 @@ class ExamAdmin {
         ? `${answer?.language || ''}\n\n${answer?.code || ''}`
         : Array.isArray(answer) ? answer.join('、') : String(answer ?? '');
       const statusText = { correct: '正确', incorrect: '错误', graded: '已人工评分', pending: '待人工批改' }[result.status] || result.status;
+      const aiSuggestion = result.aiSuggestion;
+      const aiPanel = aiSuggestion ? `<div class="grading-ai-suggestion">
+        <div><strong>Claude 建议：${this.escape(aiSuggestion.score)} / ${this.escape(result.maxScore)} 分</strong><span>置信度 ${this.escape(Math.round(Number(aiSuggestion.confidence || 0) * 100))}%${aiSuggestion.needsReview ? ' · 建议人工复核' : ''}</span></div>
+        <p>${this.escape(aiSuggestion.feedback || '未提供说明')}</p>
+        <button type="button" class="admin-button secondary" data-adopt-ai>采用并保存</button>
+      </div>` : '';
       return `<section class="grading-part-card" data-grade-part="${this.escape(result.partId)}">
         <div class="grading-part-title"><div><strong>${this.escape(found.question.title)} · ${this.escape(found.part.prompt || found.part.id)}</strong><span>${this.escape(statusText)}${result.blockedByProgramming ? ' · 因编程未通过暂计 0 分' : ''}</span></div><b>${this.escape(result.effectiveScore || 0)} / ${this.escape(result.maxScore)}</b></div>
         <pre class="grading-answer">${this.escape(answerText || '（未作答）')}</pre>
         ${result.judge ? `<p class="grading-judge">编程测试：${result.judge.passedTests}/${result.judge.totalTests} · ${result.judge.totalTime}ms</p>` : ''}
         ${result.type === 'programming' && !submission.preview ? `<div class="grading-programming-actions"><button type="button" class="admin-button secondary" data-rejudge-programming="${this.escape(found.part.problemId)}">重新判题</button><button type="button" class="admin-button secondary" data-request-programming-resubmit="${this.escape(found.part.problemId)}">要求学生重新提交</button></div>` : ''}
+        ${aiPanel}
         <div class="grading-form"><label class="form-field"><span>人工评分</span><input class="admin-input" data-grade-score type="number" min="0" max="${this.escape(result.maxScore)}" step="0.5" value="${this.escape(result.manualScore || 0)}"></label><label class="form-field"><span>批注</span><input class="admin-input" data-grade-feedback maxlength="3000" value="${this.escape(result.feedback || '')}" placeholder="可选"></label><button type="button" class="admin-button primary" data-save-grade>保存评分</button></div>
       </section>`;
     }).join('');
   }
 
   async handleGradingClick(event) {
+    const adoptAi = event.target.closest('[data-adopt-ai]');
+    if (adoptAi) {
+      const card = adoptAi.closest('[data-grade-part]');
+      const submission = this.submissions[this.studentIndex];
+      const suggestion = submission?.grading?.partResults?.find(item => item.partId === card?.dataset.gradePart)?.aiSuggestion;
+      if (!card || !suggestion) return;
+      card.querySelector('[data-grade-score]').value = suggestion.score;
+      card.querySelector('[data-grade-feedback]').value = suggestion.feedback || '';
+      this.gradingDirty = true;
+      card.querySelector('[data-save-grade]').click();
+      return;
+    }
     const release = event.target.closest('[data-release-result]');
     const save = event.target.closest('[data-save-grade]');
     const rejudge = event.target.closest('[data-rejudge-programming]');

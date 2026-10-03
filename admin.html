@@ -306,6 +306,9 @@
               <select id="grading-exam" class="admin-input"><option value="">选择试卷</option></select>
               <select id="grading-mode" class="admin-input"><option value="student">按学生批改整卷</option><option value="part">按一道题连续批改</option></select>
               <select id="grading-part" class="admin-input" hidden><option value="">选择小题</option></select>
+              <button id="export-ai-grading" type="button" class="admin-button secondary" hidden>导出 Claude 批改包</button>
+              <label id="import-ai-grading-label" class="admin-button secondary" hidden>导入 Claude 建议<input id="import-ai-grading-file" type="file" accept="application/json,.json" hidden></label>
+              <span id="ai-grading-status" class="filter-count"></span>
             </div>
           </article>
           <div class="exam-grading-layout">
