@@ -33,6 +33,7 @@ class ExamAdmin {
     document.getElementById('grading-exam').addEventListener('change', event => this.loadGrading(event.target.value));
     document.getElementById('grading-mode').addEventListener('change', () => this.renderGrading());
     document.getElementById('grading-part').addEventListener('change', () => this.renderGrading());
+    document.getElementById('run-ai-grading').addEventListener('click', () => this.runAiGrading());
     document.getElementById('export-ai-grading').addEventListener('click', () => this.exportAiGrading());
     document.getElementById('import-ai-grading-file').addEventListener('change', event => this.importAiGrading(event.target));
     document.getElementById('grading-student-list').addEventListener('click', event => {
@@ -838,6 +839,44 @@ class ExamAdmin {
     }
   }
 
+  async runAiGrading() {
+    const examId = this.paper?.id;
+    const partId = document.getElementById('grading-part').value;
+    const button = document.getElementById('run-ai-grading');
+    const status = document.getElementById('ai-grading-status');
+    if (!examId || !partId || button.disabled) return;
+    button.disabled = true;
+    status.textContent = '正在整理待批改答案...';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20 * 60 * 1000);
+    try {
+      const gradingPackage = await this.request('admin_exam_ai_export', { examId, partId });
+      status.textContent = `正在调用本机 Claude 批改 ${gradingPackage.submissionCount} 份答案，请勿关闭页面...`;
+      const response = await fetch('http://127.0.0.1:37841/grade', {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        headers: { 'Content-Type': 'application/json', 'X-JC-OJ-Grading': '1' },
+        body: JSON.stringify(gradingPackage),
+        signal: controller.signal,
+      });
+      const localResult = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(localResult.error || `本机助手返回 ${response.status}`);
+      status.textContent = 'Claude 已完成，正在安全校验并导入建议...';
+      const imported = await this.request('admin_exam_ai_import', { payload: localResult });
+      status.textContent = `一键批改完成：已导入 ${imported.imported} 条建议${imported.skipped ? `，跳过 ${imported.skipped} 条过期结果` : ''}`;
+      await this.loadGrading(examId, { preserveSelection: true });
+    } catch (error) {
+      const detail = error.name === 'AbortError' ? '本机批改超过 20 分钟，已停止等待' : error.message;
+      status.textContent = `一键批改失败：${detail}。请先运行 node scripts/claude-grading-server.js`;
+    } finally {
+      clearTimeout(timeout);
+      button.disabled = false;
+    }
+  }
+
   async importAiGrading(input) {
     const file = input.files?.[0];
     input.value = '';
@@ -864,6 +903,7 @@ class ExamAdmin {
     const selectedPartId = document.getElementById('grading-part').value;
     const selectedPart = selectedPartId && this.paper ? this.findPart(selectedPartId)?.part : null;
     const aiEligible = mode === 'part' && ['fill_blank', 'short_answer'].includes(selectedPart?.type);
+    document.getElementById('run-ai-grading').hidden = !aiEligible;
     document.getElementById('export-ai-grading').hidden = !aiEligible;
     document.getElementById('import-ai-grading-label').hidden = !aiEligible;
     if (!aiEligible) document.getElementById('ai-grading-status').textContent = '';
