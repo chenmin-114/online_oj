@@ -981,7 +981,7 @@ class ExamAdmin {
     runAiButton.hidden = !aiEligible;
     runAiButton.textContent = mode === 'part' ? 'Claude 一键批改本题' : 'Claude 一键批改整卷';
     const adoptButton = document.getElementById('adopt-all-ai');
-    adoptButton.hidden = !this.paper || (mode === 'part' && !selectedPartId);
+    adoptButton.hidden = !aiEligible;
     adoptButton.textContent = mode === 'part' ? '一键采纳本题所有草稿' : '一键采纳整卷所有草稿';
     document.getElementById('export-ai-grading').hidden = !aiPartEligible;
     document.getElementById('import-ai-grading-label').hidden = !aiPartEligible;
