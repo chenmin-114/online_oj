@@ -11,6 +11,7 @@ class ExamAdmin {
     this.rosterExportName = '';
     this.refreshing = false;
     this.gradingDirty = false;
+    this.highConfidenceChecked = new Set();
     this.lastRefreshAt = 0;
   }
 
@@ -34,6 +35,7 @@ class ExamAdmin {
     document.getElementById('grading-mode').addEventListener('change', () => this.renderGrading());
     document.getElementById('grading-part').addEventListener('change', () => this.renderGrading());
     document.getElementById('run-ai-grading').addEventListener('click', () => this.runAiGrading());
+    document.getElementById('adopt-all-ai').addEventListener('click', () => this.adoptAllAiSuggestions());
     document.getElementById('export-ai-grading').addEventListener('click', () => this.exportAiGrading());
     document.getElementById('import-ai-grading-file').addEventListener('change', event => this.importAiGrading(event.target));
     document.getElementById('grading-student-list').addEventListener('click', event => {
@@ -780,10 +782,23 @@ class ExamAdmin {
     if (!preserveSelection) this.gradingDirty = false;
     if (!silent) workspace.innerHTML = '<p class="empty-cell">正在读取提交...</p>';
     try {
-      const [paper, submissions] = await Promise.all([
+      const [paper, initialSubmissions] = await Promise.all([
         this.request('admin_exam_get', { examId }),
         this.request('admin_exam_submissions', { examId }),
       ]);
+      let submissions = initialSubmissions;
+      if (!this.highConfidenceChecked.has(examId)) {
+        try {
+          const adopted = await this.request('admin_exam_ai_adopt', { examId, highOnly: true });
+          this.highConfidenceChecked.add(examId);
+          if (adopted.adopted) {
+            submissions = await this.request('admin_exam_submissions', { examId });
+            document.getElementById('ai-grading-status').textContent = `已自动采用 ${adopted.adopted} 条历史高置信度 Claude 结果`;
+          }
+        } catch {
+          // 自动处理失败不应阻止管理员查看和手工批改试卷。
+        }
+      }
       if (this.group !== requestedGroup || document.getElementById('grading-exam').value !== examId) return;
       if (silent
         && previousPaperVersion === paper.version
@@ -841,32 +856,60 @@ class ExamAdmin {
 
   async runAiGrading() {
     const examId = this.paper?.id;
-    const partId = document.getElementById('grading-part').value;
+    const mode = document.getElementById('grading-mode').value;
+    const selectedPartId = document.getElementById('grading-part').value;
     const button = document.getElementById('run-ai-grading');
     const status = document.getElementById('ai-grading-status');
-    if (!examId || !partId || button.disabled) return;
+    if (!examId || button.disabled) return;
+    const partIds = mode === 'part'
+      ? (selectedPartId ? [selectedPartId] : [])
+      : this.paper.questions.flatMap(question => question.parts)
+        .filter(part => ['fill_blank', 'short_answer'].includes(part.type))
+        .map(part => part.id);
+    if (!partIds.length) return this.admin.toast(mode === 'part' ? '请先选择一道填空题或简答题' : '这份试卷没有可由 Claude 批改的题目');
     button.disabled = true;
     status.textContent = '正在整理待批改答案...';
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20 * 60 * 1000);
     try {
-      const gradingPackage = await this.request('admin_exam_ai_export', { examId, partId });
-      status.textContent = `正在调用本机 Claude 批改 ${gradingPackage.submissionCount} 份答案，请勿关闭页面...`;
-      const response = await fetch('http://127.0.0.1:37841/grade', {
-        method: 'POST',
-        mode: 'cors',
-        credentials: 'omit',
-        cache: 'no-store',
-        referrerPolicy: 'no-referrer',
-        headers: { 'Content-Type': 'application/json', 'X-JC-OJ-Grading': '1' },
-        body: JSON.stringify(gradingPackage),
-        signal: controller.signal,
-      });
-      const localResult = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(localResult.error || `本机助手返回 ${response.status}`);
-      status.textContent = 'Claude 已完成，正在安全校验并导入建议...';
-      const imported = await this.request('admin_exam_ai_import', { payload: localResult });
-      status.textContent = `一键批改完成：已导入 ${imported.imported} 条建议${imported.skipped ? `，跳过 ${imported.skipped} 条过期结果` : ''}`;
+      let importedCount = 0;
+      let autoAdopted = 0;
+      let drafts = 0;
+      let skippedParts = 0;
+      for (let index = 0; index < partIds.length; index += 1) {
+        const partId = partIds[index];
+        let gradingPackage;
+        try {
+          gradingPackage = await this.request('admin_exam_ai_export', { examId, partId });
+        } catch (error) {
+          if (error.message.includes('没有待批改')) {
+            skippedParts += 1;
+            continue;
+          }
+          throw error;
+        }
+        status.textContent = `正在批改第 ${index + 1}/${partIds.length} 道题，共 ${gradingPackage.submissionCount} 份答案...`;
+        const response = await fetch('http://127.0.0.1:37841/grade', {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+          headers: { 'Content-Type': 'application/json', 'X-JC-OJ-Grading': '1' },
+          body: JSON.stringify(gradingPackage),
+          signal: controller.signal,
+        });
+        const localResult = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(localResult.error || `本机助手返回 ${response.status}`);
+        status.textContent = `第 ${index + 1}/${partIds.length} 道题已完成，正在校验并保存...`;
+        const imported = await this.request('admin_exam_ai_import', { payload: localResult });
+        importedCount += imported.imported || 0;
+        autoAdopted += imported.autoAdopted || 0;
+        drafts += imported.drafts || 0;
+      }
+      status.textContent = importedCount
+        ? `批改完成：${importedCount} 条结果，高置信度自动采用 ${autoAdopted} 条，待复核 ${drafts} 条${skippedParts ? `，${skippedParts} 道题无需处理` : ''}`
+        : '没有新的待批改答案；已有 Claude 草稿不会重复消耗 Token';
       await this.loadGrading(examId, { preserveSelection: true });
     } catch (error) {
       const detail = error.name === 'AbortError' ? '本机批改超过 20 分钟，已停止等待' : error.message;
@@ -890,10 +933,38 @@ class ExamAdmin {
     try {
       const payload = JSON.parse(await file.text());
       const result = await this.request('admin_exam_ai_import', { payload });
-      status.textContent = `已导入 ${result.imported} 条建议${result.skipped ? `，跳过 ${result.skipped} 条已变化或无效结果` : ''}`;
+      status.textContent = `已导入 ${result.imported} 条结果；高置信度自动采用 ${result.autoAdopted || 0} 条，待复核 ${result.drafts || 0} 条${result.skipped ? `，跳过 ${result.skipped} 条已变化或无效结果` : ''}`;
       await this.loadGrading(this.paper.id, { preserveSelection: true });
     } catch (error) {
       status.textContent = `导入失败：${error.message}`;
+    }
+  }
+
+  async adoptAllAiSuggestions() {
+    const examId = this.paper?.id;
+    const mode = document.getElementById('grading-mode').value;
+    const partId = mode === 'part' ? document.getElementById('grading-part').value : '';
+    const button = document.getElementById('adopt-all-ai');
+    const status = document.getElementById('ai-grading-status');
+    if (!examId || (mode === 'part' && !partId) || button.disabled) return;
+    const scopeText = mode === 'part' ? '当前题目' : '整份试卷';
+    if (!confirm(`确定采纳${scopeText}的所有 Claude 草稿吗？\n\n中、低置信度结果也会成为正式评分，但不会覆盖已经存在的正式批改结果。`)) return;
+    button.disabled = true;
+    status.textContent = `正在采纳${scopeText}的 Claude 草稿...`;
+    try {
+      const result = await this.request('admin_exam_ai_adopt', {
+        examId,
+        ...(partId ? { partId } : {}),
+        highOnly: false,
+      });
+      status.textContent = result.adopted
+        ? `已采纳 ${result.adopted} 条 Claude 草稿，更新 ${result.submissionsUpdated} 份学生答卷`
+        : `${scopeText}没有可采纳的 Claude 草稿`;
+      await this.loadGrading(examId, { preserveSelection: true });
+    } catch (error) {
+      status.textContent = `一键采纳失败：${error.message}`;
+    } finally {
+      button.disabled = false;
     }
   }
 
@@ -902,10 +973,18 @@ class ExamAdmin {
     document.getElementById('grading-part').hidden = mode !== 'part';
     const selectedPartId = document.getElementById('grading-part').value;
     const selectedPart = selectedPartId && this.paper ? this.findPart(selectedPartId)?.part : null;
-    const aiEligible = mode === 'part' && ['fill_blank', 'short_answer'].includes(selectedPart?.type);
-    document.getElementById('run-ai-grading').hidden = !aiEligible;
-    document.getElementById('export-ai-grading').hidden = !aiEligible;
-    document.getElementById('import-ai-grading-label').hidden = !aiEligible;
+    const aiPartEligible = mode === 'part' && ['fill_blank', 'short_answer'].includes(selectedPart?.type);
+    const aiExamEligible = mode === 'student' && Boolean(this.paper?.questions.some(question =>
+      question.parts.some(part => ['fill_blank', 'short_answer'].includes(part.type))));
+    const aiEligible = aiPartEligible || aiExamEligible;
+    const runAiButton = document.getElementById('run-ai-grading');
+    runAiButton.hidden = !aiEligible;
+    runAiButton.textContent = mode === 'part' ? 'Claude 一键批改本题' : 'Claude 一键批改整卷';
+    const adoptButton = document.getElementById('adopt-all-ai');
+    adoptButton.hidden = !this.paper || (mode === 'part' && !selectedPartId);
+    adoptButton.textContent = mode === 'part' ? '一键采纳本题所有草稿' : '一键采纳整卷所有草稿';
+    document.getElementById('export-ai-grading').hidden = !aiPartEligible;
+    document.getElementById('import-ai-grading-label').hidden = !aiPartEligible;
     if (!aiEligible) document.getElementById('ai-grading-status').textContent = '';
     const formalSubmissions = this.submissions.filter(item => !item.preview);
     const completed = formalSubmissions.filter(item => item.gradingStatus === 'completed').length;
@@ -978,7 +1057,9 @@ class ExamAdmin {
       const answerText = result.type === 'programming'
         ? `${answer?.language || ''}\n\n${answer?.code || ''}`
         : Array.isArray(answer) ? answer.join('、') : String(answer ?? '');
-      const statusText = { correct: '正确', incorrect: '错误', graded: '已人工评分', pending: '待人工批改' }[result.status] || result.status;
+      const statusText = result.aiAdopted
+        ? (result.aiAdopted.automatic ? 'Claude 高置信度自动评分' : '已采纳 Claude 评分')
+        : ({ correct: '正确', incorrect: '错误', graded: '已人工评分', pending: '待人工批改' }[result.status] || result.status);
       const aiSuggestion = result.aiSuggestion;
       const aiPanel = aiSuggestion ? `<div class="grading-ai-suggestion">
         <div><strong>Claude 建议：${this.escape(aiSuggestion.score)} / ${this.escape(result.maxScore)} 分</strong><span>置信度 ${this.escape(Math.round(Number(aiSuggestion.confidence || 0) * 100))}%${aiSuggestion.needsReview ? ' · 建议人工复核' : ''}</span></div>

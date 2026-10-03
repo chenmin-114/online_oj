@@ -283,6 +283,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamAiImport(body, env);
+      } else if (body.type === 'admin_exam_ai_adopt') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamAiAdopt(body, env);
       } else if (body.type === 'admin_exam_part_bulk_action') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -2254,6 +2258,7 @@ async function handleAdminExamGrade(body, env) {
     result.status = score >= Number(part.points) ? 'correct' : 'graded';
     result.feedback = normalizeExamText(body.feedback, 3000);
     delete result.aiSuggestion;
+    delete result.aiAdopted;
   }
   const scores = calculateExamScores(paper, partResults);
   const released = typeof body.released === 'boolean' ? (body.released ? 1 : 0) : Number(submission.released);
@@ -2301,7 +2306,8 @@ async function handleAdminExamAiExport(body, env) {
     const question = structure.questions?.find(item => item.parts?.some(part => part.id === partId));
     const part = question?.parts?.find(item => item.id === partId);
     const partResult = grading.partResults?.find(item => item.partId === partId);
-    if (!part || !partResult || !['fill_blank', 'short_answer'].includes(part.type) || partResult.status !== 'pending') continue;
+    if (!part || !partResult || !['fill_blank', 'short_answer'].includes(part.type)
+        || partResult.status !== 'pending' || partResult.aiSuggestion) continue;
     const version = Number(row.exam_version);
     if (!groups.has(version)) {
       groups.set(version, {
@@ -2364,6 +2370,8 @@ async function handleAdminExamAiImport(body, env) {
   const seen = new Set();
   const statements = [];
   let skipped = 0;
+  let autoAdopted = 0;
+  let drafts = 0;
   const now = Date.now();
   for (const suggestion of payload.results) {
     const submissionId = Number(suggestion?.submissionId);
@@ -2392,7 +2400,7 @@ async function handleAdminExamAiImport(body, env) {
       skipped += 1;
       continue;
     }
-    result.aiSuggestion = {
+    const aiSuggestion = {
       score: Math.round(score * 100) / 100,
       feedback: normalizeExamText(suggestion.feedback, 1500),
       confidence: Math.round(confidence * 1000) / 1000,
@@ -2400,15 +2408,116 @@ async function handleAdminExamAiImport(body, env) {
       model: normalizeExamText(payload.model || 'Claude', 80),
       generatedAt: Number(payload.generatedAt) || now,
     };
+    result.aiSuggestion = aiSuggestion;
+    if (isHighConfidenceAiSuggestion(aiSuggestion)) {
+      adoptAiSuggestion(result, aiSuggestion, now, true);
+      autoAdopted += 1;
+    } else {
+      drafts += 1;
+    }
+    const paper = { ...structure, id: examId, version: Number(row.exam_version) };
+    const scores = calculateExamScores(paper, grading.partResults);
     statements.push(env.OJ_DB.prepare(`
-      UPDATE exam_submissions SET grading_json = ?2, updated_at = ?3
-      WHERE id = ?1 AND is_final = 1 AND updated_at = ?4
-    `).bind(submissionId, JSON.stringify(grading), now, Number(row.updated_at)));
+      UPDATE exam_submissions
+      SET grading_json = ?2, auto_score = ?3, manual_score = ?4, total_score = ?5,
+          graded_count = ?6, total_parts = ?7, grading_status = ?8, updated_at = ?9
+      WHERE id = ?1 AND is_final = 1 AND updated_at = ?10
+    `).bind(
+      submissionId, JSON.stringify(grading), scores.autoScore, scores.manualScore,
+      scores.totalScore, scores.gradedCount, scores.totalParts, scores.gradingStatus,
+      now, Number(row.updated_at),
+    ));
   }
   for (let index = 0; index < statements.length; index += 80) {
     await env.OJ_DB.batch(statements.slice(index, index + 80));
   }
-  return jsonResponse({ success: true, imported: statements.length, skipped });
+  return jsonResponse({ success: true, imported: statements.length, autoAdopted, drafts, skipped });
+}
+
+const AI_HIGH_CONFIDENCE_THRESHOLD = 0.85;
+
+function isHighConfidenceAiSuggestion(suggestion) {
+  return Number(suggestion?.confidence) >= AI_HIGH_CONFIDENCE_THRESHOLD
+    && suggestion?.needsReview === false;
+}
+
+function adoptAiSuggestion(result, suggestion, now, automatic = false) {
+  result.manualScore = Math.round(Number(suggestion.score) * 100) / 100;
+  result.autoScore = 0;
+  result.status = result.manualScore >= Number(result.maxScore) ? 'correct' : 'graded';
+  result.feedback = normalizeExamText(suggestion.feedback, 3000);
+  result.aiAdopted = {
+    confidence: Math.round(Number(suggestion.confidence) * 1000) / 1000,
+    model: normalizeExamText(suggestion.model || 'Claude', 80),
+    generatedAt: Number(suggestion.generatedAt) || now,
+    adoptedAt: now,
+    automatic,
+  };
+  delete result.aiSuggestion;
+}
+
+async function handleAdminExamAiAdopt(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  const partId = normalizeExamText(body.partId, 50);
+  const highOnly = body.highOnly === true;
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+
+  const rows = await env.OJ_DB.prepare(`
+    SELECT s.id, s.exam_version, s.grading_json, s.updated_at, v.structure_json
+    FROM exam_submissions s
+    JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+    WHERE s.exam_id = ?1 AND s.is_final = 1 AND s.is_preview = 0
+    ORDER BY s.id ASC
+  `).bind(examId).all();
+  const now = Date.now();
+  const statements = [];
+  let adopted = 0;
+  let skipped = 0;
+  for (const row of rows.results || []) {
+    let structure;
+    let grading;
+    try {
+      structure = JSON.parse(row.structure_json);
+      grading = JSON.parse(row.grading_json);
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    let changed = false;
+    for (const result of grading.partResults || []) {
+      if (partId && result.partId !== partId) continue;
+      const suggestion = result.aiSuggestion;
+      // 只采用仍待人工批改的 Claude 草稿，绝不覆盖已有正式结果。
+      if (!suggestion || result.status !== 'pending') continue;
+      const score = Number(suggestion.score);
+      if (!Number.isFinite(score) || score < 0 || score > Number(result.maxScore)) {
+        skipped += 1;
+        continue;
+      }
+      if (highOnly && !isHighConfidenceAiSuggestion(suggestion)) continue;
+      adoptAiSuggestion(result, suggestion, now, highOnly);
+      adopted += 1;
+      changed = true;
+    }
+    if (!changed) continue;
+    const paper = { ...structure, id: examId, version: Number(row.exam_version) };
+    const scores = calculateExamScores(paper, grading.partResults);
+    statements.push(env.OJ_DB.prepare(`
+      UPDATE exam_submissions
+      SET grading_json = ?2, auto_score = ?3, manual_score = ?4, total_score = ?5,
+          graded_count = ?6, total_parts = ?7, grading_status = ?8, updated_at = ?9
+      WHERE id = ?1 AND is_final = 1 AND updated_at = ?10
+    `).bind(
+      Number(row.id), JSON.stringify(grading), scores.autoScore, scores.manualScore,
+      scores.totalScore, scores.gradedCount, scores.totalParts, scores.gradingStatus,
+      now, Number(row.updated_at),
+    ));
+  }
+  for (let index = 0; index < statements.length; index += 80) {
+    await env.OJ_DB.batch(statements.slice(index, index + 80));
+  }
+  return jsonResponse({ success: true, adopted, submissionsUpdated: statements.length, skipped });
 }
 
 async function handleAdminExamPartBulkAction(body, env) {

@@ -306,7 +306,8 @@
               <select id="grading-exam" class="admin-input"><option value="">选择试卷</option></select>
               <select id="grading-mode" class="admin-input"><option value="student">按学生批改整卷</option><option value="part">按一道题连续批改</option></select>
               <select id="grading-part" class="admin-input" hidden><option value="">选择小题</option></select>
-              <button id="run-ai-grading" type="button" class="admin-button primary" hidden>Claude 一键批改本题</button>
+              <button id="run-ai-grading" type="button" class="admin-button primary" hidden>Claude 一键批改</button>
+              <button id="adopt-all-ai" type="button" class="admin-button secondary" hidden>一键采纳所有</button>
               <button id="export-ai-grading" type="button" class="admin-button secondary" hidden>导出 Claude 批改包</button>
               <label id="import-ai-grading-label" class="admin-button secondary" hidden>导入 Claude 建议<input id="import-ai-grading-file" type="file" accept="application/json,.json" hidden></label>
               <span id="ai-grading-status" class="filter-count"></span>
@@ -409,6 +410,6 @@
   <script src="js/languages.js?v=20260926-01"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
   <script src="js/admin.js?v=20261002-02"></script>
-  <script src="js/admin-exams.js?v=20261003-01"></script>
+  <script src="js/admin-exams.js?v=20261003-02"></script>
 </body>
 </html>
