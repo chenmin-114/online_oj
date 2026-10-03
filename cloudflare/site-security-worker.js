@@ -13,6 +13,24 @@ const HTML_CSP = [
   'upgrade-insecure-requests',
 ].join('; ');
 
+// The admin page can optionally talk to the local, loopback-only Claude grading
+// helper. Keep this exception off student pages. Do not add
+// upgrade-insecure-requests here: the helper deliberately serves plain HTTP on
+// 127.0.0.1 and an upgrade to HTTPS would make the browser miss it.
+const ADMIN_HTML_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' https: data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self' https://api.jc-oj.online http://127.0.0.1:37841",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 const RESPONSE_SECURITY_HEADERS = {
   // www 子域名仍由注册商 DNS 直连 GitHub，暂不把 HSTS 强制扩散到子域名。
   'Strict-Transport-Security': 'max-age=31536000',
@@ -46,7 +64,8 @@ export default {
       headers.set(name, value);
     }
     if ((headers.get('Content-Type') || '').toLowerCase().includes('text/html')) {
-      headers.set('Content-Security-Policy', HTML_CSP);
+      const isAdminPage = url.pathname === '/admin.html' || url.pathname === '/admin';
+      headers.set('Content-Security-Policy', isAdminPage ? ADMIN_HTML_CSP : HTML_CSP);
     }
 
     return new Response(originResponse.body, {
