@@ -140,5 +140,19 @@
     "file": "p017.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P018",
+    "title": "（Day 13）行李箱密码锁的“抄近路”",
+    "difficulty": "easy",
+    "status": "published",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "p018.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
