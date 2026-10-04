@@ -255,6 +255,8 @@ async function main() {
     format: 'jc-oj-claude-grading-results-v1',
     examId: payload.exam.id,
     partId: payload.partId,
+    forceRegrade: payload.forceRegrade === true,
+    ...(payload.forceRegrade === true ? { submissionId: Number(payload.submissionId) } : {}),
     model: options.model,
     generatedAt: Date.now(),
     results,

@@ -1146,8 +1146,9 @@ class ExamAdmin {
           ? (result.aiAdopted.automatic ? 'Claude 高置信度自动评分' : '已采纳 Claude 评分')
           : ({ correct: '正确', incorrect: '错误', graded: '已人工评分', pending: '待人工批改' }[result.status] || result.status);
       const aiSuggestion = result.aiSuggestion;
-      const aiCanApply = aiSuggestion && result.gradingSource !== 'manual'
-        && (result.status === 'pending' || result.gradingSource === 'claude' || result.aiAdopted);
+      const aiCanApply = aiSuggestion && (aiSuggestion.forceRegrade === true
+        || (result.gradingSource !== 'manual'
+          && (result.status === 'pending' || result.gradingSource === 'claude' || result.aiAdopted)));
       const adoptedLabel = result.aiAdopted
         ? (result.aiAdopted.includeFeedback ? '已采纳分数和评价' : '已采纳分数')
         : result.gradingSource === 'manual' ? '人工结果已保护' : '尚未采纳';
@@ -1166,7 +1167,7 @@ class ExamAdmin {
         ${result.judge ? `<p class="grading-judge">编程测试：${result.judge.passedTests}/${result.judge.totalTests} · ${result.judge.totalTime}ms</p>` : ''}
         ${result.type === 'programming' && !submission.preview ? `<div class="grading-programming-actions"><button type="button" class="admin-button secondary" data-rejudge-programming="${this.escape(found.part.problemId)}">重新判题</button><button type="button" class="admin-button secondary" data-request-programming-resubmit="${this.escape(found.part.problemId)}">要求学生重新提交</button></div>` : ''}
         ${aiPanel}
-        <div class="grading-form"><label class="form-field"><span>人工评分</span><input class="admin-input" data-grade-score type="number" min="0" max="${this.escape(result.maxScore)}" step="0.5" value="${this.escape(result.manualScore || 0)}"></label><label class="form-field"><span>批注</span><input class="admin-input" data-grade-feedback maxlength="3000" value="${this.escape(result.feedback || '')}" placeholder="可选"></label><button type="button" class="admin-button primary" data-save-grade>保存评分</button></div>
+        <div class="grading-form"><label class="form-field"><span>人工评分</span><input class="admin-input" data-grade-score type="number" min="0" max="${this.escape(result.maxScore)}" step="0.5" value="${this.escape(result.manualScore || 0)}"></label><label class="form-field"><span>批注</span><input class="admin-input" data-grade-feedback maxlength="3000" value="${this.escape(result.feedback || '')}" placeholder="可选"></label>${['fill_blank', 'short_answer'].includes(result.type) && !submission.preview ? `<button type="button" class="admin-button secondary" data-claude-grade>${aiSuggestion || result.status !== 'pending' ? 'Claude 重新评分' : 'Claude 评分'}</button>` : ''}<button type="button" class="admin-button primary" data-save-grade>保存评分</button></div>
       </section>`;
     }).join('');
   }
@@ -1175,6 +1176,51 @@ class ExamAdmin {
     const menuToggle = event.target.closest('[data-ai-menu-toggle]');
     if (menuToggle) {
       this.toggleGradingMenu(menuToggle);
+      return;
+    }
+    const claudeGrade = event.target.closest('[data-claude-grade]');
+    if (claudeGrade) {
+      const card = claudeGrade.closest('[data-grade-part]');
+      const submission = this.submissions[this.studentIndex];
+      if (!card || !submission) return;
+      const originalText = claudeGrade.textContent;
+      claudeGrade.disabled = true;
+      claudeGrade.textContent = 'Claude 评分中...';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+      try {
+        const gradingPackage = await this.request('admin_exam_ai_export', {
+          examId: this.paper.id,
+          partId: card.dataset.gradePart,
+          submissionId: submission.id,
+          forceRegrade: true,
+        });
+        const response = await fetch('http://127.0.0.1:37841/grade', {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+          headers: { 'Content-Type': 'application/json', 'X-JC-OJ-Grading': '1' },
+          body: JSON.stringify(gradingPackage),
+          signal: controller.signal,
+        });
+        const localResult = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(localResult.error || `本机助手返回 ${response.status}`);
+        const imported = await this.request('admin_exam_ai_import', { payload: localResult });
+        if (!imported.imported) throw new Error('学生答案在评分期间发生变化，请重新点击');
+        this.admin.toast(imported.autoAdopted
+          ? 'Claude 评分完成，已自动采用高置信度分数并保留草稿'
+          : 'Claude 评分完成，已生成新草稿；原有人工分数未被覆盖');
+        await this.loadGrading(this.paper.id, { preserveSelection: true });
+      } catch (error) {
+        const detail = error.name === 'AbortError' ? '本机批改超过10分钟' : error.message;
+        this.admin.toast(`Claude 评分失败：${detail}`);
+      } finally {
+        clearTimeout(timeout);
+        claudeGrade.disabled = false;
+        claudeGrade.textContent = originalText;
+      }
       return;
     }
     const adoptAi = event.target.closest('[data-adopt-ai], [data-adopt-ai-feedback]');
@@ -1192,6 +1238,7 @@ class ExamAdmin {
           partId: card.dataset.gradePart,
           highOnly: false,
           includeFeedback,
+          allowManualOverride: true,
         });
         if (!result.adopted) throw new Error(result.protected ? '该题已经人工保存，Claude 草稿不能覆盖' : '这条草稿已经不存在');
         this.admin.toast(includeFeedback ? '已采纳 Claude 分数和评价，草稿仍保留' : '已采纳 Claude 分数，草稿仍保留');

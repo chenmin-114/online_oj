@@ -2285,7 +2285,12 @@ async function handleAdminExamAiExport(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
   const examId = normalizeExamId(body.examId);
   const partId = normalizeExamText(body.partId, 50);
+  const submissionId = Number(body.submissionId || 0);
+  const forceRegrade = body.forceRegrade === true;
   if (!examId || !partId) return jsonResponse({ error: '请选择需要 AI 辅助批改的小题' }, 400);
+  if (forceRegrade && (!Number.isInteger(submissionId) || submissionId < 1)) {
+    return jsonResponse({ error: '单题重新评分必须指定学生提交' }, 400);
+  }
   const paperRow = await env.OJ_DB.prepare('SELECT title FROM exam_papers WHERE id = ?1').bind(examId).first();
   if (!paperRow) return jsonResponse({ error: '试卷不存在' }, 404);
   const answerPath = `$."${partId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
@@ -2300,6 +2305,7 @@ async function handleAdminExamAiExport(body, env) {
   `).bind(examId, answerPath).all();
   const groups = new Map();
   for (const row of rows.results || []) {
+    if (submissionId && Number(row.id) !== submissionId) continue;
     let structure;
     let grading;
     try {
@@ -2312,7 +2318,7 @@ async function handleAdminExamAiExport(body, env) {
     const part = question?.parts?.find(item => item.id === partId);
     const partResult = grading.partResults?.find(item => item.partId === partId);
     if (!part || !partResult || !['fill_blank', 'short_answer'].includes(part.type)
-        || partResult.status !== 'pending' || partResult.aiSuggestion) continue;
+        || (!forceRegrade && (partResult.status !== 'pending' || partResult.aiSuggestion))) continue;
     const version = Number(row.exam_version);
     if (!groups.has(version)) {
       groups.set(version, {
@@ -2342,13 +2348,17 @@ async function handleAdminExamAiExport(body, env) {
   }
   const exportGroups = [...groups.values()].filter(group => group.submissions.length);
   if (!exportGroups.length) {
-    return jsonResponse({ error: '这道题没有待批改的填空或简答答案' }, 409);
+    return jsonResponse({ error: forceRegrade
+      ? '没有找到这名学生可由 Claude 评分的答案'
+      : '这道题没有待批改的填空或简答答案' }, 409);
   }
   return jsonResponse({
     format: 'jc-oj-claude-grading-v1',
     createdAt: Date.now(),
     exam: { id: examId, title: paperRow.title },
     partId,
+    forceRegrade,
+    ...(forceRegrade ? { submissionId } : {}),
     groups: exportGroups,
     submissionCount: exportGroups.reduce((sum, group) => sum + group.submissions.length, 0),
   });
@@ -2362,8 +2372,14 @@ async function handleAdminExamAiImport(body, env) {
   }
   const examId = normalizeExamId(payload.examId);
   const partId = normalizeExamText(payload.partId, 50);
+  const forceRegrade = payload.forceRegrade === true;
+  const forcedSubmissionId = Number(payload.submissionId || 0);
   if (!examId || !partId || payload.results.length < 1 || payload.results.length > 1000) {
     return jsonResponse({ error: 'Claude 批改结果数量或题目信息不正确' }, 400);
+  }
+  if (forceRegrade && (!Number.isInteger(forcedSubmissionId) || forcedSubmissionId < 1
+      || payload.results.length !== 1 || Number(payload.results[0]?.submissionId) !== forcedSubmissionId)) {
+    return jsonResponse({ error: 'Claude 单题重新评分结果范围不正确' }, 400);
   }
   const rows = await env.OJ_DB.prepare(`
     SELECT s.id, s.exam_version, s.grading_json, s.updated_at, v.structure_json
@@ -2399,7 +2415,8 @@ async function handleAdminExamAiImport(body, env) {
     const result = grading.partResults?.find(item => item.partId === partId);
     const score = Number(suggestion?.score);
     const confidence = Number(suggestion?.confidence);
-    if (!part || !result || !['fill_blank', 'short_answer'].includes(part.type) || result.status !== 'pending'
+    if (!part || !result || !['fill_blank', 'short_answer'].includes(part.type)
+        || (!forceRegrade && result.status !== 'pending')
         || !Number.isFinite(score) || score < 0 || score > Number(part.points)
         || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
       skipped += 1;
@@ -2412,9 +2429,11 @@ async function handleAdminExamAiImport(body, env) {
       needsReview: suggestion.needsReview !== false,
       model: normalizeExamText(payload.model || 'Claude', 80),
       generatedAt: Number(payload.generatedAt) || now,
+      forceRegrade,
     };
     result.aiSuggestion = aiSuggestion;
-    if (isHighConfidenceAiSuggestion(aiSuggestion)) {
+    const protectsExistingScore = forceRegrade && result.gradingSource === 'manual';
+    if (!protectsExistingScore && isHighConfidenceAiSuggestion(aiSuggestion)) {
       adoptAiSuggestion(result, aiSuggestion, now, { automatic: true, includeFeedback: false });
       autoAdopted += 1;
     } else {
@@ -2495,6 +2514,7 @@ async function handleAdminExamAiAdopt(body, env) {
   const submissionId = Number(body.submissionId || 0);
   const highOnly = body.highOnly === true;
   const includeFeedback = body.includeFeedback === true;
+  const allowManualOverride = body.allowManualOverride === true;
   if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
   if (body.submissionId != null && (!Number.isInteger(submissionId) || submissionId < 1)) {
     return jsonResponse({ error: '提交编号不正确' }, 400);
@@ -2533,10 +2553,12 @@ async function handleAdminExamAiAdopt(body, env) {
       }
       const suggestion = result.aiSuggestion;
       if (!suggestion) continue;
-      // 只能填写待批改结果，或继续完善由 Claude 自己生成的正式结果。
-      // 人工保存或来源不明确的既有正式评分一律保护。
-      if (result.gradingSource === 'manual'
-          || (result.status !== 'pending' && !isClaudeOwnedResult(result))) {
+      // 批量采纳始终保护人工结果；只有管理员针对单个学生主动重新评分后，
+      // 才允许该草稿在再次明确点击“采纳”时替换已有结果。
+      const explicitForcedOverride = allowManualOverride && submissionId && partId
+        && suggestion.forceRegrade === true;
+      if (!explicitForcedOverride && (result.gradingSource === 'manual'
+          || (result.status !== 'pending' && !isClaudeOwnedResult(result)))) {
         protectedCount += 1;
         continue;
       }
