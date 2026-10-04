@@ -159,6 +159,7 @@ class OJAdmin {
       input.select();
     });
     document.getElementById('reset-student-account-form').addEventListener('submit', event => this.resetStudentAccount(event));
+    document.getElementById('impersonate-student-form').addEventListener('submit', event => this.impersonateStudent(event));
     document.getElementById('timed-extension-form').addEventListener('submit', event => this.grantTimedExtension(event));
     document.getElementById('timed-extension-type').addEventListener('change', () => this.populateTimedExtensionResources(true));
     document.getElementById('refresh-timed-extensions').addEventListener('click', () => this.loadTimedExtensions());
@@ -405,6 +406,45 @@ class OJAdmin {
     } catch (error) {
       status.className = 'account-import-status error';
       status.textContent = error.message || '账号更新失败';
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async impersonateStudent(event) {
+    event.preventDefault();
+    const input = document.getElementById('impersonate-student-username');
+    const button = document.getElementById('impersonate-student');
+    const status = document.getElementById('impersonate-student-status');
+    const username = input.value.trim().normalize('NFC');
+    if (!username || username.length > 50 || /[\u0000-\u001f\u007f]/.test(username)) {
+      status.className = 'account-import-status error';
+      status.textContent = '请输入格式正确的学生用户名。';
+      return;
+    }
+    const studentWindow = window.open('about:blank', '_blank');
+    button.disabled = true;
+    status.className = 'account-import-status';
+    status.textContent = `正在为“${username}”创建短期代登录会话...`;
+    try {
+      const response = await fetch(this.config.workerUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'admin_impersonate_student', username }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 401) this.lockExpiredSession();
+      if (!response.ok) throw new Error(result.error || `代登录失败 (${response.status})`);
+      const target = `/?impersonate=${encodeURIComponent(result.username)}`;
+      if (studentWindow) studentWindow.location.replace(target);
+      else window.location.href = target;
+      status.className = 'account-import-status success';
+      status.textContent = `已在新页面以“${result.username}”身份进入，有效期 30 分钟。`;
+    } catch (error) {
+      if (studentWindow) studentWindow.close();
+      status.className = 'account-import-status error';
+      status.textContent = error.message || '代登录失败';
     } finally {
       button.disabled = false;
     }

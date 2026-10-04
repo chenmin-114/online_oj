@@ -27,6 +27,7 @@ const ADMIN_SESSION_COOKIE = '__Host-oj_admin_session';
 const ADMIN_SESSION_TTL_SECONDS = 2 * 60 * 60;
 const STUDENT_SESSION_COOKIE = '__Host-oj_student_session';
 const STUDENT_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const ADMIN_IMPERSONATION_TTL_SECONDS = 30 * 60;
 const STUDENT_PASSWORD_ITERATIONS = 100000;
 // 套卷答案允许最多 600 KB 文本；考虑 UTF-8 中文和 JSON 转义后，普通请求保留 2 MiB 余量。
 const NORMAL_REQUEST_BODY_LIMIT = 2 * 1024 * 1024;
@@ -215,6 +216,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminResetStudentAccount(body, env);
+      } else if (body.type === 'admin_impersonate_student') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminImpersonateStudent(body, env);
       } else if (body.type === 'admin_timed_extension_list') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -352,7 +357,10 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentSession(request, env, body.username);
         if (authError) return authError;
-        return jsonResponse({ success: true });
+        return jsonResponse({
+          success: true,
+          adminImpersonation: await isAdminImpersonationSession(request, env, body.username),
+        });
       } else if (body.type === 'student_resubmission_notices') {
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
@@ -389,6 +397,10 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        const impersonationError = await requireImpersonationConfirmation(
+          request, env, body, '保存限时草稿', body.resourceType, body.resourceId,
+        );
+        if (impersonationError) return impersonationError;
         return await handleTimedDraftSave(body, env);
       } else if (body.type === 'time_sync') {
         const rateLimitError = await enforceRateLimit(
@@ -405,12 +417,20 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        const impersonationError = await requireImpersonationConfirmation(
+          request, env, body, '提交截止答案', body.resourceType, body.resourceId,
+        );
+        if (impersonationError) return impersonationError;
         return await handleTimedFinalize(body, env);
       } else if (body.type === 'exam_submit') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        const impersonationError = await requireImpersonationConfirmation(
+          request, env, body, '提交套卷', 'exam', body.examId,
+        );
+        if (impersonationError) return impersonationError;
         return await handleStudentExamSubmit(body, env);
       } else if (body.type === 'analytics_view') {
         const rateLimitError = await enforceRateLimit(env.ANALYTICS_RATE_LIMITER, request, 'analytics');
@@ -443,12 +463,20 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        const impersonationError = await requireImpersonationConfirmation(
+          request, env, body, '提交编程题', 'problem', body.problemId,
+        );
+        if (impersonationError) return impersonationError;
         return await handleJudgeSubmit(body, env);
       } else if (body.type === 'judge_submit_stream') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        const impersonationError = await requireImpersonationConfirmation(
+          request, env, body, '提交编程题', 'problem', body.problemId,
+        );
+        if (impersonationError) return impersonationError;
         return await handleJudgeSubmitStream(body, env);
       } else if (body.type === 'judge_preview') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
@@ -803,29 +831,49 @@ async function studentSessionSuccessResponse(username, authVersion, env) {
   });
 }
 
-async function createStudentSession(username, authVersion, env) {
+async function createStudentSession(username, authVersion, env, options = {}) {
   const randomBytes = new Uint8Array(32);
   crypto.getRandomValues(randomBytes);
   const token = bytesToBase64Url(randomBytes);
   const sessionHash = await sha256Hex(token);
   const createdAt = Date.now();
-  const expiresAt = createdAt + STUDENT_SESSION_TTL_SECONDS * 1000;
-  await env.OJ_DB.batch([
+  const ttlSeconds = options.adminImpersonation
+    ? ADMIN_IMPERSONATION_TTL_SECONDS
+    : STUDENT_SESSION_TTL_SECONDS;
+  const expiresAt = createdAt + ttlSeconds * 1000;
+  const statements = [
     env.OJ_DB.prepare('DELETE FROM student_sessions WHERE expires_at <= ?1').bind(createdAt),
+    env.OJ_DB.prepare('DELETE FROM admin_impersonation_sessions WHERE expires_at <= ?1').bind(createdAt),
     env.OJ_DB.prepare(`
       INSERT INTO student_sessions (session_hash, username, auth_version, created_at, expires_at)
       VALUES (?1, ?2, ?3, ?4, ?5)
     `).bind(sessionHash, username, authVersion, createdAt, expiresAt),
-  ]);
-  return { token };
+  ];
+  if (options.adminImpersonation) {
+    statements.push(
+      env.OJ_DB.prepare(`
+        INSERT INTO admin_impersonation_sessions (session_hash, username, created_at, expires_at)
+        VALUES (?1, ?2, ?3, ?4)
+      `).bind(sessionHash, username, createdAt, expiresAt),
+      env.OJ_DB.prepare(`
+        INSERT INTO admin_impersonation_audit (username, action, resource_type, resource_id, created_at)
+        VALUES (?1, '开始代登录', 'account', ?1, ?2)
+      `).bind(username, createdAt),
+    );
+  }
+  await env.OJ_DB.batch(statements);
+  return { token, ttlSeconds };
 }
 
 async function revokeStudentSession(request, env) {
   if (!env.OJ_DB) return;
   const token = readCookie(request, STUDENT_SESSION_COOKIE);
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return;
-  await env.OJ_DB.prepare('DELETE FROM student_sessions WHERE session_hash = ?1')
-    .bind(await sha256Hex(token)).run();
+  const sessionHash = await sha256Hex(token);
+  await env.OJ_DB.batch([
+    env.OJ_DB.prepare('DELETE FROM student_sessions WHERE session_hash = ?1').bind(sessionHash),
+    env.OJ_DB.prepare('DELETE FROM admin_impersonation_sessions WHERE session_hash = ?1').bind(sessionHash),
+  ]);
 }
 
 function buildStudentSessionCookie(token, maxAge) {
@@ -861,6 +909,59 @@ async function requireStudentSession(request, env, suppliedUsername) {
     return studentAuthRequiredResponse();
   }
   return null;
+}
+
+async function isAdminImpersonationSession(request, env, suppliedUsername) {
+  if (!env.OJ_DB) return false;
+  const username = normalizeStudentUsername(suppliedUsername);
+  const token = readCookie(request, STUDENT_SESSION_COOKIE);
+  if (!username || !/^[A-Za-z0-9_-]{43}$/.test(token)) return false;
+  const row = await env.OJ_DB.prepare(`
+    SELECT 1 AS found
+    FROM admin_impersonation_sessions
+    WHERE session_hash = ?1 AND username = ?2 AND expires_at > ?3
+  `).bind(await sha256Hex(token), username, Date.now()).first();
+  return Boolean(row);
+}
+
+async function requireImpersonationConfirmation(request, env, body, action, resourceType, resourceId) {
+  const username = normalizeStudentUsername(body.username);
+  if (!await isAdminImpersonationSession(request, env, username)) return null;
+  if (body.adminImpersonationConfirmed !== true) {
+    return jsonResponse({
+      error: '这是管理员代登录会话，请在页面确认后再执行该操作',
+      code: 'ADMIN_IMPERSONATION_CONFIRMATION_REQUIRED',
+    }, 409);
+  }
+  await env.OJ_DB.prepare(`
+    INSERT INTO admin_impersonation_audit (username, action, resource_type, resource_id, created_at)
+    VALUES (?1, ?2, ?3, ?4, ?5)
+  `).bind(
+    username, normalizeExamText(action, 80), normalizeExamText(resourceType, 30),
+    normalizeExamText(resourceId, 80), Date.now(),
+  ).run();
+  return null;
+}
+
+async function handleAdminImpersonateStudent(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
+  const username = normalizeStudentUsername(body.username);
+  if (!username) return jsonResponse({ error: '学生用户名格式不正确' }, 400);
+  const account = await env.OJ_DB.prepare(`
+    SELECT auth_version FROM student_accounts WHERE username = ?1
+  `).bind(username).first();
+  if (!account) return jsonResponse({ error: '找不到该学生账号' }, 404);
+  const session = await createStudentSession(username, Number(account.auth_version), env, {
+    adminImpersonation: true,
+  });
+  return jsonResponse({
+    success: true,
+    username,
+    expiresIn: session.ttlSeconds,
+    adminImpersonation: true,
+  }, 200, {
+    'Set-Cookie': buildStudentSessionCookie(session.token, session.ttlSeconds),
+  });
 }
 
 async function studentSessionUsername(request, env) {

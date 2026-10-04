@@ -16,10 +16,16 @@ class App {
     const requestedGroup = searchParams.get('group');
     const previewExam = String(searchParams.get('adminPreviewExam') || '').trim().toUpperCase();
     const previewProblem = String(searchParams.get('adminPreviewProblem') || '').trim().toLowerCase();
+    const impersonatedUsername = String(searchParams.get('impersonate') || '').trim().normalize('NFC');
     this.adminExamPreview = /^[A-Z][A-Z0-9_-]{1,31}$/.test(previewExam) ? previewExam : '';
     this.adminProblemPreview = /^(?:p\d{3,6}|t\d{3})(?:-[a-z0-9-]+)?\.json$/.test(previewProblem) ? previewProblem : '';
     this.group = ['control', 'vision'].includes(requestedGroup) ? requestedGroup : 'control';
-    this.username = (this.adminExamPreview || this.adminProblemPreview) ? 'admin' : (localStorage.getItem('oj_username') || '').trim();
+    this.requestedImpersonation = impersonatedUsername && impersonatedUsername.length <= 50
+      && !/[\u0000-\u001f\u007f]/.test(impersonatedUsername) ? impersonatedUsername : '';
+    this.username = (this.adminExamPreview || this.adminProblemPreview)
+      ? 'admin'
+      : (this.requestedImpersonation || (localStorage.getItem('oj_username') || '').trim());
+    this.adminImpersonation = false;
     this.editorFontSize = this._loadEditorFontSize();
     this.codeSaveTimer = null;
     this.isRestoringCode = false;
@@ -108,6 +114,7 @@ class App {
       const sessionValid = await this._restoreStudentSession();
       if (sessionValid) {
         document.getElementById('username-display').textContent = this.username;
+        this._renderAdminImpersonation();
       } else {
         await this._promptUsername({ autoCheck: true });
       }
@@ -117,7 +124,7 @@ class App {
     // 题目列表与编辑器并行加载；这里只等待首屏真正需要的题目数据。
     await problemListLoading;
     await this._loadResubmissionNotices(true);
-    await this._loadSystemMessages(false, true);
+    await this._loadSystemMessages(false, !this.adminImpersonation);
 
     // 保留 Promise 引用，避免编辑器初始化失败产生未处理的异步错误。
     this.editorInitialization = editorInitialization;
@@ -537,11 +544,11 @@ class App {
       this.problemPrecloseSavedFor = state.windowEnd;
       this._saveTimedProblemDraft();
     }
-    if (state.state === 'grace' && this.problemGraceSavedFor !== state.windowEnd) {
+    if (!this.adminImpersonation && state.state === 'grace' && this.problemGraceSavedFor !== state.windowEnd) {
       this.problemGraceSavedFor = state.windowEnd;
       this._submitTimedProblemInBackground();
     }
-    if (state.state === 'grace' && !this.problemAutoFinalizeTimer) {
+    if (!this.adminImpersonation && state.state === 'grace' && !this.problemAutoFinalizeTimer) {
       this.problemAutoFinalizeTimer = setTimeout(
         () => this._beginTimedProblemAutoReport(state.windowEnd),
         Math.max(0, state.graceEndsAt - now),
@@ -550,13 +557,14 @@ class App {
   }
 
   _scheduleTimedProblemDraft() {
-    if (this.examUI?.programmingContext || !this.currentProblem?.availability?.enabled) return;
+    if (this.adminImpersonation || this.examUI?.programmingContext || !this.currentProblem?.availability?.enabled) return;
     clearTimeout(this.timedProblemSaveTimer);
     this.timedProblemSaveTimer = setTimeout(() => this._saveTimedProblemDraft(), 700);
   }
 
-  async _saveTimedProblemDraft(force = false) {
+  async _saveTimedProblemDraft(force = false, adminConfirmed = false) {
     if (!this.currentProblem) return false;
+    if (this.adminImpersonation && !adminConfirmed) return false;
     const state = this._timingState(this.currentProblem.availability, this.problemTimingOffset);
     const mayUseServerUploadBuffer = force
       && this._withinServerDraftUploadWindow(this.currentProblem.availability, this.problemTimingOffset);
@@ -564,14 +572,14 @@ class App {
     if (this.timedProblemSaveInFlight) {
       await this.timedProblemSaveInFlight;
       const latestPayload = { language: document.getElementById('language-select').value, code: this.editor.getCode() };
-      if (JSON.stringify(latestPayload) !== this.lastTimedProblemDraft) return this._saveTimedProblemDraft(force);
+      if (JSON.stringify(latestPayload) !== this.lastTimedProblemDraft) return this._saveTimedProblemDraft(force, adminConfirmed);
       return true;
     }
     const payload = { language: document.getElementById('language-select').value, code: this.editor.getCode() };
     const signature = JSON.stringify(payload);
     if (signature === this.lastTimedProblemDraft) return true;
     this.timedProblemSaveInFlight = (async () => {
-      const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_draft_save', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group, payload }) });
+      const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_draft_save', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group, payload, adminImpersonationConfirmed: adminConfirmed }) });
       if (!response.ok) return false;
       this.lastTimedProblemDraft = signature;
       const result = await response.json();
@@ -581,15 +589,15 @@ class App {
     return this.timedProblemSaveInFlight;
   }
 
-  _submitTimedProblemInBackground() {
+  _submitTimedProblemInBackground(adminConfirmed = false) {
     if (this.problemFinalizeSucceeded) return Promise.resolve({ success: true });
     if (this.problemFinalizeInFlight) return this.problemFinalizeInFlight;
     this.problemFinalizeInFlight = (async () => {
-      const saved = await this._saveTimedProblemDraft(true);
+      const saved = await this._saveTimedProblemDraft(true, adminConfirmed);
       if (!saved && this._withinServerDraftUploadWindow(this.currentProblem?.availability, this.problemTimingOffset)) {
         throw new Error('截止答案还未上传成功');
       }
-      const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_finalize', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group }) });
+      const response = await fetch(window.OJ_CONFIG.WORKER_URL, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'timed_finalize', resourceType: 'problem', resourceId: this.currentProblem.id, username: this.username, group: this.group, adminImpersonationConfirmed: adminConfirmed }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || '冻结答案提交失败');
       this.problemFinalizeSucceeded = true;
@@ -639,11 +647,11 @@ class App {
     }, remaining);
   }
 
-  async _finalizeTimedProblem() {
+  async _finalizeTimedProblem(adminConfirmed = false) {
     if (!this.currentProblem?.availability?.enabled) return;
     const resultEl = document.getElementById('judge-result');
     resultEl.innerHTML = '<span class="info">⏳ 正在确认截止答案...</span>';
-    const outcome = await this._submitTimedProblemInBackground();
+    const outcome = await this._submitTimedProblemInBackground(adminConfirmed);
     if (outcome.success) this._finishTimedProblemAndExit(true, '提交成功');
     else resultEl.innerHTML = `<span class="error">❌ 提交失败：${this._escapeHtml(outcome.error)}，系统会在剩余时间内继续重试</span>`;
   }
@@ -804,6 +812,8 @@ class App {
     document.getElementById('change-password-btn').addEventListener('click', () => {
       this._promptUsername({ changePassword: true });
     });
+    document.getElementById('return-admin-btn').addEventListener('click', () => this._exitAdminImpersonation());
+    document.getElementById('exit-admin-impersonation').addEventListener('click', () => this._exitAdminImpersonation());
 
     document.getElementById('clear-input-btn').addEventListener('click', () => {
       const input = document.getElementById('custom-input');
@@ -843,7 +853,7 @@ class App {
   }
 
   _trackView(problemId = '') {
-    if (this.adminExamPreview || this.adminProblemPreview) return;
+    if (this.adminExamPreview || this.adminProblemPreview || this.adminImpersonation) return;
     const workerUrl = window.OJ_CONFIG.WORKER_URL;
     if (!workerUrl || !this.username) return;
     const now = new Date();
@@ -874,7 +884,7 @@ class App {
   }
 
   _trackExamView(examId) {
-    if (this.adminExamPreview || this.adminProblemPreview) return;
+    if (this.adminExamPreview || this.adminProblemPreview || this.adminImpersonation) return;
     const workerUrl = window.OJ_CONFIG.WORKER_URL;
     const normalizedExamId = String(examId || '').trim().toUpperCase();
     if (!workerUrl || !this.username || !normalizedExamId) return;
@@ -1194,11 +1204,36 @@ class App {
 
   async _restoreStudentSession() {
     try {
-      await this._studentAccountRequest('student_session', { username: this.username });
+      const result = await this._studentAccountRequest('student_session', { username: this.username });
+      this.adminImpersonation = result.adminImpersonation === true;
       return true;
     } catch {
+      this.adminImpersonation = false;
       return false;
     }
+  }
+
+  _renderAdminImpersonation() {
+    const banner = document.getElementById('admin-impersonation-banner');
+    banner.hidden = !this.adminImpersonation;
+    document.getElementById('admin-impersonation-username').textContent = this.adminImpersonation ? this.username : '';
+    document.getElementById('return-admin-btn').hidden = !this.adminImpersonation;
+    document.getElementById('change-password-btn').hidden = this.adminImpersonation;
+    document.getElementById('change-username-btn').hidden = this.adminImpersonation;
+  }
+
+  async _exitAdminImpersonation() {
+    try {
+      await this._studentAccountRequest('student_logout', {});
+    } catch {
+      // 即使网络异常也返回后台；短期代登录会话会自动失效。
+    }
+    location.href = 'admin.html';
+  }
+
+  confirmAdminImpersonationAction(action) {
+    if (!this.adminImpersonation) return true;
+    return confirm(`你正在以学生“${this.username}”身份访问。\n\n确定要代替该学生${action}吗？该操作会影响学生数据，并记录为管理员代操作。`);
   }
 
   _codeCacheKey(languageId = document.getElementById('language-select')?.value) {
@@ -1357,7 +1392,10 @@ class App {
       return;
     }
     const timing = this._timingState(this.currentProblem.availability, this.problemTimingOffset);
-    if (!this.adminProblemPreview && timing.state === 'grace') return this._finalizeTimedProblem();
+    if (!this.adminProblemPreview && timing.state === 'grace') {
+      if (!this.confirmAdminImpersonationAction(`提交题目 ${this.currentProblem.id} 的冻结答案`)) return;
+      return this._finalizeTimedProblem(this.adminImpersonation);
+    }
     if (!this.adminProblemPreview && this.currentProblem.availability?.enabled && !timing.canEdit) {
       alert(timing.state === 'upcoming' ? '尚未到答题开放时间' : '答题时间已经结束');
       return;
@@ -1376,6 +1414,7 @@ class App {
       resultEl.innerHTML = '<span class="error">代码不能为空</span>';
       return;
     }
+    if (!this.confirmAdminImpersonationAction(`提交题目 ${this.currentProblem.id}`)) return;
 
     resultEl.innerHTML = '<span class="info">⏳ 正在进行服务端判题，请稍候...</span>';
 
@@ -1397,7 +1436,8 @@ class App {
         langId,
         code,
         event => this._renderJudgeProgress(event),
-        this.group
+        this.group,
+        this.adminImpersonation,
       );
       this._renderJudgeResult(result);
       this._loadResubmissionNotices(false);
@@ -1478,7 +1518,8 @@ class App {
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
     document.getElementById('student-message-list').innerHTML = '<p class="info">正在加载消息...</p>';
-    await this._loadSystemMessages(true);
+    await this._loadSystemMessages(!this.adminImpersonation);
+    if (this.adminImpersonation) this._renderSystemMessages();
   }
 
   _closeSystemMessages() {

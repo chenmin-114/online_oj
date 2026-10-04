@@ -99,6 +99,29 @@ CREATE INDEX IF NOT EXISTS idx_student_sessions_username
 CREATE INDEX IF NOT EXISTS idx_student_sessions_expires
   ON student_sessions(expires_at);
 
+-- 管理员代登录使用独立的短期会话标记，不读取或修改学生密码。
+CREATE TABLE IF NOT EXISTS admin_impersonation_sessions (
+  session_hash TEXT PRIMARY KEY,
+  username TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_impersonation_expires
+  ON admin_impersonation_sessions(expires_at);
+
+CREATE TABLE IF NOT EXISTS admin_impersonation_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL,
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL DEFAULT '',
+  resource_id TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_impersonation_audit_user
+  ON admin_impersonation_audit(username, created_at DESC);
+
 -- 套卷结构只保存一份 JSON；编程小题引用现有题号，不复制隐藏测试点。
 CREATE TABLE IF NOT EXISTS exam_papers (
   id TEXT PRIMARY KEY,

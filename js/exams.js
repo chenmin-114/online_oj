@@ -470,23 +470,27 @@ class ExamUI {
     this.serverSaveTimer = setTimeout(() => this.saveServerDraft(answers), 800);
   }
 
-  async saveServerDraft(answers = this.collectAnswers(), force = false) {
+  async saveServerDraft(answers = this.collectAnswers(), force = false, adminConfirmed = false) {
     const state = this.currentTiming();
     const mayUseServerUploadBuffer = force
       && this.app._withinServerDraftUploadWindow(this.paper?.availability, this.timingOffset);
-    if (!this.paper?.availability?.enabled
+    if ((this.app.adminImpersonation && !adminConfirmed)
+      || !this.paper?.availability?.enabled
       || (!['active', 'grace'].includes(state.state) && !mayUseServerUploadBuffer)
       || this.app.adminExamPreview) return false;
     if (this.serverSaveInFlight) {
       await this.serverSaveInFlight;
       const latestAnswers = this.collectAnswers();
-      if (JSON.stringify(latestAnswers) !== this.lastServerDraft) return this.saveServerDraft(latestAnswers, force);
+      if (JSON.stringify(latestAnswers) !== this.lastServerDraft) return this.saveServerDraft(latestAnswers, force, adminConfirmed);
       return true;
     }
     const signature = JSON.stringify(answers);
     if (signature === this.lastServerDraft) return true;
     this.serverSaveInFlight = (async () => {
-      const result = await this.request('timed_draft_save', { resourceType: 'exam', resourceId: this.paper.id, payload: answers });
+      const result = await this.request('timed_draft_save', {
+        resourceType: 'exam', resourceId: this.paper.id, payload: answers,
+        adminImpersonationConfirmed: adminConfirmed,
+      });
       this.lastServerDraft = signature;
       this.app._applyServerTime(result.timing?.serverTime || result.updatedAt, 'exam');
       return true;
@@ -554,11 +558,11 @@ class ExamUI {
       this.precloseSavedFor = state.windowEnd;
       this.saveServerDraft();
     }
-    if (state.state === 'grace' && this.graceSavedFor !== state.windowEnd) {
+    if (!this.app.adminImpersonation && state.state === 'grace' && this.graceSavedFor !== state.windowEnd) {
       this.graceSavedFor = state.windowEnd;
       this.submitTimedInBackground();
     }
-    if (state.state === 'grace' && !this.autoFinalizeTimer) {
+    if (!this.app.adminImpersonation && state.state === 'grace' && !this.autoFinalizeTimer) {
       this.autoFinalizeTimer = setTimeout(
         () => this.beginTimedAutoReport(state.windowEnd),
         Math.max(0, state.graceEndsAt - now),
@@ -566,15 +570,18 @@ class ExamUI {
     }
   }
 
-  submitTimedInBackground() {
+  submitTimedInBackground(adminConfirmed = false) {
     if (this.finalizeSucceeded) return Promise.resolve({ success: true });
     if (this.finalizeInFlight) return this.finalizeInFlight;
     this.finalizeInFlight = (async () => {
-      const saved = await this.saveServerDraft(this.collectAnswers(), true);
+      const saved = await this.saveServerDraft(this.collectAnswers(), true, adminConfirmed);
       if (!saved && this.app._withinServerDraftUploadWindow(this.paper?.availability, this.timingOffset)) {
         throw new Error('截止答案还未上传成功');
       }
-      const result = await this.request('timed_finalize', { resourceType: 'exam', resourceId: this.paper.id });
+      const result = await this.request('timed_finalize', {
+        resourceType: 'exam', resourceId: this.paper.id,
+        adminImpersonationConfirmed: adminConfirmed,
+      });
       this.finalizeSucceeded = true;
       this.finalizeError = '';
       return { success: true, result };
@@ -624,11 +631,11 @@ class ExamUI {
     }, remaining);
   }
 
-  async finalizeTimed() {
+  async finalizeTimed(adminConfirmed = false) {
     if (!this.paper?.availability?.enabled || this.app.adminExamPreview) return;
     const status = document.getElementById('exam-submit-status');
     status.textContent = '⏳ 正在确认截止答案...';
-    const outcome = await this.submitTimedInBackground();
+    const outcome = await this.submitTimedInBackground(adminConfirmed);
     if (outcome.success) this.finishTimedAndExit(true, '提交成功');
     else status.textContent = `❌ 提交失败：${outcome.error}，系统会在剩余时间内继续重试`;
   }
@@ -636,16 +643,24 @@ class ExamUI {
   async submit() {
     if (!this.paper) return;
     const timing = this.currentTiming();
-    if (!this.app.adminExamPreview && timing.state === 'grace') return this.finalizeTimed();
+    if (!this.app.adminExamPreview && timing.state === 'grace') {
+      if (!this.app.confirmAdminImpersonationAction(`提交套卷《${this.paper.title}》的冻结答案`)) return;
+      return this.finalizeTimed(this.app.adminImpersonation);
+    }
     if (!this.app.adminExamPreview && this.paper.availability?.enabled && !timing.canEdit) return;
     const button = document.getElementById('submit-exam');
     const status = document.getElementById('exam-submit-status');
     const answers = this.collectAnswers();
+    if (!this.app.confirmAdminImpersonationAction(`提交套卷《${this.paper.title}》`)) return;
     button.disabled = true;
     button.textContent = '正在自动批改...';
     status.textContent = '正在保存答案并自动批改选择题、填空题和编程题；编程题较多时需要稍等。';
     try {
-      const result = await this.request('exam_submit', { examId: this.paper.id, answers });
+      const result = await this.request('exam_submit', {
+        examId: this.paper.id,
+        answers,
+        adminImpersonationConfirmed: this.app.adminImpersonation,
+      });
       localStorage.removeItem(this.draftKey());
       this.submission = { ...result, answers, submittedAt: Date.now() };
       status.textContent = `提交成功：这是第 ${result.attemptNo} 次提交，已完成 ${result.gradedCount}/${result.totalParts} 个小题的批改。`;
@@ -670,7 +685,10 @@ class ExamUI {
       return;
     }
     const results = submission.grading?.partResults || [];
-    container.innerHTML = `<div class="exam-result-card"><h3>当前得分：${this.escape(submission.totalScore)} / ${this.escape(this.paper.totalScore)}</h3><div class="exam-result-parts">${results.map(result => `<div><span>${this.escape(result.partId)}</span><strong class="${result.status === 'correct' ? 'success' : result.status === 'pending' ? 'warning' : 'error'}">${this.escape({ correct: '正确', incorrect: '错误', pending: '待人工批改', graded: '已评分' }[result.status] || result.status)}</strong><b>${this.escape(result.effectiveScore || 0)} / ${this.escape(result.maxScore)}</b>${result.feedback ? `<p>${this.escape(result.feedback)}</p>` : ''}</div>`).join('')}</div></div>`;
+    container.innerHTML = `<div class="exam-result-card"><h3>当前得分：${this.escape(submission.totalScore)} / ${this.escape(this.paper.totalScore)}</h3><div class="exam-result-parts">${results.map(result => {
+      const feedback = String(result.feedback || '').trim();
+      return `<div><span>${this.escape(result.partId)}</span><strong class="${result.status === 'correct' ? 'success' : result.status === 'pending' ? 'warning' : 'error'}">${this.escape({ correct: '正确', incorrect: '错误', pending: '待人工批改', graded: '已评分' }[result.status] || result.status)}</strong><b>${this.escape(result.effectiveScore || 0)} / ${this.escape(result.maxScore)}</b>${feedback ? `<p>${this.escape(feedback)}</p>` : ''}</div>`;
+    }).join('')}</div></div>`;
   }
 
   escape(value) {

@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20261002-01">
+  <link rel="stylesheet" href="css/style.css?v=20261004-01">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
@@ -42,6 +42,10 @@
       </div>
     </form>
   </section>
+  <aside id="admin-impersonation-banner" class="admin-impersonation-banner" hidden>
+    <span>管理员正在以学生 <strong id="admin-impersonation-username"></strong> 的身份访问</span>
+    <button id="exit-admin-impersonation" type="button">退出学生身份并返回后台</button>
+  </aside>
   <!-- 顶部导航 -->
   <header class="header">
     <div class="container">
@@ -56,6 +60,7 @@
         <div class="user-menu" role="menu">
           <button id="change-password-btn" type="button" role="menuitem">修改密码</button>
           <button id="change-username-btn" type="button" role="menuitem">更换账号</button>
+          <button id="return-admin-btn" type="button" role="menuitem" hidden>返回管理后台</button>
         </div>
       </div>
     </div>
@@ -222,7 +227,7 @@
   <script src="js/languages.js?v=20260926-01"></script>
   <script src="js/editor.js?v=20261002-01"></script>
   <script src="js/runner.js?v=20260929-01"></script>
-  <script src="js/github.js?v=20260929-02"></script>
+  <script src="js/github.js?v=20261004-01"></script>
   <script src="js/views.js?v=20260927-07"></script>
   <script src="vendor/marked/marked.umd.js?v=18.0.13"></script>
   <script src="vendor/dompurify/purify.min.js?v=3.4.15"></script>
@@ -231,7 +236,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="vendor/jszip/jszip.min.js?v=3.10.2"></script>
   <script src="js/exam-docx.js?v=20260929-01"></script>
-  <script src="js/exams.js?v=20261002-06"></script>
-  <script src="js/app.js?v=20261002-06"></script>
+  <script src="js/exams.js?v=20261004-01"></script>
+  <script src="js/app.js?v=20261004-01"></script>
 </body>
 </html>

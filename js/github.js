@@ -14,7 +14,7 @@ class GitHubStore {
   /**
    * 提交源码给 Worker 服务端判题。浏览器不再上报 passed 等结果字段。
    */
-  async submit(problemId, username, language, code, onProgress, group = 'control') {
+  async submit(problemId, username, language, code, onProgress, group = 'control', adminImpersonationConfirmed = false) {
     const payload = {
       type: 'judge_submit_stream',
       username,
@@ -22,6 +22,7 @@ class GitHubStore {
       language,
       code,
       group,
+      adminImpersonationConfirmed,
     };
 
     if (!this.workerUrl) throw new Error('服务端判题尚未配置');
