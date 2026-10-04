@@ -3436,18 +3436,28 @@ async function handleExecute(body, env) {
   const stderr = decodeJudge0Field(data.stderr);
   const compileOutput = decodeJudge0Field(data.compile_output);
   const message = decodeJudge0Field(data.message);
-  const error = compileOutput || stderr || message ||
+  const rawError = compileOutput || stderr || message ||
     (accepted ? '' : statusText);
+  const outputLimitExceeded = /file size limit exceeded|sigxfsz/i.test(
+    `${rawError}\n${statusText}\n${data.signal || ''}`
+  );
+  const error = outputLimitExceeded
+    ? '程序输出过多，已被安全终止。请检查是否未填写自定义输入、输入读取失败，或循环无法结束。'
+    : rawError;
+  const reportedExitCode = Number(data.exit_code);
 
   return jsonResponse({
     output: stdout,
     error,
-    exitCode: accepted ? 0 : 1,
+    exitCode: Number.isInteger(reportedExitCode)
+      ? reportedExitCode
+      : (accepted ? 0 : 1),
     compileError,
     time: data.time ? Math.round(Number(data.time) * 1000) : null,
     memory: data.memory ?? null,
     signal: data.signal ?? null,
     status: statusText,
+    code: outputLimitExceeded ? 'OUTPUT_LIMIT_EXCEEDED' : undefined,
   });
 }
 
