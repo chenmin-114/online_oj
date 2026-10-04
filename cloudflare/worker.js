@@ -2317,7 +2317,10 @@ async function handleAdminExamAiExport(body, env) {
     const question = structure.questions?.find(item => item.parts?.some(part => part.id === partId));
     const part = question?.parts?.find(item => item.id === partId);
     const partResult = grading.partResults?.find(item => item.partId === partId);
-    if (!part || !partResult || !['fill_blank', 'short_answer'].includes(part.type)
+    const aiEligibleType = forceRegrade
+      ? EXAM_PART_TYPES.has(part?.type)
+      : ['fill_blank', 'short_answer'].includes(part?.type);
+    if (!part || !partResult || !aiEligibleType
         || (!forceRegrade && (partResult.status !== 'pending' || partResult.aiSuggestion))) continue;
     const version = Number(row.exam_version);
     if (!groups.has(version)) {
@@ -2334,8 +2337,10 @@ async function handleAdminExamAiExport(body, env) {
           prompt: String(part.prompt || '').slice(0, 20000),
           maxScore: Number(part.points),
           gradingGuide: String(part.gradingGuide || '').slice(0, 12000),
-          acceptedAnswers: part.type === 'fill_blank' ? (part.correctAnswers || []).slice(0, 50) : [],
+          options: (part.options || []).slice(0, 50),
+          acceptedAnswers: (part.correctAnswers || []).slice(0, 50),
           caseSensitive: part.caseSensitive === true,
+          problemId: String(part.problemId || '').slice(0, 20),
         },
         submissions: [],
       });
@@ -2349,7 +2354,7 @@ async function handleAdminExamAiExport(body, env) {
   const exportGroups = [...groups.values()].filter(group => group.submissions.length);
   if (!exportGroups.length) {
     return jsonResponse({ error: forceRegrade
-      ? '没有找到这名学生可由 Claude 评分的答案'
+      ? '没有找到这名学生的当前小题答案'
       : '这道题没有待批改的填空或简答答案' }, 409);
   }
   return jsonResponse({
@@ -2415,7 +2420,10 @@ async function handleAdminExamAiImport(body, env) {
     const result = grading.partResults?.find(item => item.partId === partId);
     const score = Number(suggestion?.score);
     const confidence = Number(suggestion?.confidence);
-    if (!part || !result || !['fill_blank', 'short_answer'].includes(part.type)
+    const aiEligibleType = forceRegrade
+      ? EXAM_PART_TYPES.has(part?.type)
+      : ['fill_blank', 'short_answer'].includes(part?.type);
+    if (!part || !result || !aiEligibleType
         || (!forceRegrade && result.status !== 'pending')
         || !Number.isFinite(score) || score < 0 || score > Number(part.points)
         || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) {

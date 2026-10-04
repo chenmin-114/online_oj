@@ -39,8 +39,11 @@ function validPackage(payload) {
       || !payload.partId || !Array.isArray(payload.groups) || payload.groups.length < 1 || payload.groups.length > 100) return false;
   let submissionCount = 0;
   for (const group of payload.groups) {
+    const allowedPart = payload.forceRegrade === true
+      ? ['single_choice', 'multiple_choice', 'fill_blank', 'short_answer', 'programming'].includes(group?.part?.type)
+      : ['fill_blank', 'short_answer'].includes(group?.part?.type);
     if (!group || !group.question || !group.part || !Array.isArray(group.submissions)
-        || !['fill_blank', 'short_answer'].includes(group.part.type)
+        || !allowedPart
         || String(group.question.description || '').length > 20000
         || String(group.part.prompt || '').length > 20000
         || String(group.part.gradingGuide || '').length > 12000) return false;
