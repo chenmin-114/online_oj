@@ -2,12 +2,21 @@
 setlocal
 chcp 65001 >nul
 title 机创 OJ Claude 批改助手
-cd /d "%~dp0\.."
+cd /d "%~dp0"
 
 where node >nul 2>nul
 if errorlevel 1 goto no_node
 
+if exist "claude-grading-server.js" goto portable_package
+
+cd /d "%~dp0\.."
 node scripts\claude-grading-server.js
+goto helper_finished
+
+:portable_package
+node claude-grading-server.js
+
+:helper_finished
 set "helper_exit=%errorlevel%"
 if "%helper_exit%"=="0" exit /b 0
 

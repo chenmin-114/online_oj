@@ -287,6 +287,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamAiAdopt(body, env);
+      } else if (body.type === 'admin_exam_ai_delete') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamAiDelete(body, env);
       } else if (body.type === 'admin_exam_part_bulk_action') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -2257,7 +2261,8 @@ async function handleAdminExamGrade(body, env) {
     result.autoScore = 0;
     result.status = score >= Number(part.points) ? 'correct' : 'graded';
     result.feedback = normalizeExamText(body.feedback, 3000);
-    delete result.aiSuggestion;
+    result.gradingSource = 'manual';
+    result.manualEditedAt = Date.now();
     delete result.aiAdopted;
   }
   const scores = calculateExamScores(paper, partResults);
@@ -2410,7 +2415,7 @@ async function handleAdminExamAiImport(body, env) {
     };
     result.aiSuggestion = aiSuggestion;
     if (isHighConfidenceAiSuggestion(aiSuggestion)) {
-      adoptAiSuggestion(result, aiSuggestion, now, true);
+      adoptAiSuggestion(result, aiSuggestion, now, { automatic: true, includeFeedback: false });
       autoAdopted += 1;
     } else {
       drafts += 1;
@@ -2441,27 +2446,59 @@ function isHighConfidenceAiSuggestion(suggestion) {
     && suggestion?.needsReview === false;
 }
 
-function adoptAiSuggestion(result, suggestion, now, automatic = false) {
+function isClaudeOwnedResult(result) {
+  return result?.gradingSource === 'claude'
+    || (Boolean(result?.aiAdopted) && result?.gradingSource !== 'manual');
+}
+
+function restoreLegacyAiSuggestion(result) {
+  const adopted = result?.aiAdopted;
+  if (result?.aiSuggestion || !adopted || adopted.includeFeedback !== undefined) return false;
+  const score = Number(result.manualScore);
+  const confidence = Number(adopted.confidence);
+  if (!Number.isFinite(score) || !Number.isFinite(confidence)) return false;
+  result.aiSuggestion = {
+    score: Math.round(score * 100) / 100,
+    feedback: normalizeExamText(result.feedback, 1500),
+    confidence: Math.round(confidence * 1000) / 1000,
+    needsReview: adopted.automatic !== true,
+    model: normalizeExamText(adopted.model || 'Claude', 80),
+    generatedAt: Number(adopted.generatedAt) || Number(adopted.adoptedAt) || Date.now(),
+  };
+  result.gradingSource = 'claude';
+  // 旧版本采纳时总是同时写入评价。
+  adopted.includeFeedback = true;
+  return true;
+}
+
+function adoptAiSuggestion(result, suggestion, now, { automatic = false, includeFeedback = false } = {}) {
   result.manualScore = Math.round(Number(suggestion.score) * 100) / 100;
   result.autoScore = 0;
   result.status = result.manualScore >= Number(result.maxScore) ? 'correct' : 'graded';
-  result.feedback = normalizeExamText(suggestion.feedback, 3000);
+  if (includeFeedback) result.feedback = normalizeExamText(suggestion.feedback, 3000);
+  result.gradingSource = 'claude';
+  delete result.manualEditedAt;
   result.aiAdopted = {
     confidence: Math.round(Number(suggestion.confidence) * 1000) / 1000,
     model: normalizeExamText(suggestion.model || 'Claude', 80),
     generatedAt: Number(suggestion.generatedAt) || now,
     adoptedAt: now,
     automatic,
+    includeFeedback,
   };
-  delete result.aiSuggestion;
 }
 
 async function handleAdminExamAiAdopt(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
   const examId = normalizeExamId(body.examId);
   const partId = normalizeExamText(body.partId, 50);
+  const submissionId = Number(body.submissionId || 0);
   const highOnly = body.highOnly === true;
+  const includeFeedback = body.includeFeedback === true;
   if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  if (body.submissionId != null && (!Number.isInteger(submissionId) || submissionId < 1)) {
+    return jsonResponse({ error: '提交编号不正确' }, 400);
+  }
 
   const rows = await env.OJ_DB.prepare(`
     SELECT s.id, s.exam_version, s.grading_json, s.updated_at, v.structure_json
@@ -2473,8 +2510,11 @@ async function handleAdminExamAiAdopt(body, env) {
   const now = Date.now();
   const statements = [];
   let adopted = 0;
+  let restored = 0;
   let skipped = 0;
+  let protectedCount = 0;
   for (const row of rows.results || []) {
+    if (submissionId && Number(row.id) !== submissionId) continue;
     let structure;
     let grading;
     try {
@@ -2487,16 +2527,29 @@ async function handleAdminExamAiAdopt(body, env) {
     let changed = false;
     for (const result of grading.partResults || []) {
       if (partId && result.partId !== partId) continue;
+      if (restoreLegacyAiSuggestion(result)) {
+        restored += 1;
+        changed = true;
+      }
       const suggestion = result.aiSuggestion;
-      // 只采用仍待人工批改的 Claude 草稿，绝不覆盖已有正式结果。
-      if (!suggestion || result.status !== 'pending') continue;
+      if (!suggestion) continue;
+      // 只能填写待批改结果，或继续完善由 Claude 自己生成的正式结果。
+      // 人工保存或来源不明确的既有正式评分一律保护。
+      if (result.gradingSource === 'manual'
+          || (result.status !== 'pending' && !isClaudeOwnedResult(result))) {
+        protectedCount += 1;
+        continue;
+      }
       const score = Number(suggestion.score);
       if (!Number.isFinite(score) || score < 0 || score > Number(result.maxScore)) {
         skipped += 1;
         continue;
       }
       if (highOnly && !isHighConfidenceAiSuggestion(suggestion)) continue;
-      adoptAiSuggestion(result, suggestion, now, highOnly);
+      if (highOnly && isClaudeOwnedResult(result)
+          && Number(result.aiAdopted?.generatedAt) === Number(suggestion.generatedAt)
+          && result.aiAdopted?.automatic === true) continue;
+      adoptAiSuggestion(result, suggestion, now, { automatic: highOnly, includeFeedback });
       adopted += 1;
       changed = true;
     }
@@ -2517,7 +2570,56 @@ async function handleAdminExamAiAdopt(body, env) {
   for (let index = 0; index < statements.length; index += 80) {
     await env.OJ_DB.batch(statements.slice(index, index + 80));
   }
-  return jsonResponse({ success: true, adopted, submissionsUpdated: statements.length, skipped });
+  return jsonResponse({ success: true, adopted, restored, submissionsUpdated: statements.length, skipped, protected: protectedCount });
+}
+
+async function handleAdminExamAiDelete(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  const partId = normalizeExamText(body.partId, 50);
+  const submissionId = Number(body.submissionId || 0);
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  if (body.submissionId != null && (!Number.isInteger(submissionId) || submissionId < 1)) {
+    return jsonResponse({ error: '提交编号不正确' }, 400);
+  }
+
+  const rows = await env.OJ_DB.prepare(`
+    SELECT id, grading_json, updated_at
+    FROM exam_submissions
+    WHERE exam_id = ?1 AND is_final = 1 AND is_preview = 0
+    ORDER BY id ASC
+  `).bind(examId).all();
+  const now = Date.now();
+  const statements = [];
+  let deleted = 0;
+  let skipped = 0;
+  for (const row of rows.results || []) {
+    if (submissionId && Number(row.id) !== submissionId) continue;
+    let grading;
+    try {
+      grading = JSON.parse(row.grading_json);
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    let changed = false;
+    for (const result of grading.partResults || []) {
+      if (partId && result.partId !== partId) continue;
+      if (!result.aiSuggestion) continue;
+      delete result.aiSuggestion;
+      deleted += 1;
+      changed = true;
+    }
+    if (!changed) continue;
+    statements.push(env.OJ_DB.prepare(`
+      UPDATE exam_submissions SET grading_json = ?2, updated_at = ?3
+      WHERE id = ?1 AND is_final = 1 AND updated_at = ?4
+    `).bind(Number(row.id), JSON.stringify(grading), now, Number(row.updated_at)));
+  }
+  for (let index = 0; index < statements.length; index += 80) {
+    await env.OJ_DB.batch(statements.slice(index, index + 80));
+  }
+  return jsonResponse({ success: true, deleted, submissionsUpdated: statements.length, skipped });
 }
 
 async function handleAdminExamPartBulkAction(body, env) {

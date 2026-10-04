@@ -35,7 +35,11 @@ class ExamAdmin {
     document.getElementById('grading-mode').addEventListener('change', () => this.renderGrading());
     document.getElementById('grading-part').addEventListener('change', () => this.renderGrading());
     document.getElementById('run-ai-grading').addEventListener('click', () => this.runAiGrading());
-    document.getElementById('adopt-all-ai').addEventListener('click', () => this.adoptAllAiSuggestions());
+    document.getElementById('adopt-all-ai').addEventListener('click', () => this.adoptAllAiSuggestions(false));
+    document.getElementById('adopt-all-ai-feedback').addEventListener('click', () => this.adoptAllAiSuggestions(true));
+    document.getElementById('delete-all-ai').addEventListener('click', () => this.deleteAllAiSuggestions());
+    document.getElementById('adopt-all-ai-toggle').addEventListener('click', event => this.toggleGradingMenu(event.currentTarget));
+    document.getElementById('check-claude-helper').addEventListener('click', () => this.checkClaudeHelper());
     document.getElementById('export-ai-grading').addEventListener('click', () => this.exportAiGrading());
     document.getElementById('import-ai-grading-file').addEventListener('change', event => this.importAiGrading(event.target));
     document.getElementById('grading-student-list').addEventListener('click', event => {
@@ -48,6 +52,9 @@ class ExamAdmin {
     });
     document.getElementById('grading-prev').addEventListener('click', () => this.selectStudent(this.studentIndex - 1));
     document.getElementById('grading-next').addEventListener('click', () => this.selectStudent(this.studentIndex + 1));
+    document.addEventListener('click', event => {
+      if (!event.target.closest('.grading-split-action')) this.closeGradingMenus();
+    });
     document.getElementById('admin-preview-body').addEventListener('click', event => {
       if (event.target.closest('[data-exam-preview-submit]')) this.submitExamPreview();
     });
@@ -789,11 +796,14 @@ class ExamAdmin {
       let submissions = initialSubmissions;
       if (!this.highConfidenceChecked.has(examId)) {
         try {
-          const adopted = await this.request('admin_exam_ai_adopt', { examId, highOnly: true });
+          const adopted = await this.request('admin_exam_ai_adopt', { examId, highOnly: true, includeFeedback: false });
           this.highConfidenceChecked.add(examId);
-          if (adopted.adopted) {
+          if (adopted.adopted || adopted.restored) {
             submissions = await this.request('admin_exam_submissions', { examId });
-            document.getElementById('ai-grading-status').textContent = `已自动采用 ${adopted.adopted} 条历史高置信度 Claude 结果`;
+            const messages = [];
+            if (adopted.adopted) messages.push(`自动采用 ${adopted.adopted} 条高置信度结果`);
+            if (adopted.restored) messages.push(`恢复 ${adopted.restored} 条历史草稿卡片`);
+            document.getElementById('ai-grading-status').textContent = `已${messages.join('，')}`;
           }
         } catch {
           // 自动处理失败不应阻止管理员查看和手工批改试卷。
@@ -913,7 +923,7 @@ class ExamAdmin {
       await this.loadGrading(examId, { preserveSelection: true });
     } catch (error) {
       const detail = error.name === 'AbortError' ? '本机批改超过 20 分钟，已停止等待' : error.message;
-      status.textContent = `一键批改失败：${detail}。请先运行 node scripts/claude-grading-server.js`;
+      status.textContent = `一键批改失败：${detail}。请下载并启动本机助手后重试`;
     } finally {
       clearTimeout(timeout);
       button.disabled = false;
@@ -940,7 +950,7 @@ class ExamAdmin {
     }
   }
 
-  async adoptAllAiSuggestions() {
+  async adoptAllAiSuggestions(includeFeedback = false) {
     const examId = this.paper?.id;
     const mode = document.getElementById('grading-mode').value;
     const partId = mode === 'part' ? document.getElementById('grading-part').value : '';
@@ -948,22 +958,91 @@ class ExamAdmin {
     const status = document.getElementById('ai-grading-status');
     if (!examId || (mode === 'part' && !partId) || button.disabled) return;
     const scopeText = mode === 'part' ? '当前题目' : '整份试卷';
-    if (!confirm(`确定采纳${scopeText}的所有 Claude 草稿吗？\n\n中、低置信度结果也会成为正式评分，但不会覆盖已经存在的正式批改结果。`)) return;
-    button.disabled = true;
-    status.textContent = `正在采纳${scopeText}的 Claude 草稿...`;
+    const actionText = includeFeedback ? '分数和评价' : '分数';
+    if (!confirm(`确定采纳${scopeText}所有 Claude 草稿的${actionText}吗？\n\n人工提交或修改过的正式结果不会被覆盖。`)) return;
+    const actionButtons = [...document.querySelectorAll('#adopt-all-ai-actions button')];
+    actionButtons.forEach(item => { item.disabled = true; });
+    this.closeGradingMenus();
+    status.textContent = `正在采纳${scopeText}的 Claude 草稿${actionText}...`;
     try {
       const result = await this.request('admin_exam_ai_adopt', {
         examId,
         ...(partId ? { partId } : {}),
         highOnly: false,
+        includeFeedback,
       });
       status.textContent = result.adopted
-        ? `已采纳 ${result.adopted} 条 Claude 草稿，更新 ${result.submissionsUpdated} 份学生答卷`
-        : `${scopeText}没有可采纳的 Claude 草稿`;
+        ? `已采纳 ${result.adopted} 条草稿的${actionText}，更新 ${result.submissionsUpdated} 份答卷${result.protected ? `，保护并跳过 ${result.protected} 条人工结果` : ''}`
+        : `${scopeText}没有可采纳的 Claude 草稿${result.protected ? `；已保护 ${result.protected} 条人工结果` : ''}`;
       await this.loadGrading(examId, { preserveSelection: true });
     } catch (error) {
       status.textContent = `一键采纳失败：${error.message}`;
     } finally {
+      actionButtons.forEach(item => { item.disabled = false; });
+    }
+  }
+
+  async deleteAllAiSuggestions() {
+    const examId = this.paper?.id;
+    const mode = document.getElementById('grading-mode').value;
+    const partId = mode === 'part' ? document.getElementById('grading-part').value : '';
+    const button = document.getElementById('delete-all-ai');
+    const status = document.getElementById('ai-grading-status');
+    if (!examId || (mode === 'part' && !partId) || button.disabled) return;
+    const scopeText = mode === 'part' ? '当前题目' : '整份试卷';
+    if (!confirm(`确定删除${scopeText}的所有 Claude 草稿吗？\n\n正式分数、正式评价和学生答案都不会被删除。`)) return;
+    button.disabled = true;
+    status.textContent = `正在删除${scopeText}的 Claude 草稿...`;
+    try {
+      const result = await this.request('admin_exam_ai_delete', {
+        examId,
+        ...(partId ? { partId } : {}),
+      });
+      status.textContent = result.deleted
+        ? `已删除 ${result.deleted} 条 Claude 草稿；正式评分保持不变`
+        : `${scopeText}没有可删除的 Claude 草稿`;
+      await this.loadGrading(examId, { preserveSelection: true });
+    } catch (error) {
+      status.textContent = `批量删除失败：${error.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  toggleGradingMenu(button) {
+    const owner = button.closest('.grading-split-action');
+    if (!owner) return;
+    const open = !owner.classList.contains('open');
+    this.closeGradingMenus();
+    owner.classList.toggle('open', open);
+    button.setAttribute('aria-expanded', String(open));
+  }
+
+  closeGradingMenus() {
+    document.querySelectorAll('.grading-split-action.open').forEach(owner => {
+      owner.classList.remove('open');
+      owner.querySelector('.grading-menu-toggle')?.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  async checkClaudeHelper() {
+    const status = document.getElementById('claude-helper-status');
+    const button = document.getElementById('check-claude-helper');
+    button.disabled = true;
+    status.textContent = '助手状态：正在检测...';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      const response = await fetch('http://127.0.0.1:37841/health', {
+        mode: 'cors', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', signal: controller.signal,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok !== true) throw new Error('状态异常');
+      status.textContent = result.busy ? '助手状态：已连接，正在批改' : '助手状态：已连接，可以使用';
+    } catch {
+      status.textContent = '助手状态：未启动，请下载并双击启动程序';
+    } finally {
+      clearTimeout(timeout);
       button.disabled = false;
     }
   }
@@ -980,9 +1059,13 @@ class ExamAdmin {
     const runAiButton = document.getElementById('run-ai-grading');
     runAiButton.hidden = !aiEligible;
     runAiButton.textContent = mode === 'part' ? 'Claude 一键批改本题' : 'Claude 一键批改整卷';
+    const adoptActions = document.getElementById('adopt-all-ai-actions');
+    adoptActions.hidden = !aiEligible;
     const adoptButton = document.getElementById('adopt-all-ai');
-    adoptButton.hidden = !aiEligible;
-    adoptButton.textContent = mode === 'part' ? '一键采纳本题所有草稿' : '一键采纳整卷所有草稿';
+    adoptButton.textContent = mode === 'part' ? '一键采纳本题草稿' : '一键采纳整卷草稿';
+    const deleteButton = document.getElementById('delete-all-ai');
+    deleteButton.hidden = !aiEligible;
+    deleteButton.textContent = mode === 'part' ? '删除本题所有草稿' : '删除整卷所有草稿';
     document.getElementById('export-ai-grading').hidden = !aiPartEligible;
     document.getElementById('import-ai-grading-label').hidden = !aiPartEligible;
     if (!aiEligible) document.getElementById('ai-grading-status').textContent = '';
@@ -1057,14 +1140,25 @@ class ExamAdmin {
       const answerText = result.type === 'programming'
         ? `${answer?.language || ''}\n\n${answer?.code || ''}`
         : Array.isArray(answer) ? answer.join('、') : String(answer ?? '');
-      const statusText = result.aiAdopted
-        ? (result.aiAdopted.automatic ? 'Claude 高置信度自动评分' : '已采纳 Claude 评分')
-        : ({ correct: '正确', incorrect: '错误', graded: '已人工评分', pending: '待人工批改' }[result.status] || result.status);
+      const statusText = result.gradingSource === 'manual'
+        ? '已人工评分（Claude 不会覆盖）'
+        : result.aiAdopted
+          ? (result.aiAdopted.automatic ? 'Claude 高置信度自动评分' : '已采纳 Claude 评分')
+          : ({ correct: '正确', incorrect: '错误', graded: '已人工评分', pending: '待人工批改' }[result.status] || result.status);
       const aiSuggestion = result.aiSuggestion;
+      const aiCanApply = aiSuggestion && result.gradingSource !== 'manual'
+        && (result.status === 'pending' || result.gradingSource === 'claude' || result.aiAdopted);
+      const adoptedLabel = result.aiAdopted
+        ? (result.aiAdopted.includeFeedback ? '已采纳分数和评价' : '已采纳分数')
+        : result.gradingSource === 'manual' ? '人工结果已保护' : '尚未采纳';
       const aiPanel = aiSuggestion ? `<div class="grading-ai-suggestion">
-        <div><strong>Claude 建议：${this.escape(aiSuggestion.score)} / ${this.escape(result.maxScore)} 分</strong><span>置信度 ${this.escape(Math.round(Number(aiSuggestion.confidence || 0) * 100))}%${aiSuggestion.needsReview ? ' · 建议人工复核' : ''}</span></div>
-        <p>${this.escape(aiSuggestion.feedback || '未提供说明')}</p>
-        <button type="button" class="admin-button secondary" data-adopt-ai>采用并保存</button>
+        <div class="grading-ai-heading"><div><span class="grading-ai-label">CLAUDE 草稿</span><strong>建议 ${this.escape(aiSuggestion.score)} / ${this.escape(result.maxScore)} 分</strong></div><span class="grading-ai-state">${this.escape(adoptedLabel)}</span></div>
+        <div class="grading-ai-meta">置信度 ${this.escape(Math.round(Number(aiSuggestion.confidence || 0) * 100))}%${aiSuggestion.needsReview ? ' · 建议人工复核' : ' · 可直接复核'}</div>
+        <p>${this.escape(aiSuggestion.feedback || '未提供评价')}</p>
+        <div class="grading-ai-card-actions">
+          ${aiCanApply ? `<div class="grading-split-action"><button type="button" class="admin-button secondary" data-adopt-ai>采纳分数</button><button type="button" class="admin-button secondary grading-menu-toggle" data-ai-menu-toggle aria-label="更多采纳方式" aria-expanded="false">▾</button><div class="grading-action-menu"><button type="button" data-adopt-ai-feedback>同时采纳分数和评价</button></div></div>` : '<span class="grading-ai-protected">已经人工保存，批量操作不会覆盖</span>'}
+          <button type="button" class="admin-button danger" data-delete-ai>删除草稿</button>
+        </div>
       </div>` : '';
       return `<section class="grading-part-card" data-grade-part="${this.escape(result.partId)}">
         <div class="grading-part-title"><div><strong>${this.escape(found.question.title)} · ${this.escape(found.part.prompt || found.part.id)}</strong><span>${this.escape(statusText)}${result.blockedByProgramming ? ' · 因编程未通过暂计 0 分' : ''}</span></div><b>${this.escape(result.effectiveScore || 0)} / ${this.escape(result.maxScore)}</b></div>
@@ -1078,16 +1172,56 @@ class ExamAdmin {
   }
 
   async handleGradingClick(event) {
-    const adoptAi = event.target.closest('[data-adopt-ai]');
+    const menuToggle = event.target.closest('[data-ai-menu-toggle]');
+    if (menuToggle) {
+      this.toggleGradingMenu(menuToggle);
+      return;
+    }
+    const adoptAi = event.target.closest('[data-adopt-ai], [data-adopt-ai-feedback]');
     if (adoptAi) {
       const card = adoptAi.closest('[data-grade-part]');
       const submission = this.submissions[this.studentIndex];
-      const suggestion = submission?.grading?.partResults?.find(item => item.partId === card?.dataset.gradePart)?.aiSuggestion;
-      if (!card || !suggestion) return;
-      card.querySelector('[data-grade-score]').value = suggestion.score;
-      card.querySelector('[data-grade-feedback]').value = suggestion.feedback || '';
-      this.gradingDirty = true;
-      card.querySelector('[data-save-grade]').click();
+      if (!card || !submission) return;
+      const includeFeedback = adoptAi.hasAttribute('data-adopt-ai-feedback');
+      adoptAi.disabled = true;
+      this.closeGradingMenus();
+      try {
+        const result = await this.request('admin_exam_ai_adopt', {
+          examId: this.paper.id,
+          submissionId: submission.id,
+          partId: card.dataset.gradePart,
+          highOnly: false,
+          includeFeedback,
+        });
+        if (!result.adopted) throw new Error(result.protected ? '该题已经人工保存，Claude 草稿不能覆盖' : '这条草稿已经不存在');
+        this.admin.toast(includeFeedback ? '已采纳 Claude 分数和评价，草稿仍保留' : '已采纳 Claude 分数，草稿仍保留');
+        await this.loadGrading(this.paper.id, { preserveSelection: true });
+      } catch (error) {
+        this.admin.toast(`采纳失败：${error.message}`);
+      } finally {
+        adoptAi.disabled = false;
+      }
+      return;
+    }
+    const deleteAi = event.target.closest('[data-delete-ai]');
+    if (deleteAi) {
+      const card = deleteAi.closest('[data-grade-part]');
+      const submission = this.submissions[this.studentIndex];
+      if (!card || !submission || !confirm('确定删除这条 Claude 草稿吗？正式评分和评价不会改变。')) return;
+      deleteAi.disabled = true;
+      try {
+        const result = await this.request('admin_exam_ai_delete', {
+          examId: this.paper.id,
+          submissionId: submission.id,
+          partId: card.dataset.gradePart,
+        });
+        this.admin.toast(result.deleted ? 'Claude 草稿已删除，正式评分保持不变' : '草稿已经不存在');
+        await this.loadGrading(this.paper.id, { preserveSelection: true });
+      } catch (error) {
+        this.admin.toast(`删除失败：${error.message}`);
+      } finally {
+        deleteAi.disabled = false;
+      }
       return;
     }
     const release = event.target.closest('[data-release-result]');

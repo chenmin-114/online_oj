@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20261002-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261002-02">
+  <link rel="stylesheet" href="css/admin.css?v=20261004-01">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -307,9 +307,17 @@
               <select id="grading-mode" class="admin-input"><option value="student">按学生批改整卷</option><option value="part">按一道题连续批改</option></select>
               <select id="grading-part" class="admin-input" hidden><option value="">选择小题</option></select>
               <button id="run-ai-grading" type="button" class="admin-button primary" hidden>Claude 一键批改</button>
-              <button id="adopt-all-ai" type="button" class="admin-button secondary" hidden>一键采纳所有</button>
+              <div id="adopt-all-ai-actions" class="grading-split-action" hidden>
+                <button id="adopt-all-ai" type="button" class="admin-button secondary">一键采纳所有草稿</button>
+                <button id="adopt-all-ai-toggle" type="button" class="admin-button secondary grading-menu-toggle" aria-label="更多采纳方式" aria-expanded="false">▾</button>
+                <div class="grading-action-menu"><button id="adopt-all-ai-feedback" type="button">同时采纳分数和评价</button></div>
+              </div>
+              <button id="delete-all-ai" type="button" class="admin-button danger" hidden>删除所有草稿</button>
               <button id="export-ai-grading" type="button" class="admin-button secondary" hidden>导出 Claude 批改包</button>
               <label id="import-ai-grading-label" class="admin-button secondary" hidden>导入 Claude 建议<input id="import-ai-grading-file" type="file" accept="application/json,.json" hidden></label>
+              <a id="download-claude-helper" class="admin-button secondary" href="downloads/claude-grading-helper.zip" download>下载本机助手</a>
+              <button id="check-claude-helper" type="button" class="admin-button secondary">检测助手</button>
+              <span id="claude-helper-status" class="filter-count">助手状态：未检测</span>
               <span id="ai-grading-status" class="filter-count"></span>
             </div>
           </article>
@@ -410,6 +418,6 @@
   <script src="js/languages.js?v=20260926-01"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
   <script src="js/admin.js?v=20261002-02"></script>
-  <script src="js/admin-exams.js?v=20261003-03"></script>
+  <script src="js/admin-exams.js?v=20261004-01"></script>
 </body>
 </html>

@@ -86,7 +86,7 @@ function runClaude(payload) {
       inputPath,
       '--output', outputPath,
     ], {
-      cwd: path.resolve(__dirname, '..'),
+      cwd: __dirname,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -186,7 +186,7 @@ server.requestTimeout = 0;
 server.headersTimeout = 10000;
 server.listen(PORT, HOST, () => {
   console.log(`机创 OJ Claude 批改助手已启动：http://${HOST}:${PORT}`);
-  console.log('请保持此窗口开启，然后在管理端点击“Claude 一键批改本题”。');
+  console.log('请保持此窗口开启，然后回到管理端点击“检测助手”或“Claude 一键批改”。');
   console.log('按 Ctrl+C 可以停止助手。');
 });
 
