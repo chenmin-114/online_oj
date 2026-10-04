@@ -1712,6 +1712,30 @@ function isExamResultVisible(policy, gradingStatus, released) {
     || (policy === 'manual' && released === 1);
 }
 
+function examCompletionMessageStatement(env, {
+  examId, username, title, group, resultPolicy, gradingStatus, createdAt, submissionId = null,
+}) {
+  if (resultPolicy !== 'after_graded' || gradingStatus !== 'completed'
+      || !examId || !username || username === 'admin') return null;
+  const messageKey = `exam-graded:${examId}:${username}`;
+  return env.OJ_DB.prepare(`
+    INSERT OR IGNORE INTO system_messages (
+      audience, username, title, content, created_at,
+      message_type, group_name, problem_id, resubmission_key, popup_enabled
+    )
+    SELECT 'user', ?1, '套卷已批改完成', ?2, ?3, 'exam_graded', ?4, NULL, ?5, 0
+    WHERE ?6 IS NULL OR EXISTS (
+      SELECT 1 FROM exam_submissions
+      WHERE id = ?6 AND is_final = 1 AND is_preview = 0 AND grading_status = 'completed'
+    )
+  `).bind(
+    username,
+    `你提交的套卷《${title || examId}》已完成批改，请前往套卷页面查看批改结果。`,
+    createdAt || Date.now(), group || null, messageKey,
+    Number.isInteger(Number(submissionId)) && Number(submissionId) > 0 ? Number(submissionId) : null,
+  );
+}
+
 async function handleStudentExamGet(body, env) {
   const examId = normalizeExamId(body.examId);
   const username = normalizeStudentUsername(body.username);
@@ -2148,6 +2172,11 @@ async function handleStudentExamSubmit(body, env, options = {}) {
       DO UPDATE SET last_seen = excluded.last_seen
     `).bind(group, examId, visitorHash, now),
   ];
+  const completionMessage = examCompletionMessageStatement(env, {
+    examId, username, title: paper.title, group,
+    resultPolicy: paper.resultPolicy, gradingStatus: scores.gradingStatus, createdAt: now,
+  });
+  if (completionMessage) statements.push(completionMessage);
   const programmingProblemIds = [...new Set(paper.questions.flatMap(question => question.parts)
     .filter(part => part.type === 'programming' && /^(?:P\d{3,6}|T\d{3})$/.test(part.problemId))
     .map(part => part.problemId))];
@@ -2272,7 +2301,7 @@ async function handleAdminExamGrade(body, env) {
   const scores = calculateExamScores(paper, partResults);
   const released = typeof body.released === 'boolean' ? (body.released ? 1 : 0) : Number(submission.released);
   const now = Date.now();
-  await env.OJ_DB.prepare(`
+  const statements = [env.OJ_DB.prepare(`
     UPDATE exam_submissions
     SET grading_json = ?2, auto_score = ?3, manual_score = ?4, total_score = ?5,
         graded_count = ?6, total_parts = ?7, grading_status = ?8, released = ?9, updated_at = ?10
@@ -2281,7 +2310,16 @@ async function handleAdminExamGrade(body, env) {
     submissionId, JSON.stringify({ partResults }), scores.autoScore, scores.manualScore,
     scores.totalScore, scores.gradedCount, scores.totalParts, scores.gradingStatus,
     released, now,
-  ).run();
+  )];
+  const completionMessage = Number(submission.is_preview) === 0
+    ? examCompletionMessageStatement(env, {
+      examId: submission.exam_id, username: submission.username, title: version.title,
+      group: version.group_name, resultPolicy: version.result_policy,
+      gradingStatus: scores.gradingStatus, createdAt: now, submissionId,
+    })
+    : null;
+  if (completionMessage) statements.push(completionMessage);
+  await env.OJ_DB.batch(statements);
   return jsonResponse({ success: true, ...scores, released: released === 1, grading: { partResults } });
 }
 
@@ -2389,14 +2427,17 @@ async function handleAdminExamAiImport(body, env) {
     return jsonResponse({ error: 'Claude 单题重新评分结果范围不正确' }, 400);
   }
   const rows = await env.OJ_DB.prepare(`
-    SELECT s.id, s.exam_version, s.grading_json, s.updated_at, v.structure_json
+    SELECT s.id, s.exam_version, s.username, s.grading_json, s.updated_at, v.structure_json,
+           p.title, p.group_name, p.result_policy
     FROM exam_submissions s
     JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+    JOIN exam_papers p ON p.id = s.exam_id
     WHERE s.exam_id = ?1 AND s.is_final = 1 AND s.is_preview = 0
   `).bind(examId).all();
   const rowMap = new Map((rows.results || []).map(row => [Number(row.id), row]));
   const seen = new Set();
   const statements = [];
+  const completionMessages = [];
   let skipped = 0;
   let autoAdopted = 0;
   let drafts = 0;
@@ -2459,9 +2500,18 @@ async function handleAdminExamAiImport(body, env) {
       scores.totalScore, scores.gradedCount, scores.totalParts, scores.gradingStatus,
       now, Number(row.updated_at),
     ));
+    const completionMessage = examCompletionMessageStatement(env, {
+      examId, username: row.username, title: row.title, group: row.group_name,
+      resultPolicy: row.result_policy, gradingStatus: scores.gradingStatus,
+      createdAt: now, submissionId,
+    });
+    if (completionMessage) completionMessages.push(completionMessage);
   }
   for (let index = 0; index < statements.length; index += 80) {
     await env.OJ_DB.batch(statements.slice(index, index + 80));
+  }
+  for (let index = 0; index < completionMessages.length; index += 80) {
+    await env.OJ_DB.batch(completionMessages.slice(index, index + 80));
   }
   return jsonResponse({ success: true, imported: statements.length, autoAdopted, drafts, skipped });
 }
@@ -2529,14 +2579,17 @@ async function handleAdminExamAiAdopt(body, env) {
   }
 
   const rows = await env.OJ_DB.prepare(`
-    SELECT s.id, s.exam_version, s.grading_json, s.updated_at, v.structure_json
+    SELECT s.id, s.exam_version, s.username, s.grading_json, s.updated_at, v.structure_json,
+           p.title, p.group_name, p.result_policy
     FROM exam_submissions s
     JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+    JOIN exam_papers p ON p.id = s.exam_id
     WHERE s.exam_id = ?1 AND s.is_final = 1 AND s.is_preview = 0
     ORDER BY s.id ASC
   `).bind(examId).all();
   const now = Date.now();
   const statements = [];
+  const completionMessages = [];
   let adopted = 0;
   let restored = 0;
   let skipped = 0;
@@ -2596,9 +2649,18 @@ async function handleAdminExamAiAdopt(body, env) {
       scores.totalScore, scores.gradedCount, scores.totalParts, scores.gradingStatus,
       now, Number(row.updated_at),
     ));
+    const completionMessage = examCompletionMessageStatement(env, {
+      examId, username: row.username, title: row.title, group: row.group_name,
+      resultPolicy: row.result_policy, gradingStatus: scores.gradingStatus,
+      createdAt: now, submissionId: Number(row.id),
+    });
+    if (completionMessage) completionMessages.push(completionMessage);
   }
   for (let index = 0; index < statements.length; index += 80) {
     await env.OJ_DB.batch(statements.slice(index, index + 80));
+  }
+  for (let index = 0; index < completionMessages.length; index += 80) {
+    await env.OJ_DB.batch(completionMessages.slice(index, index + 80));
   }
   return jsonResponse({ success: true, adopted, restored, submissionsUpdated: statements.length, skipped, protected: protectedCount });
 }
@@ -4067,9 +4129,10 @@ async function rejudgeProblemSubmission(job, env) {
 
 async function rejudgeExamSubmission(job, env) {
   const row = await env.OJ_DB.prepare(`
-    SELECT s.*, v.structure_json
+    SELECT s.*, v.structure_json, p.title, p.group_name, p.result_policy
     FROM exam_submissions s
     JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+    JOIN exam_papers p ON p.id = s.exam_id
     WHERE s.id = ?1 AND s.is_preview = 0 AND s.is_final = 1
   `).bind(Number(job.submission_id)).first();
   if (!row) return;
@@ -4116,7 +4179,8 @@ async function rejudgeExamSubmission(job, env) {
   }
   if (!matched) return;
   const scores = calculateExamScores(paper, partResults);
-  await env.OJ_DB.prepare(`
+  const now = Date.now();
+  const statements = [env.OJ_DB.prepare(`
     UPDATE exam_submissions
     SET grading_json = ?2, auto_score = ?3, manual_score = ?4,
         total_score = ?5, graded_count = ?6, total_parts = ?7,
@@ -4125,8 +4189,15 @@ async function rejudgeExamSubmission(job, env) {
   `).bind(
     Number(row.id), JSON.stringify({ ...grading, partResults }),
     scores.autoScore, scores.manualScore, scores.totalScore,
-    scores.gradedCount, scores.totalParts, scores.gradingStatus, Date.now(),
-  ).run();
+    scores.gradedCount, scores.totalParts, scores.gradingStatus, now,
+  )];
+  const completionMessage = examCompletionMessageStatement(env, {
+    examId: row.exam_id, username: row.username, title: row.title,
+    group: row.group_name, resultPolicy: row.result_policy,
+    gradingStatus: scores.gradingStatus, createdAt: now, submissionId: Number(row.id),
+  });
+  if (completionMessage) statements.push(completionMessage);
+  await env.OJ_DB.batch(statements);
 }
 
 function validateProblem(input, requestedFile) {
