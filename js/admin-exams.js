@@ -13,6 +13,7 @@ class ExamAdmin {
     this.gradingDirty = false;
     this.highConfidenceChecked = new Set();
     this.lastRefreshAt = 0;
+    this.studentSort = 'submitted_asc';
   }
 
   init() {
@@ -39,12 +40,20 @@ class ExamAdmin {
     document.getElementById('adopt-all-ai-feedback').addEventListener('click', () => this.adoptAllAiSuggestions(true));
     document.getElementById('delete-all-ai').addEventListener('click', () => this.deleteAllAiSuggestions());
     document.getElementById('adopt-all-ai-toggle').addEventListener('click', event => this.toggleGradingMenu(event.currentTarget));
+    document.getElementById('clear-part-score').addEventListener('click', () => this.clearPartGrading('score'));
+    document.getElementById('clear-part-feedback').addEventListener('click', () => this.clearPartGrading('feedback'));
+    document.getElementById('clear-part-grading-toggle').addEventListener('click', event => this.toggleGradingMenu(event.currentTarget));
     document.getElementById('check-claude-helper').addEventListener('click', () => this.checkClaudeHelper());
     document.getElementById('export-ai-grading').addEventListener('click', () => this.exportAiGrading());
     document.getElementById('import-ai-grading-file').addEventListener('change', event => this.importAiGrading(event.target));
     document.getElementById('grading-student-list').addEventListener('click', event => {
       const button = event.target.closest('[data-grading-student]');
       if (button) this.selectStudent(Number(button.dataset.gradingStudent));
+    });
+    document.getElementById('grading-student-sort').addEventListener('change', event => {
+      this.studentSort = event.target.value;
+      this.sortSubmissionsPreservingSelection();
+      this.renderStudentList();
     });
     document.getElementById('grading-workspace').addEventListener('click', event => this.handleGradingClick(event));
     document.getElementById('grading-workspace').addEventListener('input', event => {
@@ -786,6 +795,9 @@ class ExamAdmin {
     const selectedPartId = preserveSelection ? document.getElementById('grading-part').value : '';
     const previousPaperVersion = this.paper?.id === examId ? this.paper.version : null;
     const previousSubmissionSignature = this.gradingSubmissionSignature(this.submissions);
+    const workspaceScrollTop = workspace.scrollTop;
+    const studentList = document.getElementById('grading-student-list');
+    const studentListScrollTop = studentList.scrollTop;
     if (!preserveSelection) this.gradingDirty = false;
     if (!silent) workspace.innerHTML = '<p class="empty-cell">正在读取提交...</p>';
     try {
@@ -814,22 +826,33 @@ class ExamAdmin {
         && previousPaperVersion === paper.version
         && previousSubmissionSignature === this.gradingSubmissionSignature(submissions)) return;
       this.paper = paper;
-      this.submissions = submissions;
+      this.submissions = this.sortSubmissions(submissions);
       this.studentIndex = selectedId ? this.submissions.findIndex(item => item.id === selectedId) : -1;
+      if (this.submissions.length && this.studentIndex < 0) this.studentIndex = 0;
       const partSelect = document.getElementById('grading-part');
       partSelect.innerHTML = '<option value="">选择小题</option>' + this.paper.questions.flatMap(question => question.parts.map(part =>
         `<option value="${this.escape(part.id)}">${this.escape(question.title)} · ${this.escape(part.prompt || part.id)}</option>`
       )).join('');
       if ([...partSelect.options].some(option => option.value === selectedPartId)) partSelect.value = selectedPartId;
+      if (this.studentIndex >= 0) {
+        const detail = await this.request('admin_exam_submission_get', {
+          submissionId: this.submissions[this.studentIndex].id,
+        });
+        if (this.group !== requestedGroup || document.getElementById('grading-exam').value !== examId) return;
+        this.submissions[this.studentIndex] = detail;
+      }
       this.renderGrading();
-      if (this.submissions.length) await this.selectStudent(this.studentIndex >= 0 ? this.studentIndex : 0);
+      requestAnimationFrame(() => {
+        workspace.scrollTop = workspaceScrollTop;
+        studentList.scrollTop = studentListScrollTop;
+      });
     } catch (error) {
       if (!silent) workspace.innerHTML = `<p class="empty-cell">${this.escape(error.message)}</p>`;
     }
   }
 
   gradingSubmissionSignature(submissions) {
-    return JSON.stringify((submissions || []).map(submission => ({
+    return JSON.stringify([...(submissions || [])].sort((a, b) => Number(a.id) - Number(b.id)).map(submission => ({
       id: submission.id,
       username: submission.username,
       attemptNo: submission.attemptNo,
@@ -842,6 +865,26 @@ class ExamAdmin {
       preview: submission.preview,
       updatedAt: submission.updatedAt,
     })));
+  }
+
+  sortSubmissions(submissions = this.submissions) {
+    const compareFallback = (left, right) => Number(left.submittedAt) - Number(right.submittedAt)
+      || String(left.username).localeCompare(String(right.username), 'zh-CN', { numeric: true });
+    return [...(submissions || [])].sort((left, right) => {
+      if (this.studentSort === 'submitted_desc') return Number(right.submittedAt) - Number(left.submittedAt)
+        || String(left.username).localeCompare(String(right.username), 'zh-CN', { numeric: true });
+      if (this.studentSort === 'username') return String(left.username).localeCompare(String(right.username), 'zh-CN', { numeric: true })
+        || Number(left.submittedAt) - Number(right.submittedAt);
+      if (this.studentSort === 'score_desc') return Number(right.totalScore) - Number(left.totalScore) || compareFallback(left, right);
+      if (this.studentSort === 'score_asc') return Number(left.totalScore) - Number(right.totalScore) || compareFallback(left, right);
+      return compareFallback(left, right);
+    });
+  }
+
+  sortSubmissionsPreservingSelection() {
+    const selectedId = this.submissions[this.studentIndex]?.id;
+    this.submissions = this.sortSubmissions();
+    this.studentIndex = selectedId == null ? -1 : this.submissions.findIndex(item => item.id === selectedId);
   }
 
   async exportAiGrading() {
@@ -1009,6 +1052,34 @@ class ExamAdmin {
     }
   }
 
+  async clearPartGrading(action) {
+    const examId = this.paper?.id;
+    const partId = document.getElementById('grading-part').value;
+    const selected = partId ? this.findPart(partId) : null;
+    const actions = document.getElementById('clear-part-grading-actions');
+    const status = document.getElementById('ai-grading-status');
+    if (!examId || !selected || !['fill_blank', 'short_answer'].includes(selected.part.type)) return;
+    const formalCount = this.submissions.filter(item => !item.preview).length;
+    const deletingScore = action === 'score';
+    const operation = deletingScore ? '删除正式评分和正式评价，并恢复待批改状态' : '只删除正式评价并保留分数';
+    if (!confirm(`确定对“${selected.question.title} · ${selected.part.prompt || selected.part.id}”执行整题操作吗？\n\n将影响最多 ${formalCount} 名正式提交学生：${operation}。\n学生答案和 Claude 草稿都会保留。`)) return;
+    const buttons = [...actions.querySelectorAll('button')];
+    buttons.forEach(button => { button.disabled = true; });
+    this.closeGradingMenus();
+    status.textContent = deletingScore ? '正在删除整题评分和评价...' : '正在删除整题评价...';
+    try {
+      const result = await this.request('admin_exam_part_clear_grading', { examId, partId, action });
+      status.textContent = deletingScore
+        ? `已重置 ${result.affected} 份答卷的本题评分和评价`
+        : `已删除 ${result.affected} 份答卷的本题评价，分数保持不变`;
+      await this.loadGrading(examId, { silent: true, preserveSelection: true });
+    } catch (error) {
+      status.textContent = `整题操作失败：${error.message}`;
+    } finally {
+      buttons.forEach(button => { button.disabled = false; });
+    }
+  }
+
   toggleGradingMenu(button) {
     const owner = button.closest('.grading-split-action');
     if (!owner) return;
@@ -1038,7 +1109,9 @@ class ExamAdmin {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok !== true) throw new Error('状态异常');
-      status.textContent = result.busy ? '助手状态：已连接，正在批改' : '助手状态：已连接，可以使用';
+      status.textContent = result.busy
+        ? `助手状态：已连接，运行 ${Number(result.activeJobs || 0)} 个${result.queuedJobs ? `，排队 ${Number(result.queuedJobs)} 个` : ''}`
+        : '助手状态：已连接，可以使用';
     } catch {
       status.textContent = '助手状态：未启动，请下载并双击启动程序';
     } finally {
@@ -1066,6 +1139,7 @@ class ExamAdmin {
     const deleteButton = document.getElementById('delete-all-ai');
     deleteButton.hidden = !aiEligible;
     deleteButton.textContent = mode === 'part' ? '删除本题所有草稿' : '删除整卷所有草稿';
+    document.getElementById('clear-part-grading-actions').hidden = !aiPartEligible;
     document.getElementById('export-ai-grading').hidden = !aiPartEligible;
     document.getElementById('import-ai-grading-label').hidden = !aiPartEligible;
     if (!aiEligible) document.getElementById('ai-grading-status').textContent = '';
@@ -1074,11 +1148,17 @@ class ExamAdmin {
     document.getElementById('grading-summary').textContent = this.paper
       ? `${formalSubmissions.length} 人正式提交 · ${completed} 人完成批改${this.submissions.some(item => item.preview) ? ' · 含管理员预览记录' : ''}`
       : '请选择试卷';
+    this.renderStudentList();
+    this.renderWorkspace();
+  }
+
+  renderStudentList() {
     document.getElementById('grading-student-list').innerHTML = this.submissions.length ? this.submissions.map((submission, index) => `
       <button type="button" class="grading-student ${index === this.studentIndex ? 'active' : ''}" data-grading-student="${index}">
-        <strong>${this.escape(submission.username)}${submission.preview ? '（管理员预览）' : ''}</strong><span>${submission.gradedCount}/${submission.totalParts} 题 · ${submission.totalScore}/${this.paper.totalScore} 分</span>
+        <strong>${this.escape(submission.username)}${submission.preview ? '（管理员预览）' : ''}</strong><span>${submission.gradedCount}/${submission.totalParts} 题 · ${submission.totalScore}/${this.paper?.totalScore || 0} 分</span>
       </button>`).join('') : '<p class="empty-cell">还没有学生提交</p>';
-    this.renderWorkspace();
+    document.getElementById('grading-prev').disabled = this.studentIndex <= 0;
+    document.getElementById('grading-next').disabled = this.studentIndex < 0 || this.studentIndex >= this.submissions.length - 1;
   }
 
   async selectStudent(index) {
@@ -1097,6 +1177,27 @@ class ExamAdmin {
         document.getElementById('grading-workspace').innerHTML = `<p class="empty-cell">${this.escape(error.message)}</p>`;
       }
     }
+  }
+
+  async refreshSelectedSubmission(submissionId = null) {
+    const selectedId = this.submissions[this.studentIndex]?.id;
+    const targetId = submissionId || selectedId;
+    if (!targetId) return;
+    const workspace = document.getElementById('grading-workspace');
+    const studentList = document.getElementById('grading-student-list');
+    const workspaceScrollTop = workspace.scrollTop;
+    const studentListScrollTop = studentList.scrollTop;
+    const detail = await this.request('admin_exam_submission_get', { submissionId: targetId });
+    const index = this.submissions.findIndex(item => item.id === targetId);
+    if (index < 0) return;
+    this.submissions[index] = detail;
+    this.submissions = this.sortSubmissions();
+    this.studentIndex = selectedId == null ? -1 : this.submissions.findIndex(item => item.id === selectedId);
+    this.renderGrading();
+    requestAnimationFrame(() => {
+      workspace.scrollTop = workspaceScrollTop;
+      studentList.scrollTop = studentListScrollTop;
+    });
   }
 
   findPart(partId) {
@@ -1128,12 +1229,18 @@ class ExamAdmin {
     }
     const results = submission.grading.partResults.filter(result => mode !== 'part' || !selectedPart || result.partId === selectedPart);
     const selected = mode === 'part' && selectedPart ? this.findPart(selectedPart) : null;
+    const automaticallyVisible = this.paper.resultPolicy === 'immediate'
+      || (this.paper.resultPolicy === 'after_graded' && submission.gradingStatus === 'completed');
+    const policyControlsVisibility = this.paper.resultPolicy !== 'manual';
+    const visibilityLabel = automaticallyVisible
+      ? '已按试卷规则自动向学生显示'
+      : policyControlsVisibility ? '该答卷批改完成后将自动显示' : '向学生发布当前结果';
     const formalCount = this.submissions.filter(item => !item.preview).length;
     const bulkActions = selected?.part.type === 'programming' ? `<div class="grading-bulk-actions">
       <div><strong>批量处理本题 · ${this.escape(selected.part.problemId)}</strong><span>面向 ${formalCount} 名正式提交学生；重新判题将依次进入队列</span></div>
       <div class="grading-bulk-buttons"><button type="button" class="admin-button secondary" data-bulk-rejudge-programming="${this.escape(selected.part.problemId)}">全部同学重新判题</button><button type="button" class="admin-button secondary" data-bulk-request-programming-resubmit="${this.escape(selected.part.problemId)}">全部同学需重新提交</button></div>
     </div>` : '';
-    workspace.innerHTML = bulkActions + `<div class="grading-score-summary"><strong>${submission.totalScore} / ${this.paper.totalScore} 分</strong><span>已批改 ${submission.gradedCount}/${submission.totalParts}</span><label><input type="checkbox" data-release-result ${submission.released ? 'checked' : ''}> 向学生发布当前结果</label></div>` + results.map(result => {
+    workspace.innerHTML = bulkActions + `<div class="grading-score-summary"><strong>${submission.totalScore} / ${this.paper.totalScore} 分</strong><span>已批改 ${submission.gradedCount}/${submission.totalParts}</span><label><input type="checkbox" data-release-result ${submission.released || automaticallyVisible ? 'checked' : ''} ${policyControlsVisibility ? 'disabled' : ''}> ${visibilityLabel}</label></div>` + results.map(result => {
       const found = this.findPart(result.partId);
       if (!found) return '';
       const answer = submission.answers[result.partId];
@@ -1167,7 +1274,7 @@ class ExamAdmin {
         ${result.judge ? `<p class="grading-judge">编程测试：${result.judge.passedTests}/${result.judge.totalTests} · ${result.judge.totalTime}ms</p>` : ''}
         ${result.type === 'programming' && !submission.preview ? `<div class="grading-programming-actions"><button type="button" class="admin-button secondary" data-rejudge-programming="${this.escape(found.part.problemId)}">重新判题</button><button type="button" class="admin-button secondary" data-request-programming-resubmit="${this.escape(found.part.problemId)}">要求学生重新提交</button></div>` : ''}
         ${aiPanel}
-        <div class="grading-form"><label class="form-field"><span>人工评分</span><input class="admin-input" data-grade-score type="number" min="0" max="${this.escape(result.maxScore)}" step="0.5" value="${this.escape(result.manualScore || 0)}"></label><label class="form-field"><span>批注</span><input class="admin-input" data-grade-feedback maxlength="3000" value="${this.escape(result.feedback || '')}" placeholder="可选"></label>${!submission.preview ? `<button type="button" class="admin-button secondary" data-claude-grade>${aiSuggestion || result.status !== 'pending' ? 'Claude 重新评分' : 'Claude 评分'}</button>` : ''}<button type="button" class="admin-button primary" data-save-grade>保存评分</button></div>
+        <div class="grading-form"><label class="form-field"><span>人工评分</span><input class="admin-input" data-grade-score type="number" min="0" max="${this.escape(result.maxScore)}" step="0.5" value="${this.escape(result.manualScore || 0)}"></label><label class="form-field"><span>批注</span><input class="admin-input" data-grade-feedback maxlength="3000" value="${this.escape(result.feedback || '')}" placeholder="可选"></label>${['fill_blank', 'short_answer'].includes(result.type) && !submission.preview ? `<button type="button" class="admin-button secondary" data-claude-grade>${aiSuggestion || result.status !== 'pending' ? 'Claude 重新评分' : 'Claude 评分'}</button>` : ''}<button type="button" class="admin-button primary" data-save-grade>保存评分</button></div>
       </section>`;
     }).join('');
   }
@@ -1212,7 +1319,7 @@ class ExamAdmin {
         this.admin.toast(imported.autoAdopted
           ? 'Claude 评分完成，已自动采用高置信度分数并保留草稿'
           : 'Claude 评分完成，已生成新草稿；原有人工分数未被覆盖');
-        await this.loadGrading(this.paper.id, { preserveSelection: true });
+        await this.refreshSelectedSubmission(submission.id);
       } catch (error) {
         const detail = error.name === 'AbortError' ? '本机批改超过10分钟' : error.message;
         this.admin.toast(`Claude 评分失败：${detail}`);
@@ -1242,7 +1349,7 @@ class ExamAdmin {
         });
         if (!result.adopted) throw new Error(result.protected ? '该题已经人工保存，Claude 草稿不能覆盖' : '这条草稿已经不存在');
         this.admin.toast(includeFeedback ? '已采纳 Claude 分数和评价，草稿仍保留' : '已采纳 Claude 分数，草稿仍保留');
-        await this.loadGrading(this.paper.id, { preserveSelection: true });
+        await this.refreshSelectedSubmission(submission.id);
       } catch (error) {
         this.admin.toast(`采纳失败：${error.message}`);
       } finally {
@@ -1263,7 +1370,7 @@ class ExamAdmin {
           partId: card.dataset.gradePart,
         });
         this.admin.toast(result.deleted ? 'Claude 草稿已删除，正式评分保持不变' : '草稿已经不存在');
-        await this.loadGrading(this.paper.id, { preserveSelection: true });
+        await this.refreshSelectedSubmission(submission.id);
       } catch (error) {
         this.admin.toast(`删除失败：${error.message}`);
       } finally {
@@ -1344,6 +1451,7 @@ class ExamAdmin {
       submission.released = result.released;
       this.admin.toast(save ? '评分已保存' : '成绩发布状态已更新');
       this.gradingDirty = false;
+      this.sortSubmissionsPreservingSelection();
       this.renderGrading();
     } catch (error) {
       this.admin.toast(`保存失败：${error.message}`);

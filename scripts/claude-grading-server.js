@@ -13,7 +13,12 @@ const ALLOWED_ORIGIN = 'https://jc-oj.online';
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
 const MAX_RESULT_BYTES = 2 * 1024 * 1024;
 const GRADING_TIMEOUT_MS = 20 * 60 * 1000;
-let activeJob = null;
+const MAX_CONCURRENT_SINGLE_JOBS = 3;
+const MAX_QUEUED_JOBS = 50;
+const activeJobs = new Map();
+const queuedJobs = [];
+let nextJobId = 1;
+let batchJobActive = false;
 
 function responseHeaders(origin = '') {
   return {
@@ -39,9 +44,7 @@ function validPackage(payload) {
       || !payload.partId || !Array.isArray(payload.groups) || payload.groups.length < 1 || payload.groups.length > 100) return false;
   let submissionCount = 0;
   for (const group of payload.groups) {
-    const allowedPart = payload.forceRegrade === true
-      ? ['single_choice', 'multiple_choice', 'fill_blank', 'short_answer', 'programming'].includes(group?.part?.type)
-      : ['fill_blank', 'short_answer'].includes(group?.part?.type);
+    const allowedPart = ['fill_blank', 'short_answer'].includes(group?.part?.type);
     if (!group || !group.question || !group.part || !Array.isArray(group.submissions)
         || !allowedPart
         || String(group.question.description || '').length > 20000
@@ -78,7 +81,7 @@ function readRequestBody(request) {
   });
 }
 
-function runClaude(payload) {
+function runClaude(payload, onChild) {
   return new Promise((resolve, reject) => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-oj-claude-'));
     const inputPath = path.join(temporaryDirectory, 'input.json');
@@ -93,7 +96,7 @@ function runClaude(payload) {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    activeJob = child;
+    onChild(child);
     let stdout = '';
     let stderr = '';
     let outputTooLarge = false;
@@ -111,13 +114,11 @@ function runClaude(payload) {
     const timeout = setTimeout(() => child.kill(), GRADING_TIMEOUT_MS);
     child.on('error', error => {
       clearTimeout(timeout);
-      activeJob = null;
       fs.rmSync(temporaryDirectory, { recursive: true, force: true });
       reject(error);
     });
     child.on('close', code => {
       clearTimeout(timeout);
-      activeJob = null;
       try {
         if (outputTooLarge) throw new Error('Claude 输出超过安全限制');
         if (code !== 0) throw new Error((stderr || stdout || `批改进程退出码 ${code}`).trim());
@@ -137,6 +138,77 @@ function runClaude(payload) {
   });
 }
 
+function isSingleRegrade(payload) {
+  return payload.forceRegrade === true
+    && Number(payload.submissionId) > 0
+    && payload.groups.reduce((total, group) => total + group.submissions.length, 0) === 1;
+}
+
+function drainJobQueue() {
+  if (batchJobActive || !queuedJobs.length) return;
+  if (activeJobs.size > 0 && queuedJobs[0].kind === 'batch') return;
+  if (activeJobs.size === 0 && queuedJobs[0].kind === 'batch') {
+    startQueuedJob(queuedJobs.shift());
+    return;
+  }
+  while (activeJobs.size < MAX_CONCURRENT_SINGLE_JOBS
+      && queuedJobs.length && queuedJobs[0].kind === 'single') {
+    startQueuedJob(queuedJobs.shift());
+  }
+}
+
+function startQueuedJob(job) {
+  if (job.cancelled) {
+    drainJobQueue();
+    return;
+  }
+  if (job.kind === 'batch') batchJobActive = true;
+  const work = runClaude(job.payload, child => {
+    job.child = child;
+    activeJobs.set(job.id, job);
+  });
+  work.then(job.resolve, job.reject).finally(() => {
+    activeJobs.delete(job.id);
+    if (job.kind === 'batch') batchJobActive = false;
+    drainJobQueue();
+  });
+}
+
+function enqueueClaude(payload) {
+  if (queuedJobs.length >= MAX_QUEUED_JOBS) {
+    const error = new Error('Claude 批改队列已满，请稍后重试');
+    error.status = 429;
+    return { job: null, promise: Promise.reject(error) };
+  }
+  const job = {
+    id: nextJobId++,
+    kind: isSingleRegrade(payload) ? 'single' : 'batch',
+    payload,
+    child: null,
+    cancelled: false,
+  };
+  const promise = new Promise((resolve, reject) => {
+    job.resolve = resolve;
+    job.reject = reject;
+  });
+  queuedJobs.push(job);
+  drainJobQueue();
+  return { job, promise };
+}
+
+function cancelClaudeJob(job) {
+  if (!job || job.cancelled) return;
+  job.cancelled = true;
+  const queuedIndex = queuedJobs.indexOf(job);
+  if (queuedIndex >= 0) {
+    queuedJobs.splice(queuedIndex, 1);
+    job.reject(new Error('浏览器已取消批改请求'));
+    drainJobQueue();
+  } else if (job.child) {
+    job.child.kill();
+  }
+}
+
 const server = http.createServer(async (request, response) => {
   const origin = String(request.headers.origin || '');
   if (origin !== ALLOWED_ORIGIN) {
@@ -149,7 +221,13 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   if (request.method === 'GET' && request.url === '/health') {
-    sendJson(response, 200, { ok: true, busy: Boolean(activeJob) }, origin);
+    sendJson(response, 200, {
+      ok: true,
+      busy: activeJobs.size > 0 || queuedJobs.length > 0,
+      activeJobs: activeJobs.size,
+      queuedJobs: queuedJobs.length,
+      concurrency: MAX_CONCURRENT_SINGLE_JOBS,
+    }, origin);
     return;
   }
   if (request.method !== 'POST' || request.url !== '/grade') {
@@ -158,10 +236,6 @@ const server = http.createServer(async (request, response) => {
   }
   if (request.headers['x-jc-oj-grading'] !== '1') {
     sendJson(response, 400, { error: '缺少批改请求标记' }, origin);
-    return;
-  }
-  if (activeJob) {
-    sendJson(response, 409, { error: 'Claude 正在批改另一批答案，请稍后重试' }, origin);
     return;
   }
   const declaredLength = Number(request.headers['content-length']);
@@ -175,13 +249,16 @@ const server = http.createServer(async (request, response) => {
       sendJson(response, 400, { error: '批改包格式或数量不正确' }, origin);
       return;
     }
+    const scheduled = enqueueClaude(payload);
     response.once('close', () => {
-      if (!response.writableEnded && activeJob) activeJob.kill();
+      if (!response.writableEnded) cancelClaudeJob(scheduled.job);
     });
-    const result = await runClaude(payload);
+    const result = await scheduled.promise;
     sendJson(response, 200, result, origin);
   } catch (error) {
-    if (!response.headersSent) sendJson(response, 500, { error: String(error.message || error).slice(0, 1000) }, origin);
+    if (!response.headersSent && !response.destroyed && !response.writableEnded) {
+      sendJson(response, Number(error.status) || 500, { error: String(error.message || error).slice(0, 1000) }, origin);
+    }
   }
 });
 

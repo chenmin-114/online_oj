@@ -291,6 +291,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamAiDelete(body, env);
+      } else if (body.type === 'admin_exam_part_clear_grading') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamPartClearGrading(body, env);
       } else if (body.type === 'admin_exam_part_bulk_action') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -2317,9 +2321,7 @@ async function handleAdminExamAiExport(body, env) {
     const question = structure.questions?.find(item => item.parts?.some(part => part.id === partId));
     const part = question?.parts?.find(item => item.id === partId);
     const partResult = grading.partResults?.find(item => item.partId === partId);
-    const aiEligibleType = forceRegrade
-      ? EXAM_PART_TYPES.has(part?.type)
-      : ['fill_blank', 'short_answer'].includes(part?.type);
+    const aiEligibleType = ['fill_blank', 'short_answer'].includes(part?.type);
     if (!part || !partResult || !aiEligibleType
         || (!forceRegrade && (partResult.status !== 'pending' || partResult.aiSuggestion))) continue;
     const version = Number(row.exam_version);
@@ -2420,9 +2422,7 @@ async function handleAdminExamAiImport(body, env) {
     const result = grading.partResults?.find(item => item.partId === partId);
     const score = Number(suggestion?.score);
     const confidence = Number(suggestion?.confidence);
-    const aiEligibleType = forceRegrade
-      ? EXAM_PART_TYPES.has(part?.type)
-      : ['fill_blank', 'short_answer'].includes(part?.type);
+    const aiEligibleType = ['fill_blank', 'short_answer'].includes(part?.type);
     if (!part || !result || !aiEligibleType
         || (!forceRegrade && result.status !== 'pending')
         || !Number.isFinite(score) || score < 0 || score > Number(part.points)
@@ -2650,6 +2650,72 @@ async function handleAdminExamAiDelete(body, env) {
     await env.OJ_DB.batch(statements.slice(index, index + 80));
   }
   return jsonResponse({ success: true, deleted, submissionsUpdated: statements.length, skipped });
+}
+
+async function handleAdminExamPartClearGrading(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  const partId = normalizeExamText(body.partId, 50);
+  const action = body.action === 'score' ? 'score' : body.action === 'feedback' ? 'feedback' : '';
+  if (!examId || !partId) return jsonResponse({ error: '请选择需要处理的小题' }, 400);
+  if (!action) return jsonResponse({ error: '清除操作类型不正确' }, 400);
+  const rows = await env.OJ_DB.prepare(`
+    SELECT s.id, s.exam_version, s.grading_json, s.updated_at, v.structure_json
+    FROM exam_submissions s
+    JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+    WHERE s.exam_id = ?1 AND s.is_final = 1 AND s.is_preview = 0
+    ORDER BY s.id ASC
+  `).bind(examId).all();
+  const statements = [];
+  let affected = 0;
+  let skipped = 0;
+  const now = Date.now();
+  for (const row of rows.results || []) {
+    let structure;
+    let grading;
+    try {
+      structure = JSON.parse(row.structure_json);
+      grading = JSON.parse(row.grading_json);
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    const part = structure.questions?.flatMap(question => question.parts || []).find(item => item.id === partId);
+    const result = grading.partResults?.find(item => item.partId === partId);
+    if (!part || !result || !['fill_blank', 'short_answer'].includes(part.type)) {
+      skipped += 1;
+      continue;
+    }
+    if (action === 'feedback') {
+      if (!result.feedback) continue;
+      result.feedback = '';
+    } else {
+      result.manualScore = 0;
+      result.autoScore = 0;
+      result.feedback = '';
+      result.status = 'pending';
+      delete result.gradingSource;
+      delete result.manualEditedAt;
+      delete result.aiAdopted;
+    }
+    const paper = { ...structure, id: examId, version: Number(row.exam_version) };
+    const scores = calculateExamScores(paper, grading.partResults);
+    statements.push(env.OJ_DB.prepare(`
+      UPDATE exam_submissions
+      SET grading_json = ?2, auto_score = ?3, manual_score = ?4, total_score = ?5,
+          graded_count = ?6, total_parts = ?7, grading_status = ?8, updated_at = ?9
+      WHERE id = ?1 AND is_final = 1 AND is_preview = 0 AND updated_at = ?10
+    `).bind(
+      Number(row.id), JSON.stringify(grading), scores.autoScore, scores.manualScore,
+      scores.totalScore, scores.gradedCount, scores.totalParts, scores.gradingStatus,
+      now, Number(row.updated_at),
+    ));
+    affected += 1;
+  }
+  for (let index = 0; index < statements.length; index += 80) {
+    await env.OJ_DB.batch(statements.slice(index, index + 80));
+  }
+  return jsonResponse({ success: true, action, affected, skipped });
 }
 
 async function handleAdminExamPartBulkAction(body, env) {

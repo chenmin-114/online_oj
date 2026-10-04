@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20261002-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261004-01">
+  <link rel="stylesheet" href="css/admin.css?v=20261004-02">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -278,7 +278,7 @@
                 <label class="form-field"><span>发布状态</span><select id="exam-status" class="admin-input"><option value="draft">草稿</option><option value="published">发布给学生</option></select></label>
               </div>
               <label class="form-field"><span>试卷说明</span><textarea id="exam-description" class="admin-input" rows="4" maxlength="10000" placeholder="支持 Markdown，可填写考试说明和注意事项"></textarea></label>
-              <label class="form-field"><span>学生查看批改结果</span><select id="exam-result-policy" class="admin-input"><option value="immediate">提交后立即显示当前批改结果</option><option value="after_graded" selected>全部批改完成后显示</option><option value="manual">管理员手动发布后显示</option></select></label>
+              <label class="form-field"><span>学生查看批改结果</span><select id="exam-result-policy" class="admin-input"><option value="immediate">提交后立即显示当前批改结果</option><option value="after_graded" selected>该学生整份答卷批改完成后显示</option><option value="manual">管理员手动发布后显示</option></select></label>
               <section class="schedule-editor">
                 <div class="card-heading"><div><strong>定时答题（可选）</strong><p>支持多个时间段；截止后立即锁定，学生端 30 秒后自动提交，后台保留 60 秒上传缓冲</p></div><label class="schedule-enable"><input id="exam-schedule-enabled" type="checkbox"> 启用定时</label></div>
                 <div id="exam-schedule-settings" hidden><div id="exam-schedule-windows" class="schedule-window-list"></div><div class="schedule-actions"><button id="add-exam-schedule-window" type="button" class="admin-button secondary">＋ 添加时间段</button><label class="form-field"><span>最后时段结束后</span><select id="exam-after-end-view" class="admin-input"><option value="none">禁止观看</option><option value="all">所有登录用户可观看</option><option value="authorized">仅套卷准入账号可观看</option></select></label></div></div>
@@ -313,6 +313,11 @@
                 <div class="grading-action-menu"><button id="adopt-all-ai-feedback" type="button">同时采纳分数和评价</button></div>
               </div>
               <button id="delete-all-ai" type="button" class="admin-button danger" hidden>删除所有草稿</button>
+              <div id="clear-part-grading-actions" class="grading-split-action" hidden>
+                <button id="clear-part-score" type="button" class="admin-button danger">整题删除评分</button>
+                <button id="clear-part-grading-toggle" type="button" class="admin-button danger grading-menu-toggle" aria-label="更多清除方式" aria-expanded="false">▾</button>
+                <div class="grading-action-menu"><button id="clear-part-feedback" type="button">整题删除评价</button></div>
+              </div>
               <button id="export-ai-grading" type="button" class="admin-button secondary" hidden>导出 Claude 批改包</button>
               <label id="import-ai-grading-label" class="admin-button secondary" hidden>导入 Claude 建议<input id="import-ai-grading-file" type="file" accept="application/json,.json" hidden></label>
               <a id="download-claude-helper" class="admin-button secondary" href="downloads/claude-grading-helper.zip" download>下载本机助手</a>
@@ -323,7 +328,7 @@
           </article>
           <div class="exam-grading-layout">
             <article class="admin-card">
-              <div class="card-heading"><div><h3>学生提交</h3><p id="grading-summary">请选择试卷</p></div></div>
+              <div class="card-heading"><div><h3>学生提交</h3><p id="grading-summary">请选择试卷</p></div><select id="grading-student-sort" class="admin-input compact" aria-label="学生排序"><option value="submitted_asc">提交时间（早到晚）</option><option value="submitted_desc">提交时间（晚到早）</option><option value="username">姓名 / 账号</option><option value="score_desc">成绩（高到低）</option><option value="score_asc">成绩（低到高）</option></select></div>
               <div id="grading-student-list" class="grading-student-list"></div>
             </article>
             <article class="admin-card">
@@ -418,6 +423,6 @@
   <script src="js/languages.js?v=20260926-01"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
   <script src="js/admin.js?v=20261002-02"></script>
-  <script src="js/admin-exams.js?v=20261004-02"></script>
+  <script src="js/admin-exams.js?v=20261004-03"></script>
 </body>
 </html>
