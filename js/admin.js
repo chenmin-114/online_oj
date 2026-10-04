@@ -18,6 +18,8 @@ class OJAdmin {
     this.analytics = { daily: [], problems: {} };
     this.filteredSubmissions = [];
     this.problemImages = [];
+    this.problemCodeTemplates = { c: '', cpp: '', python: '' };
+    this.problemTemplateLanguage = 'c';
     this.editingProblem = null;
     this.problemEditorContext = null;
     this.problemEditorHome = null;
@@ -218,6 +220,27 @@ class OJAdmin {
     });
     document.getElementById('problem-python-judge-mode').addEventListener('change', () => {
       this.updatePythonJudgeModeFields();
+      this.refreshProblemCodeTemplateDefault();
+    });
+    document.getElementById('problem-python-function-signature').addEventListener('input', () => this.refreshProblemCodeTemplateDefault());
+    document.getElementById('problem-code-template').addEventListener('input', event => {
+      this.problemCodeTemplates[this.problemTemplateLanguage] = event.target.value;
+    });
+    document.getElementById('problem-code-template').addEventListener('keydown', event => {
+      if (event.key !== 'Tab') return;
+      event.preventDefault();
+      const textarea = event.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      textarea.setRangeText('    ', start, end, 'end');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.querySelectorAll('[data-template-language]').forEach(button => {
+      button.addEventListener('click', () => this.selectProblemTemplateLanguage(button.dataset.templateLanguage));
+    });
+    document.getElementById('reset-problem-code-template').addEventListener('click', () => {
+      this.problemCodeTemplates[this.problemTemplateLanguage] = '';
+      this.renderProblemCodeTemplate();
     });
   }
 
@@ -987,6 +1010,9 @@ class OJAdmin {
     window.AdminSchedule.set('problem', { enabled: false, windows: [], afterEndView: 'none' });
     document.getElementById('problem-import-status').textContent = '可粘贴完整题面或单独的某个部分；只更新本次识别到的内容，样例和测试点会追加';
     this.clearProblemImages();
+    this.problemCodeTemplates = { c: '', cpp: '', python: '' };
+    this.problemTemplateLanguage = 'c';
+    this.renderProblemCodeTemplate();
     this.addSample();
     this.addTestCase();
     this.updatePythonJudgeModeFields();
@@ -999,6 +1025,43 @@ class OJAdmin {
     const input = document.getElementById('problem-python-function-signature');
     field.hidden = !functionMode;
     input.required = functionMode;
+  }
+
+  systemProblemCodeTemplate(languageId) {
+    const functionMode = document.getElementById('problem-python-judge-mode')?.value === 'function';
+    const signature = document.getElementById('problem-python-function-signature')?.value.trim();
+    const problem = functionMode && signature
+      ? { pythonJudgeMode: 'function', pythonFunction: { signature } }
+      : { pythonJudgeMode: functionMode ? 'function' : 'standard' };
+    return typeof window.getProblemLanguageTemplate === 'function'
+      ? window.getProblemLanguageTemplate(languageId, problem)
+      : (window.LANGUAGES?.find(language => language.id === languageId)?.template || '');
+  }
+
+  renderProblemCodeTemplate() {
+    const languageId = this.problemTemplateLanguage;
+    const names = { c: 'C', cpp: 'C++', python: 'Python' };
+    const textarea = document.getElementById('problem-code-template');
+    if (!textarea) return;
+    textarea.value = this.problemCodeTemplates[languageId] || this.systemProblemCodeTemplate(languageId);
+    textarea.dataset.usingSystemDefault = this.problemCodeTemplates[languageId] ? 'false' : 'true';
+    document.getElementById('problem-template-language').textContent = `${names[languageId]} ▾`;
+    document.querySelectorAll('[data-template-language]').forEach(button => {
+      button.classList.toggle('active', button.dataset.templateLanguage === languageId);
+    });
+  }
+
+  selectProblemTemplateLanguage(languageId) {
+    if (!['c', 'cpp', 'python'].includes(languageId)) return;
+    this.problemTemplateLanguage = languageId;
+    this.renderProblemCodeTemplate();
+    document.getElementById('problem-code-template').focus();
+  }
+
+  refreshProblemCodeTemplateDefault() {
+    if (this.problemTemplateLanguage === 'python' && !this.problemCodeTemplates.python) {
+      this.renderProblemCodeTemplate();
+    }
   }
 
   startNewProblem() {
@@ -1044,8 +1107,15 @@ class OJAdmin {
       document.getElementById('problem-hints').value = Array.isArray(problem.hints) ? problem.hints.join('\n') : '';
       document.getElementById('problem-python-judge-mode').value = problem.pythonJudgeMode === 'function' ? 'function' : 'standard';
       document.getElementById('problem-python-function-signature').value = problem.pythonFunction?.signature || '';
+      this.problemCodeTemplates = {
+        c: typeof problem.codeTemplates?.c === 'string' ? problem.codeTemplates.c : '',
+        cpp: typeof problem.codeTemplates?.cpp === 'string' ? problem.codeTemplates.cpp : '',
+        python: typeof problem.codeTemplates?.python === 'string' ? problem.codeTemplates.python : '',
+      };
+      this.problemTemplateLanguage = 'c';
       window.AdminSchedule.set('problem', problem.availability || { enabled: false, windows: [], afterEndView: 'none' });
       this.updatePythonJudgeModeFields();
+      this.renderProblemCodeTemplate();
 
       const sampleEditor = document.getElementById('sample-editor');
       sampleEditor.innerHTML = '';
@@ -1658,6 +1728,8 @@ class OJAdmin {
       hints: document.getElementById('problem-hints').value.split('\n').map(item => item.trim()).filter(Boolean),
       pythonJudgeMode: document.getElementById('problem-python-judge-mode').value,
       pythonFunctionSignature: document.getElementById('problem-python-function-signature').value,
+      codeTemplates: Object.fromEntries(Object.entries(this.problemCodeTemplates)
+        .filter(([, template]) => typeof template === 'string' && template.trim())),
       availability: window.AdminSchedule.get('problem'),
     };
 

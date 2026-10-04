@@ -226,6 +226,17 @@
 .form-field .admin-input { width: 100%; min-width: 0; padding: 9px 11px; resize: vertical; }
 .form-field[hidden] { display: none; }
 .code-input { font-family: 'Consolas', 'Monaco', monospace !important; }
+.problem-code-template-editor { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--admin-border); border-radius: 10px; background: rgba(255,255,255,.018); }
+.problem-code-template-heading, .problem-code-template-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.problem-code-template-heading p { margin: 4px 0 0; color: var(--admin-muted); font-size: 12px; }
+.problem-code-template-footer small { color: var(--admin-muted); }
+.problem-code-template-editor textarea { min-height: 190px; resize: vertical; line-height: 1.55; tab-size: 4; }
+.template-language-menu { position: relative; flex: 0 0 auto; }
+.template-language-menu > button { min-width: 88px; }
+.template-language-options { position: absolute; z-index: 20; top: calc(100% + 5px); right: 0; display: grid; min-width: 110px; padding: 5px; border: 1px solid var(--admin-border); border-radius: 8px; background: var(--admin-panel-2); box-shadow: 0 12px 30px rgba(0,0,0,.28); opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity .15s ease, transform .15s ease, visibility .15s; }
+.template-language-menu:hover .template-language-options, .template-language-menu:focus-within .template-language-options { opacity: 1; visibility: visible; transform: translateY(0); }
+.template-language-options button { border: 0; border-radius: 6px; padding: 9px 12px; color: var(--admin-text); background: transparent; text-align: left; cursor: pointer; }
+.template-language-options button:hover, .template-language-options button:focus-visible, .template-language-options button.active { background: rgba(48,132,255,.14); color: #78b7ff; outline: none; }
 .problem-image-uploader { padding: 14px; border: 1px dashed #354565; border-radius: 10px; background: rgba(91,140,255,.035); }
 .problem-image-upload-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .problem-image-upload-heading strong { color: var(--admin-text); font-size: 13px; }
@@ -526,3 +537,8 @@ input.admin-input { min-width: 240px; }
 .schedule-actions { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-top: 14px; }
 .schedule-actions .form-field { min-width: 290px; margin: 0; }
 @media (max-width: 760px) { .schedule-window-row { grid-template-columns: 1fr; } .schedule-window-arrow { display:none; } .schedule-actions { align-items: stretch; flex-direction: column; } }
+@media (max-width: 760px) {
+  .problem-code-template-heading, .problem-code-template-footer { align-items: stretch; flex-direction: column; }
+  .template-language-menu > button { width: 100%; }
+  .template-language-options { left: 0; right: 0; }
+}

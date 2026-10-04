@@ -4362,6 +4362,19 @@ function validateProblem(input, requestedFile) {
     if (functionValidation.error) return { error: functionValidation.error };
     pythonFunction = functionValidation.pythonFunction;
   }
+  const codeTemplates = {};
+  if (input.codeTemplates !== undefined) {
+    if (!input.codeTemplates || typeof input.codeTemplates !== 'object' || Array.isArray(input.codeTemplates)) {
+      return { error: '默认代码模板格式不正确' };
+    }
+    for (const languageId of ['c', 'cpp', 'python']) {
+      const template = input.codeTemplates[languageId];
+      if (template === undefined || template === null || template === '') continue;
+      if (typeof template !== 'string') return { error: `${languageId} 默认代码模板格式不正确` };
+      if (template.length > 30000) return { error: `${languageId} 默认代码模板不能超过 30000 个字符` };
+      if (template.trim()) codeTemplates[languageId] = template;
+    }
+  }
 
   const problem = {
     id,
@@ -4386,6 +4399,7 @@ function validateProblem(input, requestedFile) {
       : [],
     availability,
     pythonJudgeMode,
+    ...(Object.keys(codeTemplates).length ? { codeTemplates } : {}),
     ...(pythonFunction ? { pythonFunction } : {}),
   };
 

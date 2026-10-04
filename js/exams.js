@@ -355,7 +355,7 @@ class ExamUI {
 
   languageTemplate(language, part = null) {
     if (typeof window.getProblemLanguageTemplate === 'function') {
-      return window.getProblemLanguageTemplate(language, part || {});
+      return window.getProblemLanguageTemplate(language, part?.problem || part || {});
     }
     return window.LANGUAGES.find(item => item.id === language)?.template || '';
   }

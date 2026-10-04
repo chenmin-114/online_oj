@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20261002-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261004-02">
+  <link rel="stylesheet" href="css/admin.css?v=20261004-03">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -234,6 +234,21 @@
               <label class="form-field"><span>Python 判题模式</span><select id="problem-python-judge-mode" class="admin-input"><option value="standard">标准输入输出</option><option value="function">核心函数模式</option></select><small>核心函数模式会提供 Solution 方法模板，同时仍兼容普通 input()/print() 写法。</small></label>
               <label id="python-function-signature-field" class="form-field" hidden><span>Python 方法签名 *</span><input id="problem-python-function-signature" class="admin-input code-input" placeholder="hasCycle(self, head: ListNode) -> bool"><small>测试输入使用 JSON，多参数写成数组；bool 输出写 true/false，列表输出写 JSON。支持 int、float、str、bool、List、ListNode、TreeNode、Optional。</small></label>
             </div>
+            <section class="problem-code-template-editor">
+              <div class="problem-code-template-heading">
+                <div><strong>默认代码模板（可选）</strong><p>每种语言分别保存；学生已有代码不会被覆盖，主动重置代码时才使用最新模板</p></div>
+                <div class="template-language-menu">
+                  <button id="problem-template-language" type="button" class="admin-button secondary" aria-haspopup="menu" aria-expanded="false">C ▾</button>
+                  <div class="template-language-options" role="menu">
+                    <button type="button" role="menuitem" data-template-language="c">C</button>
+                    <button type="button" role="menuitem" data-template-language="cpp">C++</button>
+                    <button type="button" role="menuitem" data-template-language="python">Python</button>
+                  </div>
+                </div>
+              </div>
+              <textarea id="problem-code-template" class="admin-input code-input" rows="10" spellcheck="false" maxlength="30000" aria-label="当前语言默认代码模板"></textarea>
+              <div class="problem-code-template-footer"><small>留空或恢复系统默认时，不保存该语言的自定义模板。</small><button id="reset-problem-code-template" type="button" class="admin-button secondary">恢复当前语言系统默认</button></div>
+            </section>
             <div class="testcase-heading"><div><strong>输入输出样例</strong><p>学生可以看到全部样例</p></div><button id="add-sample" type="button" class="admin-button secondary">＋ 添加样例</button></div>
             <div id="sample-editor" class="sample-case-editor"></div>
             <label class="form-field"><span>样例解释</span><textarea id="problem-sample-explanation" class="admin-input" rows="5" placeholder="支持 Markdown；留空时学生端不会显示这个板块"></textarea></label>
@@ -432,9 +447,9 @@
   <script src="vendor/katex/katex.min.js?v=0.18.7"></script>
   <script src="vendor/katex/contrib/auto-render.min.js?v=0.18.7"></script>
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
-  <script src="js/languages.js?v=20260926-01"></script>
+  <script src="js/languages.js?v=20261004-02"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
-  <script src="js/admin.js?v=20261004-01"></script>
+  <script src="js/admin.js?v=20261004-02"></script>
   <script src="js/admin-exams.js?v=20261004-03"></script>
 </body>
 </html>

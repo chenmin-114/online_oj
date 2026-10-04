@@ -112,6 +112,8 @@ function getLanguageById(id) {
 
 function getProblemLanguageTemplate(languageId, problem) {
   const language = getLanguageById(languageId);
+  const customTemplate = problem?.codeTemplates?.[languageId];
+  if (typeof customTemplate === 'string' && customTemplate.trim()) return customTemplate;
   if (languageId !== 'python' || problem?.pythonJudgeMode !== 'function' || !problem.pythonFunction?.signature) {
     return language.template;
   }
