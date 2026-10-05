@@ -296,6 +296,9 @@ class App {
 
   _renderProblem() {
     const p = this.currentProblem;
+    document.getElementById('judge-result').innerHTML = '';
+    document.getElementById('judge-detail').innerHTML = '';
+    this._setJudgeDetailsExpanded(false);
     document.getElementById('problem-title').textContent = `${p.id}. ${p.title}`;
     const markdownFields = [
       ['problem-description', p.description],
@@ -843,6 +846,10 @@ class App {
       const button = document.getElementById('toggle-hints-btn');
       this._setHintsExpanded(button.getAttribute('aria-expanded') !== 'true');
     });
+    document.getElementById('toggle-judge-detail').addEventListener('click', () => {
+      const button = document.getElementById('toggle-judge-detail');
+      this._setJudgeDetailsExpanded(button.getAttribute('aria-expanded') !== 'true');
+    });
 
     window.addEventListener('beforeunload', () => {
       if (this.examUI?.programmingContext) {
@@ -1343,9 +1350,10 @@ class App {
 
   _initIoResizer() {
     const editorPanel = document.querySelector('.editor-panel');
+    const workspace = document.querySelector('.editor-workspace');
     const resizer = document.getElementById('io-resizer');
     const toggle = document.getElementById('toggle-io-panel');
-    if (!editorPanel || !resizer || !toggle) return;
+    if (!editorPanel || !workspace || !resizer || !toggle) return;
 
     const defaultHeight = 108;
     const collapseThreshold = 46;
@@ -1354,7 +1362,7 @@ class App {
     let startY = 0;
     let startHeight = defaultHeight;
 
-    const maximumHeight = () => Math.max(minimumExpandedHeight, Math.min(360, editorPanel.getBoundingClientRect().height * .55));
+    const maximumHeight = () => Math.max(minimumExpandedHeight, Math.min(360, workspace.getBoundingClientRect().height * .55));
     const setCollapsed = collapsed => {
       editorPanel.classList.toggle('io-collapsed', collapsed);
       document.getElementById('io-panel')?.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
@@ -1490,6 +1498,8 @@ class App {
     if (!this.confirmAdminImpersonationAction(`提交题目 ${this.currentProblem.id}`)) return;
 
     resultEl.innerHTML = '<span class="info">⏳ 正在进行服务端判题，请稍候...</span>';
+    document.getElementById('judge-detail').innerHTML = '';
+    this._setJudgeDetailsExpanded(false);
 
     try {
       if (this.adminProblemPreview) {
@@ -1535,6 +1545,17 @@ class App {
     } else if (event.type === 'saving') {
       resultEl.innerHTML = '<span class="info">⏳ 判题完成，正在保存结果...</span>';
     }
+  }
+
+  _setJudgeDetailsExpanded(expanded) {
+    const detail = document.getElementById('judge-detail');
+    const button = document.getElementById('toggle-judge-detail');
+    if (!detail || !button) return;
+    const hasDetails = Boolean(detail.children.length || detail.textContent.trim());
+    button.hidden = !hasDetails;
+    detail.hidden = hasDetails ? !expanded : false;
+    button.setAttribute('aria-expanded', expanded && hasDetails ? 'true' : 'false');
+    button.textContent = expanded && hasDetails ? '收起结果' : '展开结果';
   }
 
   async _loadResubmissionNotices() {
@@ -1708,6 +1729,7 @@ class App {
         ` : ''}
       </div>
     `).join('');
+    this._setJudgeDetailsExpanded(true);
   }
 
   async loadSubmissions(authRetried = false) {

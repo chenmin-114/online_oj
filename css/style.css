@@ -530,6 +530,11 @@ body.username-locked { overflow: hidden; }
 
 .editor-panel {
   --io-panel-height: 108px;
+  min-height: 0;
+}
+
+.editor-workspace {
+  height: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -709,7 +714,30 @@ body.username-locked { overflow: hidden; }
   margin-top: 0;
 }
 
-.result-panel:has(#judge-result:not(:empty), #judge-detail:not(:empty)) { padding-top: 8px; }
+.result-panel:has(#judge-result:not(:empty), #judge-detail:not(:empty)) { padding-top: 12px; }
+
+.judge-result-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.result-toggle-btn {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.result-toggle-btn:hover,
+.result-toggle-btn:focus-visible { border-color: var(--accent-primary); color: var(--text-primary); outline: none; }
+.result-toggle-btn[hidden],
+.judge-detail[hidden] { display: none; }
 
 .judge-detail {
   margin-top: 0;
@@ -923,7 +951,7 @@ body.username-locked { overflow: hidden; }
 
   .solve-resizer { display: none; }
 
-  .editor-panel { min-height: 620px; }
+  .editor-workspace { height: auto; min-height: 620px; }
 
   .problem-panel {
     max-height: 400px;

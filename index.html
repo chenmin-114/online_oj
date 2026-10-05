@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20261005-03">
+  <link rel="stylesheet" href="css/style.css?v=20261005-04">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
@@ -155,50 +155,55 @@
 
         <!-- 右侧：代码编辑器 -->
         <div class="editor-panel">
-          <div class="toolbar">
-            <select id="language-select" class="select">
-              <option value="c">C</option>
-              <option value="cpp">C++</option>
-              <option value="python">Python 3</option>
-              <option value="java">Java</option>
-              <option value="javascript">JavaScript</option>
-              <option value="go">Go</option>
-              <option value="rust">Rust</option>
-            </select>
-            <div class="font-size-control" aria-label="代码字体大小">
-              <span class="font-size-label">字体大小：</span>
-              <button id="font-size-decrease" type="button" class="btn-small" title="缩小代码字体">A−</button>
-              <span id="font-size-value" aria-live="polite">14px</span>
-              <button id="font-size-increase" type="button" class="btn-small" title="放大代码字体">A+</button>
+          <div class="editor-workspace">
+            <div class="toolbar">
+              <select id="language-select" class="select">
+                <option value="c">C</option>
+                <option value="cpp">C++</option>
+                <option value="python">Python 3</option>
+                <option value="java">Java</option>
+                <option value="javascript">JavaScript</option>
+                <option value="go">Go</option>
+                <option value="rust">Rust</option>
+              </select>
+              <div class="font-size-control" aria-label="代码字体大小">
+                <span class="font-size-label">字体大小：</span>
+                <button id="font-size-decrease" type="button" class="btn-small" title="缩小代码字体">A−</button>
+                <span id="font-size-value" aria-live="polite">14px</span>
+                <button id="font-size-increase" type="button" class="btn-small" title="放大代码字体">A+</button>
+              </div>
+              <button id="reset-code-btn" type="button" class="btn-small" title="恢复当前语言的默认代码">重置代码</button>
+              <button id="run-btn" class="btn btn-secondary">▶ 运行</button>
+              <button id="submit-btn" class="btn btn-primary">🏁 提交</button>
             </div>
-            <button id="reset-code-btn" type="button" class="btn-small" title="恢复当前语言的默认代码">重置代码</button>
-            <button id="run-btn" class="btn btn-secondary">▶ 运行</button>
-            <button id="submit-btn" class="btn btn-primary">🏁 提交</button>
-          </div>
 
-          <div id="editor-container" class="editor"></div>
+            <div id="editor-container" class="editor"></div>
 
-          <div id="io-resizer" class="io-resizer" role="separator" aria-label="调整输入输出区域高度" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="360" aria-valuenow="108" tabindex="0" title="上下拖动调整输入输出区域高度">
-            <span class="io-resizer-grip" aria-hidden="true"><span>⋯</span><span>↕</span><span>⋯</span></span>
-            <button id="toggle-io-panel" type="button" class="io-toggle-btn" aria-expanded="true" aria-controls="io-panel">收起输入输出</button>
-          </div>
-
-          <div id="io-panel" class="io-panel">
-            <div class="io-section">
-              <label>
-                自定义输入
-                <button id="clear-input-btn" type="button" class="btn-small">清空输入</button>
-              </label>
-              <textarea id="custom-input" class="io-textarea" placeholder="在此输入测试数据..."></textarea>
+            <div id="io-resizer" class="io-resizer" role="separator" aria-label="调整代码和输入输出区域高度" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="360" aria-valuenow="108" tabindex="0" title="拖动调整代码区与输入输出区的高度">
+              <span class="io-resizer-grip" aria-hidden="true"><span>⋯</span><span>↕</span><span>⋯</span></span>
+              <button id="toggle-io-panel" type="button" class="io-toggle-btn" aria-expanded="true" aria-controls="io-panel">收起输入输出</button>
             </div>
-            <div class="io-section">
-              <label>输出结果</label>
-              <pre id="output" class="io-output"></pre>
+
+            <div id="io-panel" class="io-panel">
+              <div class="io-section">
+                <label>
+                  自定义输入
+                  <button id="clear-input-btn" type="button" class="btn-small">清空输入</button>
+                </label>
+                <textarea id="custom-input" class="io-textarea" placeholder="在此输入测试数据..."></textarea>
+              </div>
+              <div class="io-section">
+                <label>输出结果</label>
+                <pre id="output" class="io-output"></pre>
+              </div>
             </div>
           </div>
 
           <div class="result-panel">
-            <div id="judge-result"></div>
+            <div class="judge-result-heading">
+              <div id="judge-result"></div>
+              <button id="toggle-judge-detail" type="button" class="result-toggle-btn" aria-expanded="true" aria-controls="judge-detail" hidden>收起结果</button>
+            </div>
             <div id="judge-detail" class="judge-detail"></div>
           </div>
         </div>
@@ -242,6 +247,6 @@
   <script src="vendor/jszip/jszip.min.js?v=3.10.2"></script>
   <script src="js/exam-docx.js?v=20260929-01"></script>
   <script src="js/exams.js?v=20261004-02"></script>
-  <script src="js/app.js?v=20261005-01"></script>
+  <script src="js/app.js?v=20261005-02"></script>
 </body>
 </html>
