@@ -544,10 +544,14 @@ body.username-locked { overflow: hidden; }
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
+
+.toolbar .select { padding-block: 4px; }
+.toolbar .btn { padding-block: 6px; }
+.toolbar .btn-small { padding-block: 3px; }
 
 .font-size-control {
   display: flex;
