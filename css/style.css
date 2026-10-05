@@ -362,8 +362,8 @@ body.username-locked { overflow: hidden; }
   grid-template-columns: minmax(300px, var(--problem-pane-width, 1fr)) 20px minmax(380px, 1fr);
   gap: 0;
   margin-top: 20px;
-  height: calc(100vh - 96px);
-  height: calc(100dvh - 96px);
+  height: calc(100vh - 104px);
+  height: calc(100dvh - 104px);
 }
 
 .solve-resizer {
@@ -706,14 +706,18 @@ body.username-locked { overflow: hidden; }
 }
 
 .result-panel {
-  margin-top: 8px;
+  margin-top: 0;
 }
 
+.result-panel:has(#judge-result:not(:empty), #judge-detail:not(:empty)) { padding-top: 8px; }
+
 .judge-detail {
-  margin-top: 12px;
+  margin-top: 0;
   display: grid;
   gap: 8px;
 }
+
+.judge-detail:not(:empty) { margin-top: 12px; }
 
 .test-case {
   background: var(--bg-secondary);
