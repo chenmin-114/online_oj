@@ -1361,16 +1361,20 @@ class App {
     const defaultHeight = 108;
     const collapseThreshold = 46;
     const minimumExpandedHeight = 82;
-    let lastExpandedHeight = defaultHeight;
-    let ioCollapsed = false;
-    let resultPeekHeight = 0;
-    let startY = 0;
-    let startHeight = defaultHeight;
+    let lastExpandedIoHeight = defaultHeight;
+    let preferredLowerBudget = defaultHeight;
+    let lowerBudget = defaultHeight;
+    let resultPeekTarget = 0;
+    let ioCollapsedByButton = false;
+    let lastPointerY = 0;
 
     const maximumHeight = () => Math.max(minimumExpandedHeight, Math.min(360, workspace.getBoundingClientRect().height * .55));
-    const applyHeights = () => {
-      const effectiveIoHeight = Math.max(0, lastExpandedHeight - resultPeekHeight);
-      const actuallyCollapsed = ioCollapsed || effectiveIoHeight <= 0;
+    const applyAllocation = requestedBudget => {
+      const maximumBudget = resultPeekTarget + maximumHeight();
+      lowerBudget = Math.min(maximumBudget, Math.max(0, requestedBudget));
+      const resultPeekHeight = Math.min(resultPeekTarget, lowerBudget);
+      const effectiveIoHeight = ioCollapsedByButton ? 0 : Math.max(0, lowerBudget - resultPeekHeight);
+      const actuallyCollapsed = effectiveIoHeight <= 0;
       editorPanel.style.setProperty('--result-peek-height', `${resultPeekHeight}px`);
       editorPanel.style.setProperty('--io-panel-height', `${effectiveIoHeight}px`);
       editorPanel.classList.toggle('io-collapsed', actuallyCollapsed);
@@ -1378,68 +1382,107 @@ class App {
       toggle.textContent = actuallyCollapsed ? '展开输入输出' : '收起输入输出';
       toggle.setAttribute('aria-expanded', actuallyCollapsed ? 'false' : 'true');
       resizer.setAttribute('aria-valuenow', actuallyCollapsed ? '0' : String(Math.round(effectiveIoHeight)));
+      return { effectiveIoHeight, resultPeekHeight };
     };
-    const setCollapsed = collapsed => {
-      ioCollapsed = collapsed;
-      applyHeights();
-    };
-    const setHeight = height => {
-      const nextHeight = Math.min(maximumHeight(), Math.max(minimumExpandedHeight, height));
-      lastExpandedHeight = nextHeight + resultPeekHeight;
-      ioCollapsed = false;
-      applyHeights();
-    };
-    const resizeFromPointer = clientY => {
-      const requestedHeight = startHeight - (clientY - startY);
-      if (requestedHeight <= collapseThreshold) setCollapsed(true);
-      else setHeight(requestedHeight);
+    const resizeBy = deltaY => {
+      ioCollapsedByButton = false;
+      if (deltaY > 0) {
+        const currentPeek = Math.min(resultPeekTarget, lowerBudget);
+        const currentIoHeight = Math.max(0, lowerBudget - currentPeek);
+        if (currentIoHeight > 0) {
+          const untilCollapse = Math.max(0, currentIoHeight - collapseThreshold);
+          if (deltaY >= untilCollapse) {
+            const remainingDelta = deltaY - untilCollapse;
+            applyAllocation(Math.max(0, resultPeekTarget - remainingDelta));
+          } else {
+            applyAllocation(lowerBudget - deltaY);
+          }
+        } else {
+          applyAllocation(lowerBudget - deltaY);
+        }
+        return;
+      }
+      if (deltaY < 0) {
+        let remainingDelta = -deltaY;
+        const currentPeek = Math.min(resultPeekTarget, lowerBudget);
+        if (currentPeek < resultPeekTarget) {
+          const restoredPeek = Math.min(remainingDelta, resultPeekTarget - currentPeek);
+          applyAllocation(lowerBudget + restoredPeek);
+          remainingDelta -= restoredPeek;
+        }
+        if (remainingDelta > 0) {
+          const currentIoHeight = Math.max(0, lowerBudget - Math.min(resultPeekTarget, lowerBudget));
+          applyAllocation(lowerBudget + remainingDelta + (currentIoHeight <= 0 ? minimumExpandedHeight : 0));
+        }
+      }
     };
 
     resizer.addEventListener('pointerdown', event => {
       if (event.target.closest('button')) return;
-      startY = event.clientY;
-      startHeight = editorPanel.classList.contains('io-collapsed') ? 0 : Math.max(0, lastExpandedHeight - resultPeekHeight);
+      lastPointerY = event.clientY;
+      ioCollapsedByButton = false;
       resizer.setPointerCapture(event.pointerId);
       editorPanel.classList.add('is-io-resizing');
       event.preventDefault();
     });
     resizer.addEventListener('pointermove', event => {
-      if (resizer.hasPointerCapture(event.pointerId)) resizeFromPointer(event.clientY);
+      if (!resizer.hasPointerCapture(event.pointerId)) return;
+      const deltaY = event.clientY - lastPointerY;
+      lastPointerY = event.clientY;
+      resizeBy(deltaY);
     });
     const stopResizing = event => {
       if (resizer.hasPointerCapture(event.pointerId)) resizer.releasePointerCapture(event.pointerId);
       editorPanel.classList.remove('is-io-resizing');
+      preferredLowerBudget = lowerBudget;
+      const effectiveIoHeight = Math.max(0, lowerBudget - Math.min(resultPeekTarget, lowerBudget));
+      if (effectiveIoHeight > 0) lastExpandedIoHeight = effectiveIoHeight;
     };
     resizer.addEventListener('pointerup', stopResizing);
     resizer.addEventListener('pointercancel', stopResizing);
     resizer.addEventListener('keydown', event => {
       if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
-      const currentHeight = editorPanel.classList.contains('io-collapsed') ? 0 : Math.max(0, lastExpandedHeight - resultPeekHeight);
-      const nextHeight = currentHeight + (event.key === 'ArrowUp' ? 20 : -20);
-      if (nextHeight <= collapseThreshold) setCollapsed(true);
-      else setHeight(nextHeight);
+      resizeBy(event.key === 'ArrowUp' ? -20 : 20);
+      preferredLowerBudget = lowerBudget;
       event.preventDefault();
     });
     toggle.addEventListener('click', () => {
-      if (editorPanel.classList.contains('io-collapsed')) setHeight(Math.max(minimumExpandedHeight, lastExpandedHeight - resultPeekHeight));
-      else setCollapsed(true);
+      if (editorPanel.classList.contains('io-collapsed')) {
+        ioCollapsedByButton = false;
+        preferredLowerBudget = resultPeekTarget + Math.max(minimumExpandedHeight, lastExpandedIoHeight);
+        applyAllocation(preferredLowerBudget);
+      } else {
+        const effectiveIoHeight = Math.max(0, lowerBudget - Math.min(resultPeekTarget, lowerBudget));
+        if (effectiveIoHeight > 0) lastExpandedIoHeight = effectiveIoHeight;
+        ioCollapsedByButton = true;
+        preferredLowerBudget = 0;
+        applyAllocation(resultPeekTarget);
+      }
     });
 
     this._syncJudgeResultLayout = () => {
       const hasSummary = Boolean(result.textContent.trim());
       const hasDetails = Boolean(detail.children.length || detail.textContent.trim());
       const detailsExpanded = hasDetails && !detail.hidden && detailToggle.getAttribute('aria-expanded') === 'true';
-      resultPeekHeight = hasSummary ? (detailsExpanded ? 52 : 34) : 0;
-      applyHeights();
+      const nextTarget = hasSummary ? (detailsExpanded ? 52 : 34) : 0;
+      if (nextTarget === resultPeekTarget) {
+        applyAllocation(lowerBudget);
+        return;
+      }
+      resultPeekTarget = nextTarget;
+      if (ioCollapsedByButton) applyAllocation(resultPeekTarget);
+      else applyAllocation(Math.max(preferredLowerBudget, resultPeekTarget));
     };
     const resultObserver = new MutationObserver(() => this._syncJudgeResultLayout());
     resultObserver.observe(result, { childList: true, subtree: true, characterData: true });
     resultObserver.observe(detail, { childList: true, subtree: true, characterData: true });
 
     this._resetIoPanel = () => {
-      lastExpandedHeight = defaultHeight;
-      ioCollapsed = false;
-      applyHeights();
+      lastExpandedIoHeight = defaultHeight;
+      preferredLowerBudget = defaultHeight;
+      lowerBudget = defaultHeight;
+      ioCollapsedByButton = false;
+      applyAllocation(defaultHeight);
     };
     this._resetIoPanel();
   }
