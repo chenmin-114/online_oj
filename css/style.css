@@ -362,8 +362,8 @@ body.username-locked { overflow: hidden; }
   grid-template-columns: minmax(300px, var(--problem-pane-width, 1fr)) 20px minmax(380px, 1fr);
   gap: 0;
   margin-top: 20px;
-  height: calc(100vh - 128px);
-  height: calc(100dvh - 128px);
+  height: calc(100vh - 96px);
+  height: calc(100dvh - 96px);
 }
 
 .solve-resizer {
