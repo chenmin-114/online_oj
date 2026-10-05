@@ -541,7 +541,7 @@ class App {
     else if (state.state === 'ended') banner.textContent = '全部答题时间已经结束，当前仅可查看。';
     const locked = !this.adminProblemPreview && availability?.enabled && !state.canEdit;
     this.editor?.setReadOnly(locked);
-    ['language-select', 'reset-code-btn', 'run-btn', 'custom-input', 'clear-input-btn'].forEach(id => { const node = document.getElementById(id); if (node) node.disabled = locked; });
+    ['language-select', 'clear-code-btn', 'reset-code-btn', 'run-btn', 'custom-input', 'clear-input-btn'].forEach(id => { const node = document.getElementById(id); if (node) node.disabled = locked; });
     const submit = document.getElementById('submit-btn');
     submit.disabled = !this.adminProblemPreview && availability?.enabled && !state.canSubmit;
     submit.textContent = state.state === 'grace' ? '确认提交冻结答案' : '🏁 提交';
@@ -831,6 +831,15 @@ class App {
     });
     document.getElementById('font-size-increase').addEventListener('click', () => {
       this._setEditorFontSize(this.editorFontSize + 1);
+    });
+
+    document.getElementById('clear-code-btn').addEventListener('click', () => {
+      if (!this.editor?.getCode()) return;
+      if (!confirm('确定要清空当前代码吗？')) return;
+      const languageId = document.getElementById('language-select').value;
+      this.editor.setCode('');
+      if (!this.examUI?.programmingContext) this._saveCurrentCode('', languageId);
+      this.editor.focus();
     });
 
     document.getElementById('reset-code-btn').addEventListener('click', () => {
