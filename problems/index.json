@@ -168,5 +168,19 @@
     "file": "p019.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P020",
+    "title": "（冲刺题）图书馆的“人气高峰”",
+    "difficulty": "medium",
+    "status": "published",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "p020.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
