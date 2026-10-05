@@ -80,6 +80,7 @@ class App {
     this._bindTimeSyncEvents();
     this._updateFontSizeDisplay();
     this._initSolveResizer();
+    this._initIoResizer();
     this._renderGroupSwitcher();
 
     // 管理员套卷预览也初始化同一套编辑器，这样可以打开完整编程题并返回试卷。
@@ -334,6 +335,7 @@ class App {
 
     // 每次进入题目恢复默认的左右占比。
     document.querySelector('.solve-layout')?.style.removeProperty('--problem-pane-width');
+    this._resetIoPanel();
 
     // 优先恢复当前用户在这道题、这个语言下保存的代码。
     const defaultLanguage = p.pythonJudgeMode === 'function' || this.group === 'vision'
@@ -1337,6 +1339,77 @@ class App {
       resizeTo(layout.getBoundingClientRect().left + currentWidth + (event.key === 'ArrowLeft' ? -24 : 24));
       event.preventDefault();
     });
+  }
+
+  _initIoResizer() {
+    const editorPanel = document.querySelector('.editor-panel');
+    const resizer = document.getElementById('io-resizer');
+    const toggle = document.getElementById('toggle-io-panel');
+    if (!editorPanel || !resizer || !toggle) return;
+
+    const defaultHeight = 108;
+    const collapseThreshold = 46;
+    const minimumExpandedHeight = 82;
+    let lastExpandedHeight = defaultHeight;
+    let startY = 0;
+    let startHeight = defaultHeight;
+
+    const maximumHeight = () => Math.max(minimumExpandedHeight, Math.min(360, editorPanel.getBoundingClientRect().height * .55));
+    const setCollapsed = collapsed => {
+      editorPanel.classList.toggle('io-collapsed', collapsed);
+      document.getElementById('io-panel')?.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+      toggle.textContent = collapsed ? '展开输入输出' : '收起输入输出';
+      toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      resizer.setAttribute('aria-valuenow', collapsed ? '0' : String(Math.round(lastExpandedHeight)));
+    };
+    const setHeight = height => {
+      const nextHeight = Math.min(maximumHeight(), Math.max(minimumExpandedHeight, height));
+      lastExpandedHeight = nextHeight;
+      editorPanel.style.setProperty('--io-panel-height', `${nextHeight}px`);
+      setCollapsed(false);
+    };
+    const resizeFromPointer = clientY => {
+      const requestedHeight = startHeight - (clientY - startY);
+      if (requestedHeight <= collapseThreshold) setCollapsed(true);
+      else setHeight(requestedHeight);
+    };
+
+    resizer.addEventListener('pointerdown', event => {
+      if (event.target.closest('button')) return;
+      startY = event.clientY;
+      startHeight = editorPanel.classList.contains('io-collapsed') ? 0 : lastExpandedHeight;
+      resizer.setPointerCapture(event.pointerId);
+      editorPanel.classList.add('is-io-resizing');
+      event.preventDefault();
+    });
+    resizer.addEventListener('pointermove', event => {
+      if (resizer.hasPointerCapture(event.pointerId)) resizeFromPointer(event.clientY);
+    });
+    const stopResizing = event => {
+      if (resizer.hasPointerCapture(event.pointerId)) resizer.releasePointerCapture(event.pointerId);
+      editorPanel.classList.remove('is-io-resizing');
+    };
+    resizer.addEventListener('pointerup', stopResizing);
+    resizer.addEventListener('pointercancel', stopResizing);
+    resizer.addEventListener('keydown', event => {
+      if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      const currentHeight = editorPanel.classList.contains('io-collapsed') ? 0 : lastExpandedHeight;
+      const nextHeight = currentHeight + (event.key === 'ArrowUp' ? 20 : -20);
+      if (nextHeight <= collapseThreshold) setCollapsed(true);
+      else setHeight(nextHeight);
+      event.preventDefault();
+    });
+    toggle.addEventListener('click', () => {
+      if (editorPanel.classList.contains('io-collapsed')) setHeight(lastExpandedHeight || defaultHeight);
+      else setCollapsed(true);
+    });
+
+    this._resetIoPanel = () => {
+      lastExpandedHeight = defaultHeight;
+      editorPanel.style.setProperty('--io-panel-height', `${defaultHeight}px`);
+      setCollapsed(false);
+    };
+    this._resetIoPanel();
   }
 
   async runCode(authRetried = false) {

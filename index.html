@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20261004-01">
+  <link rel="stylesheet" href="css/style.css?v=20261005-01">
 </head>
 <body class="username-gate-pending">
   <section id="username-login" class="username-login" aria-labelledby="username-login-title" aria-modal="true" role="dialog" hidden>
@@ -178,7 +178,12 @@
 
           <div id="editor-container" class="editor"></div>
 
-          <div class="io-panel">
+          <div id="io-resizer" class="io-resizer" role="separator" aria-label="调整输入输出区域高度" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="360" aria-valuenow="108" tabindex="0" title="上下拖动调整输入输出区域高度">
+            <span class="io-resizer-grip" aria-hidden="true"><span>⋯</span><span>↕</span><span>⋯</span></span>
+            <button id="toggle-io-panel" type="button" class="io-toggle-btn" aria-expanded="true" aria-controls="io-panel">收起输入输出</button>
+          </div>
+
+          <div id="io-panel" class="io-panel">
             <div class="io-section">
               <label>
                 自定义输入
@@ -237,6 +242,6 @@
   <script src="vendor/jszip/jszip.min.js?v=3.10.2"></script>
   <script src="js/exam-docx.js?v=20260929-01"></script>
   <script src="js/exams.js?v=20261004-02"></script>
-  <script src="js/app.js?v=20261004-01"></script>
+  <script src="js/app.js?v=20261005-01"></script>
 </body>
 </html>
