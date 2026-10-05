@@ -1,0 +1,33 @@
+{
+  "id": "P020",
+  "title": "（冲刺题）图书馆的“人气高峰”",
+  "difficulty": "medium",
+  "status": "published",
+  "description": "图书馆门口有一台闸机，每位同学进出都要刷卡。刷卡记录里有**进馆时刻**和**离馆时刻**（都用一天内的分钟数表示，0 表示 0:00，1439 表示 23:59）。\n\n有一条约定：进馆时刻算在馆内，离馆时刻不算在馆内。比如一位同学 10:00 离馆、另一位 10:00 进馆，两人只是“擦肩而过”，馆内人数在那一刻**不会叠加**。\n\n**要求**\n\n给你 N 条刷卡记录，求这一天里**任意时刻馆内同时在场人数的最大值**。",
+  "inputFormat": "- 第一行一个整数 `N`\n- 接下来 `N` 行，每行两个整数 `in out`，表示进馆时刻和离馆时刻（保证 in < out）",
+  "outputFormat": "一个整数，表示馆内人数的最大值",
+  "constraints": "- 1 ≤ N ≤ 100\n- 0 ≤ in < out ≤ 1439",
+  "sampleExplanation": "**样例 #1**\n\n- 9:00~10:00：1 人在馆\n- 10:00~11:00：第 1、2 位同学都在 → 2 人（峰值）\n- 11:00~12:00：1 人\n- 12:00~13:00：1 人（第 2 位 12:00 离馆、第 3 位 12:00 进馆，擦肩而过不叠加）\n- 最大值：2\n\n**样例 #2**\n\n- 8:00~10:00：1 人\n- 10:00~12:00：1 人\n- 10:00 时刻前一位离馆、后一位进馆，人数不叠加\n- 最大值：1",
+  "sampleInput": "3\n540 660\n600 720\n720 780",
+  "sampleOutput": "2",
+  "samples": [
+    {
+      "input": "3\n540 660\n600 720\n720 780",
+      "output": "2"
+    },
+    {
+      "input": "2\n480 600\n600 720",
+      "output": "1"
+    }
+  ],
+  "showTestDetails": true,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "availability": {
+    "enabled": false,
+    "windows": [],
+    "afterEndView": "none"
+  },
+  "pythonJudgeMode": "standard",
+  "group": "control"
+}
