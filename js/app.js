@@ -1353,28 +1353,41 @@ class App {
     const workspace = document.querySelector('.editor-workspace');
     const resizer = document.getElementById('io-resizer');
     const toggle = document.getElementById('toggle-io-panel');
-    if (!editorPanel || !workspace || !resizer || !toggle) return;
+    const result = document.getElementById('judge-result');
+    const detail = document.getElementById('judge-detail');
+    const detailToggle = document.getElementById('toggle-judge-detail');
+    if (!editorPanel || !workspace || !resizer || !toggle || !result || !detail || !detailToggle) return;
 
     const defaultHeight = 108;
     const collapseThreshold = 46;
     const minimumExpandedHeight = 82;
     let lastExpandedHeight = defaultHeight;
+    let ioCollapsed = false;
+    let resultPeekHeight = 0;
     let startY = 0;
     let startHeight = defaultHeight;
 
     const maximumHeight = () => Math.max(minimumExpandedHeight, Math.min(360, workspace.getBoundingClientRect().height * .55));
+    const applyHeights = () => {
+      const effectiveIoHeight = Math.max(0, lastExpandedHeight - resultPeekHeight);
+      const actuallyCollapsed = ioCollapsed || effectiveIoHeight <= 0;
+      editorPanel.style.setProperty('--result-peek-height', `${resultPeekHeight}px`);
+      editorPanel.style.setProperty('--io-panel-height', `${effectiveIoHeight}px`);
+      editorPanel.classList.toggle('io-collapsed', actuallyCollapsed);
+      document.getElementById('io-panel')?.setAttribute('aria-hidden', actuallyCollapsed ? 'true' : 'false');
+      toggle.textContent = actuallyCollapsed ? '展开输入输出' : '收起输入输出';
+      toggle.setAttribute('aria-expanded', actuallyCollapsed ? 'false' : 'true');
+      resizer.setAttribute('aria-valuenow', actuallyCollapsed ? '0' : String(Math.round(effectiveIoHeight)));
+    };
     const setCollapsed = collapsed => {
-      editorPanel.classList.toggle('io-collapsed', collapsed);
-      document.getElementById('io-panel')?.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
-      toggle.textContent = collapsed ? '展开输入输出' : '收起输入输出';
-      toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      resizer.setAttribute('aria-valuenow', collapsed ? '0' : String(Math.round(lastExpandedHeight)));
+      ioCollapsed = collapsed;
+      applyHeights();
     };
     const setHeight = height => {
       const nextHeight = Math.min(maximumHeight(), Math.max(minimumExpandedHeight, height));
-      lastExpandedHeight = nextHeight;
-      editorPanel.style.setProperty('--io-panel-height', `${nextHeight}px`);
-      setCollapsed(false);
+      lastExpandedHeight = nextHeight + resultPeekHeight;
+      ioCollapsed = false;
+      applyHeights();
     };
     const resizeFromPointer = clientY => {
       const requestedHeight = startHeight - (clientY - startY);
@@ -1385,7 +1398,7 @@ class App {
     resizer.addEventListener('pointerdown', event => {
       if (event.target.closest('button')) return;
       startY = event.clientY;
-      startHeight = editorPanel.classList.contains('io-collapsed') ? 0 : lastExpandedHeight;
+      startHeight = editorPanel.classList.contains('io-collapsed') ? 0 : Math.max(0, lastExpandedHeight - resultPeekHeight);
       resizer.setPointerCapture(event.pointerId);
       editorPanel.classList.add('is-io-resizing');
       event.preventDefault();
@@ -1401,21 +1414,32 @@ class App {
     resizer.addEventListener('pointercancel', stopResizing);
     resizer.addEventListener('keydown', event => {
       if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
-      const currentHeight = editorPanel.classList.contains('io-collapsed') ? 0 : lastExpandedHeight;
+      const currentHeight = editorPanel.classList.contains('io-collapsed') ? 0 : Math.max(0, lastExpandedHeight - resultPeekHeight);
       const nextHeight = currentHeight + (event.key === 'ArrowUp' ? 20 : -20);
       if (nextHeight <= collapseThreshold) setCollapsed(true);
       else setHeight(nextHeight);
       event.preventDefault();
     });
     toggle.addEventListener('click', () => {
-      if (editorPanel.classList.contains('io-collapsed')) setHeight(lastExpandedHeight || defaultHeight);
+      if (editorPanel.classList.contains('io-collapsed')) setHeight(Math.max(minimumExpandedHeight, lastExpandedHeight - resultPeekHeight));
       else setCollapsed(true);
     });
 
+    this._syncJudgeResultLayout = () => {
+      const hasSummary = Boolean(result.textContent.trim());
+      const hasDetails = Boolean(detail.children.length || detail.textContent.trim());
+      const detailsExpanded = hasDetails && !detail.hidden && detailToggle.getAttribute('aria-expanded') === 'true';
+      resultPeekHeight = hasSummary ? (detailsExpanded ? 52 : 34) : 0;
+      applyHeights();
+    };
+    const resultObserver = new MutationObserver(() => this._syncJudgeResultLayout());
+    resultObserver.observe(result, { childList: true, subtree: true, characterData: true });
+    resultObserver.observe(detail, { childList: true, subtree: true, characterData: true });
+
     this._resetIoPanel = () => {
       lastExpandedHeight = defaultHeight;
-      editorPanel.style.setProperty('--io-panel-height', `${defaultHeight}px`);
-      setCollapsed(false);
+      ioCollapsed = false;
+      applyHeights();
     };
     this._resetIoPanel();
   }
@@ -1556,6 +1580,7 @@ class App {
     detail.hidden = hasDetails ? !expanded : false;
     button.setAttribute('aria-expanded', expanded && hasDetails ? 'true' : 'false');
     button.textContent = expanded && hasDetails ? '收起结果' : '展开结果';
+    this._syncJudgeResultLayout?.();
   }
 
   async _loadResubmissionNotices() {

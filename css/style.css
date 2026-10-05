@@ -530,11 +530,12 @@ body.username-locked { overflow: hidden; }
 
 .editor-panel {
   --io-panel-height: 108px;
+  --result-peek-height: 0px;
   min-height: 0;
 }
 
 .editor-workspace {
-  height: 100%;
+  height: calc(100% - var(--result-peek-height));
   display: flex;
   flex-direction: column;
   min-height: 0;
