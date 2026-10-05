@@ -29,8 +29,5 @@
     "afterEndView": "none"
   },
   "pythonJudgeMode": "standard",
-  "codeTemplates": {
-    "c": "#include <stdio.h>\n\n/* ============================================================\n * === 工具函数区（已实现，禁止修改） ===========================\n * ============================================================ */\n\n/* 1. 查表：档位对应的基础需水量（升） */\nint need_water(int level) {\n    if (level == 1) return 30;\n    if (level == 2) return 40;\n    return 50;   /* 3 档 */\n}\n\n/* 2. 运动加量：刚运动完的同学多用 10 升热水 */\nint add_sport_extra(int need) {\n    return need + 10;\n}\n\n/* 3. 判断剩余热水是否不够（需求大于剩余则告急） */\nint will_run_out(int need, int remain) {\n    if (need > remain) return 1;\n    return 0;\n}\n\n/* 4. 取较小值：实际用水不能超过剩余热水 */\nint min_int(int a, int b) {\n    if (a < b) return a;\n    return b;\n}\n\n/* 5. 打印一行结果（提示码：0=正常 1=运动加量 2=热水告急 3=无热水） */\nvoid print_item(int no, int used, int alert, int remain) {\n    const char *tag = \"正常\";\n    if (alert == 1)      tag = \"运动加量\";\n    else if (alert == 2) tag = \"热水告急\";\n    else if (alert == 3) tag = \"无热水\";\n    printf(\"#%d: 用热水 %d 升 [%s]，剩余 %d 升\\n\", no, used, tag, remain);\n}\n\n/* ============================================================\n * === 主程序区 ================================================\n * ============================================================ */\n\n#define TOTAL 100   /* 热水总量（升） */\n\nint main(void) {\n    int N;\n    int i;\n    scanf(\"%d\", &N);   /* 已给出：先读入登记人数 */\n\n    /* ===== TODO: 在此处补全全部逻辑 ===== */\n    /* 出题挑战:\n     * 1. 接下来还要读什么？怎么读？\n     * 2. \"热水告急\"的判断依据是什么？该用哪个工具函数？\n     * 3. 余量会不会被用成负数？谁负责不让它变负？\n     * 4. 没有热水时，实际用量是多少？提醒类型是什么？\n     *\n     * 要求: 必须使用全部 5 个工具函数，不能直接编写运算/比较逻辑\n     */\n\n    return 0;\n}"
-  },
   "group": "control"
 }
