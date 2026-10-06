@@ -182,5 +182,24 @@
     "file": "p020.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P021",
+    "title": "（Day 17）（冲刺题 3）电路板上的短路点定位",
+    "difficulty": "medium",
+    "status": "published",
+    "availability": {
+      "enabled": true,
+      "windows": [
+        {
+          "start": 1791280800000,
+          "end": 1791388740000
+        }
+      ],
+      "afterEndView": "none"
+    },
+    "file": "p021.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
