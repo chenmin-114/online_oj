@@ -201,5 +201,19 @@
     "file": "p021.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P022",
+    "title": "（冲刺题）宿舍楼的“WiFi 信号”",
+    "difficulty": "medium",
+    "status": "published",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "p022.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
