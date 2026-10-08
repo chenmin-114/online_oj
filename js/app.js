@@ -48,6 +48,7 @@ class App {
     this.timeSyncTimer = null;
     this.timeSyncInFlight = null;
     this.lastTimeSyncAt = 0;
+    this.examMode = false;
   }
 
   async init() {
@@ -120,6 +121,7 @@ class App {
         await this._promptUsername({ autoCheck: true });
       }
     }
+    this._applyExamMode(this.examMode);
     this._trackView();
 
     // 题目列表与编辑器并行加载；这里只等待首屏真正需要的题目数据。
@@ -211,6 +213,7 @@ class App {
       const needsResubmission = this.resubmissionNotices.some(notice => notice.problemId === p.id);
       const timing = this._timingState(p.availability);
       const timingText = timing.state === 'upcoming' ? `${new Date(timing.nextStart).toLocaleString()} 开始`
+        : timing.state === 'paused' ? '已暂停答题'
         : timing.state === 'active' ? '答题中'
         : timing.state === 'grace' ? '答案已冻结'
         : timing.state === 'ended' ? '已结束' : '';
@@ -368,8 +371,8 @@ class App {
   _timingState(availability, offset = 0) {
     if (!availability?.enabled || !availability.windows?.length) return { state: 'unrestricted', canEdit: true, canSubmit: true };
     const now = Date.now() + offset;
-    for (const window of availability.windows) {
-      if (now < window.start) return { state: 'upcoming', nextStart: window.start, canEdit: false, canSubmit: false };
+    for (const [index, window] of availability.windows.entries()) {
+      if (now < window.start) return { state: index === 0 ? 'upcoming' : 'paused', nextStart: window.start, canEdit: false, canSubmit: false };
       if (now < window.end) return { state: 'active', windowStart: window.start, windowEnd: window.end, canEdit: true, canSubmit: true };
       if (now < window.end + 30000) return { state: 'grace', windowStart: window.start, windowEnd: window.end, graceEndsAt: window.end + 30000, canEdit: false, canSubmit: true };
     }
@@ -536,6 +539,7 @@ class App {
     banner.hidden = !availability?.enabled;
     banner.className = `timing-banner ${state.state === 'active' ? 'active' : state.state === 'grace' ? 'warning' : 'closed'}`;
     if (state.state === 'upcoming') banner.textContent = `尚未开始 · ${new Date(state.nextStart).toLocaleString()} 开放（还有 ${this._duration(state.nextStart - now)}）`;
+    else if (state.state === 'paused') banner.textContent = `已暂停答题 · 下一时段还有 ${this._duration(state.nextStart - now)} 开始`;
     else if (state.state === 'active') banner.textContent = `答题进行中 · 距本时段结束 ${this._duration(state.windowEnd - now)} · 草稿自动保存到服务器`;
     else if (state.state === 'grace') banner.textContent = `答案已锁定 · ${this._duration(state.graceEndsAt - now)} 后自动提交`;
     else if (state.state === 'ended') banner.textContent = '全部答题时间已经结束，当前仅可查看。';
@@ -978,7 +982,7 @@ class App {
     setTimeout(() => input.focus(), 0);
 
     return new Promise(resolve => {
-      const finishLogin = name => {
+      const finishLogin = (name, session = {}) => {
         this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
         clearTimeout(this.codeSaveTimer);
         this.username = name;
@@ -989,6 +993,7 @@ class App {
         this._trackView(this.currentProblem?.id || '');
         this._loadResubmissionNotices(true);
         this._loadSystemMessages(false);
+        this._applyExamMode(session.examMode === true);
 
         form.removeEventListener('submit', handleSubmit);
         skip.removeEventListener('click', handleSkip);
@@ -1013,7 +1018,7 @@ class App {
         passwordInput.autocomplete = hasPassword ? 'current-password' : 'new-password';
         confirmInput.required = !hasPassword;
         skip.hidden = hasPassword;
-        changePassword.hidden = !hasPassword;
+        changePassword.hidden = !hasPassword || this.examMode;
         back.hidden = false;
         title.textContent = hasPassword ? '输入账号密码' : '设置账号密码';
         description.textContent = hasPassword
@@ -1067,6 +1072,7 @@ class App {
             status.textContent = '正在检查账号...';
             try {
               const account = await this._studentAccountRequest('student_account_status', { username: name });
+              this.examMode = account.examMode === true;
               showPasswordStep(name, account.hasPassword);
             } catch (error) {
               status.textContent = error.message;
@@ -1092,12 +1098,12 @@ class App {
               return;
             }
             status.textContent = '正在修改密码...';
-            await this._studentAccountRequest('student_change_password', {
+            const session = await this._studentAccountRequest('student_change_password', {
               username: pendingUsername,
               currentPassword: currentPasswordInput.value,
               newPassword: password,
             });
-            finishLogin(pendingUsername);
+            finishLogin(pendingUsername, session);
             return;
           }
           if (step === 'login-password') {
@@ -1107,8 +1113,8 @@ class App {
               return;
             }
             status.textContent = '正在验证密码...';
-            await this._studentAccountRequest('student_login', { username: pendingUsername, password });
-            finishLogin(pendingUsername);
+            const session = await this._studentAccountRequest('student_login', { username: pendingUsername, password });
+            finishLogin(pendingUsername, session);
             return;
           }
 
@@ -1123,11 +1129,11 @@ class App {
             return;
           }
           status.textContent = '正在设置密码...';
-          await this._studentAccountRequest('student_set_password', {
+          const session = await this._studentAccountRequest('student_set_password', {
             username: pendingUsername,
             password,
           });
-          finishLogin(pendingUsername);
+          finishLogin(pendingUsername, session);
         } catch (error) {
           status.textContent = error.message || '账号操作失败，请稍后重试';
         } finally {
@@ -1136,7 +1142,7 @@ class App {
       };
 
       const handleChangePassword = () => {
-        if (!pendingUsername) return;
+        if (!pendingUsername || this.examMode) return;
         const typedCurrentPassword = passwordInput.value;
         passwordInput.value = '';
         confirmInput.value = '';
@@ -1149,8 +1155,8 @@ class App {
         skip.disabled = true;
         status.textContent = '正在建立登录状态...';
         try {
-          await this._studentAccountRequest('student_skip_login', { username: pendingUsername });
-          finishLogin(pendingUsername);
+          const session = await this._studentAccountRequest('student_skip_login', { username: pendingUsername });
+          finishLogin(pendingUsername, session);
         } catch (error) {
           status.textContent = error.message || '暂时无法跳过，请稍后重试';
         } finally {
@@ -1191,7 +1197,11 @@ class App {
         status.textContent = '正在检查账号...';
         this._studentAccountRequest('student_account_status', { username: this.username })
           .then(account => {
-            if (account.hasPassword) showChangePasswordStep(this.username);
+            this.examMode = account.examMode === true;
+            if (this.examMode) {
+              showPasswordStep(this.username, account.hasPassword);
+              status.textContent = '考试模式下不能修改密码';
+            } else if (account.hasPassword) showChangePasswordStep(this.username);
             else showPasswordStep(this.username, false);
           })
           .catch(error => { status.textContent = error.message || '账号检查失败'; });
@@ -1224,6 +1234,7 @@ class App {
     try {
       const result = await this._studentAccountRequest('student_session', { username: this.username });
       this.adminImpersonation = result.adminImpersonation === true;
+      this.examMode = result.examMode === true;
       return true;
     } catch {
       this.adminImpersonation = false;
@@ -1231,12 +1242,25 @@ class App {
     }
   }
 
+  _applyExamMode(enabled) {
+    this.examMode = enabled === true;
+    document.body.classList.toggle('exam-mode', this.examMode);
+    const badge = document.getElementById('exam-mode-badge');
+    if (badge) badge.hidden = !this.examMode;
+    const passwordButton = document.getElementById('change-password-btn');
+    if (passwordButton) passwordButton.hidden = this.adminImpersonation || this.examMode;
+    if (!this.examMode || this.adminExamPreview || this.adminProblemPreview) return;
+    this.examUI?.leaveProgrammingProblem();
+    this.views.show('exams');
+    this.examUI?.loadList(true, Boolean(this.examUI.loadedKey));
+  }
+
   _renderAdminImpersonation() {
     const banner = document.getElementById('admin-impersonation-banner');
     banner.hidden = !this.adminImpersonation;
     document.getElementById('admin-impersonation-username').textContent = this.adminImpersonation ? this.username : '';
     document.getElementById('return-admin-btn').hidden = !this.adminImpersonation;
-    document.getElementById('change-password-btn').hidden = this.adminImpersonation;
+    document.getElementById('change-password-btn').hidden = this.adminImpersonation || this.examMode;
     document.getElementById('change-username-btn').hidden = this.adminImpersonation;
   }
 
@@ -1525,6 +1549,10 @@ class App {
         customInput,
         this.username,
         this.adminProblemPreview ? 'admin_execute' : 'execute',
+        this.examUI?.programmingContext ? {
+          examId: this.examUI.paper?.id,
+          problemId: this.currentProblem?.id,
+        } : {},
       );
 
       if (result.compileError) {
@@ -1554,7 +1582,9 @@ class App {
       return this._finalizeTimedProblem(this.adminImpersonation);
     }
     if (!this.adminProblemPreview && this.currentProblem.availability?.enabled && !timing.canEdit) {
-      alert(timing.state === 'upcoming' ? '尚未到答题开放时间' : '答题时间已经结束');
+      alert(timing.state === 'upcoming' ? '尚未到答题开放时间'
+        : timing.state === 'paused' ? '当前答题时段已暂停，请等待下一时段开始'
+        : '答题时间已经结束');
       return;
     }
 

@@ -14,7 +14,7 @@ class CodeRunner {
    * @param {string} stdin - 标准输入
    * @returns {Promise<{stdout: string, stderr: string, exitCode: number, time: number, signal: string|null, compileError: boolean}>}
    */
-  async execute(languageId, code, stdin = '', username = '', requestType = 'execute') {
+  async execute(languageId, code, stdin = '', username = '', requestType = 'execute', context = {}) {
     const startTime = performance.now();
 
     if (!this.workerUrl) {
@@ -38,6 +38,8 @@ class CodeRunner {
           stdin,
           compileTimeout: window.OJ_CONFIG.COMPILE_TIMEOUT,
           memoryLimit: window.OJ_CONFIG.MEMORY_LIMIT,
+          examId: context.examId || undefined,
+          problemId: context.problemId || undefined,
         }),
       });
     } catch (error) {

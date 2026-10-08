@@ -29,6 +29,8 @@ class ExamAdmin {
     document.getElementById('export-current-exam').addEventListener('click', () => this.exportCurrentExam());
     document.getElementById('exam-roster-file').addEventListener('change', event => this.importRosterAccounts(event.target));
     document.getElementById('download-exam-roster').addEventListener('click', () => this.downloadRosterWorkbook());
+    document.getElementById('revoke-exam-user').addEventListener('click', () => this.revokeExamAccess(false));
+    document.getElementById('revoke-exam-all').addEventListener('click', () => this.revokeExamAccess(true));
     document.getElementById('exam-admin-list').addEventListener('click', event => this.handleListClick(event));
     document.getElementById('show-exam-grading').addEventListener('click', () => this.showGrading());
     document.getElementById('back-to-exams').addEventListener('click', () => this.showManager());
@@ -249,6 +251,10 @@ class ExamAdmin {
       ? `当前已额外准入 ${paper.allowedUsers.length} 人，可继续追加导入`
       : '已有密码保持不变；仅无密码账号生成随机密码；可多次追加导入';
     document.getElementById('download-exam-roster').disabled = true;
+    document.getElementById('exam-revoke-username').value = '';
+    document.getElementById('exam-access-status').textContent = paper.managedDefaultAllowed === false
+      ? '正式注册账号的默认权限已撤销；只有当前额外名单中的学生可以进入。'
+      : '';
     this.rosterWorkbook = null;
     document.getElementById('exam-editor-title').dataset.serialNo = String(paper.serialNo || this.nextExamSerial());
     document.getElementById('exam-save-status').textContent = '';
@@ -364,6 +370,48 @@ class ExamAdmin {
     } catch (error) {
       this.rosterWorkbook = null;
       status.textContent = `导入失败：${error.message}`;
+    }
+  }
+
+  async revokeExamAccess(all) {
+    const examId = String(this.editingPaper?.id || '').trim().toUpperCase();
+    const usernameInput = document.getElementById('exam-revoke-username');
+    const username = usernameInput.value.trim().normalize('NFC');
+    const status = document.getElementById('exam-access-status');
+    if (!examId) {
+      status.textContent = '请先保存套卷，再撤销准入权限。';
+      return;
+    }
+    if (!all && !username) {
+      status.textContent = '请输入需要撤销权限的学生用户名。';
+      usernameInput.focus();
+      return;
+    }
+    const confirmed = confirm(all
+      ? `确定撤销“${examId}”当前所有人的准入权限吗？\n\n账号、历史答卷和成绩不会被删除；之后可通过额外名单重新赋权。`
+      : `确定撤销“${username}”进入套卷“${examId}”的权限吗？\n\n该学生的历史答卷和成绩不会被删除。`);
+    if (!confirmed) return;
+    const button = document.getElementById(all ? 'revoke-exam-all' : 'revoke-exam-user');
+    button.disabled = true;
+    status.textContent = all ? '正在撤销所有人权限...' : '正在撤销该学生权限...';
+    try {
+      const result = await this.request('admin_exam_access_revoke', { examId, username: all ? undefined : username, all });
+      if (all) {
+        this.editingPaper.allowedUsers = [];
+        this.editingPaper.managedDefaultAllowed = false;
+        document.getElementById('exam-roster-users').value = '';
+        status.textContent = `已撤销所有人的准入权限；保留了 ${result.preservedSubmissions || 0} 份历史答卷。`;
+      } else {
+        this.editingPaper.allowedUsers = (this.editingPaper.allowedUsers || []).filter(item => item !== username);
+        document.getElementById('exam-roster-users').value = this.editingPaper.allowedUsers.join('\n');
+        usernameInput.value = '';
+        status.textContent = `已撤销“${username}”的准入权限，历史答卷未删除。`;
+      }
+      this.admin.toast(all ? '已撤销该套卷所有人的权限' : `已撤销 ${username} 的套卷权限`);
+    } catch (error) {
+      status.textContent = `撤销失败：${error.message}`;
+    } finally {
+      button.disabled = false;
     }
   }
 

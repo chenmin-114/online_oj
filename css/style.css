@@ -122,6 +122,8 @@ body.username-locked { overflow: hidden; }
   gap: 8px;
   flex: 1;
 }
+.exam-mode-badge { align-self: center; padding: 4px 9px; border: 1px solid rgba(244,135,113,.55); border-radius: 999px; background: rgba(244,135,113,.1); color: var(--error); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.exam-mode-badge[hidden], body.exam-mode .nav-link[data-view="problems"], body.exam-mode .nav-link[data-view="submissions"] { display: none; }
 
 .nav-link {
   padding: 6px 16px;
@@ -866,6 +868,11 @@ body.username-locked { overflow: hidden; }
 .exam-card > p { color: var(--text-secondary); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .exam-card footer { display: flex; align-items: center; gap: 15px; color: var(--text-secondary); font-size: 12px; }
 .exam-card footer b { margin-left: auto; color: var(--success); font-size: 14px; }
+.exam-card-statuses { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+.exam-status-pill { padding: 2px 8px; border: 1px solid var(--border-color); border-radius: 999px; white-space: nowrap; }
+.exam-status-pill.timing.active, .exam-status-pill.submission.submitted { border-color: rgba(78,201,176,.45); color: var(--success); }
+.exam-status-pill.timing.paused, .exam-status-pill.timing.upcoming, .exam-status-pill.submission.pending { color: var(--warning); }
+.exam-status-pill.timing.ended { color: var(--text-secondary); }
 .exam-page-heading { margin: 20px 0 14px; display: flex; align-items: center; gap: 15px; }
 .exam-page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .exam-docx-import { position: relative; cursor: pointer; }

@@ -28,6 +28,7 @@ class OJAdmin {
     this.studentAccountExportName = '';
     this.systemMessages = [];
     this.timedExtensions = [];
+    this.examMode = false;
     this.controlsBound = false;
   }
 
@@ -166,6 +167,7 @@ class OJAdmin {
     document.getElementById('timed-extension-type').addEventListener('change', () => this.populateTimedExtensionResources(true));
     document.getElementById('refresh-timed-extensions').addEventListener('click', () => this.loadTimedExtensions());
     document.getElementById('timed-extension-list').addEventListener('click', event => this.revokeTimedExtension(event));
+    document.getElementById('save-exam-mode').addEventListener('click', () => this.saveExamMode());
     document.getElementById('admin-message-audience').addEventListener('change', event => {
       const targeted = event.target.value === 'user';
       document.getElementById('admin-message-user-field').hidden = !targeted;
@@ -295,11 +297,12 @@ class OJAdmin {
     button.textContent = '↻ 同步中...';
 
     const workerCheck = this.fetchWorkerHealth();
-    const [problemsResult, submissionsResult, rankingResult, analyticsResult] = await Promise.allSettled([
+    const [problemsResult, submissionsResult, rankingResult, analyticsResult, settingsResult] = await Promise.allSettled([
       this.fetchJson(this.config.problemsUrl),
       this.fetchJson(this.config.submissionsUrl),
       this.fetchRanking(),
       this.fetchJson(this.config.analyticsUrl),
+      this.adminRequest('admin_system_settings_get'),
     ]);
     if (loadSequence !== this.loadSequence || requestedGroup !== this.group) return;
 
@@ -318,6 +321,10 @@ class OJAdmin {
       this.analytics = analyticsResult.value;
     } else {
       this.analytics = { daily: [], problems: {} };
+    }
+    if (settingsResult.status === 'fulfilled') {
+      this.examMode = settingsResult.value.examMode === true;
+      this.renderExamMode();
     }
 
     this.renderAll();
@@ -760,7 +767,7 @@ class OJAdmin {
   }
 
   generateStudentPassword() {
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%_-';
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
     const limit = Math.floor(256 / alphabet.length) * alphabet.length;
     let password = '';
     while (password.length < 16) {
@@ -772,6 +779,54 @@ class OJAdmin {
       }
     }
     return password;
+  }
+
+  async adminRequest(type, payload = {}) {
+    const response = await fetch(this.config.workerUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, ...payload }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.status === 401) this.lockExpiredSession();
+    if (!response.ok) throw new Error(result.error || `请求失败 (${response.status})`);
+    return result;
+  }
+
+  renderExamMode() {
+    const toggle = document.getElementById('exam-mode-enabled');
+    const status = document.getElementById('exam-mode-status');
+    if (toggle) toggle.checked = this.examMode;
+    if (status) status.textContent = this.examMode
+      ? '考试模式已开启：学生端仅保留套卷，且禁止修改密码。'
+      : '当前为普通模式：题目、套卷和提交记录均正常开放。';
+  }
+
+  async saveExamMode() {
+    const enabled = document.getElementById('exam-mode-enabled').checked;
+    const button = document.getElementById('save-exam-mode');
+    if (enabled !== this.examMode) {
+      const message = enabled
+        ? '确定开启考试模式吗？学生刷新页面后将只能访问套卷，普通题目、提交记录和修改密码都会被关闭。'
+        : '确定关闭考试模式并恢复学生端普通功能吗？';
+      if (!confirm(message)) {
+        document.getElementById('exam-mode-enabled').checked = this.examMode;
+        return;
+      }
+    }
+    button.disabled = true;
+    try {
+      const result = await this.adminRequest('admin_system_settings_save', { examMode: enabled });
+      this.examMode = result.examMode === true;
+      this.renderExamMode();
+      this.toast(this.examMode ? '考试模式已开启' : '考试模式已关闭');
+    } catch (error) {
+      document.getElementById('exam-mode-enabled').checked = this.examMode;
+      this.toast(`保存失败：${error.message}`);
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async hashStudentPassword(password) {

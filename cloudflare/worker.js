@@ -232,6 +232,14 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminTimedExtensionRevoke(body, env);
+      } else if (body.type === 'admin_system_settings_get') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return jsonResponse({ examMode: await isExamModeEnabled(env) });
+      } else if (body.type === 'admin_system_settings_save') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminSystemSettingsSave(body, env);
       } else if (body.type === 'admin_exam_list') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -252,6 +260,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamRosterImport(body, env);
+      } else if (body.type === 'admin_exam_access_revoke') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamAccessRevoke(body, env);
       } else if (body.type === 'admin_exam_preview_grade') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
         if (rateLimitError) return rateLimitError;
@@ -351,6 +363,9 @@ export default {
           false,
         );
         if (rateLimitError) return rateLimitError;
+        if (await isExamModeEnabled(env)) {
+          return jsonResponse({ error: '考试模式下不能修改密码', code: 'EXAM_MODE_PASSWORD_LOCKED' }, 403);
+        }
         return await handleStudentChangePassword(body, env);
       } else if (body.type === 'student_session') {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'student-auth');
@@ -360,6 +375,7 @@ export default {
         return jsonResponse({
           success: true,
           adminImpersonation: await isAdminImpersonationSession(request, env, body.username),
+          examMode: await isExamModeEnabled(env),
         });
       } else if (body.type === 'student_resubmission_notices') {
         const authError = await requireStudentAccess(request, env, body.username);
@@ -397,6 +413,7 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        if (body.resourceType === 'problem' && await isExamModeEnabled(env)) return examModeOnlyResponse();
         const impersonationError = await requireImpersonationConfirmation(
           request, env, body, '保存限时草稿', body.resourceType, body.resourceId,
         );
@@ -409,6 +426,7 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        if (body.resourceType === 'problem' && await isExamModeEnabled(env)) return examModeOnlyResponse();
         return await handleTimeSync(body, env);
       } else if (body.type === 'timed_finalize') {
         const rateLimitError = await enforceRateLimit(
@@ -417,6 +435,7 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        if (body.resourceType === 'problem' && await isExamModeEnabled(env)) return examModeOnlyResponse();
         const impersonationError = await requireImpersonationConfirmation(
           request, env, body, '提交截止答案', body.resourceType, body.resourceId,
         );
@@ -443,6 +462,10 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        if (await isExamModeEnabled(env)) {
+          const examExecutionError = await validateExamModeExecution(body, env);
+          if (examExecutionError) return examExecutionError;
+        }
         return await handleExecute(body, env);
       } else if (body.type === 'admin_execute') {
         const rateLimitError = await enforceRateLimit(env.EXECUTION_RATE_LIMITER, request, 'code-execution');
@@ -463,6 +486,7 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        if (await isExamModeEnabled(env)) return examModeOnlyResponse();
         const impersonationError = await requireImpersonationConfirmation(
           request, env, body, '提交编程题', 'problem', body.problemId,
         );
@@ -473,6 +497,7 @@ export default {
         if (rateLimitError) return rateLimitError;
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
+        if (await isExamModeEnabled(env)) return examModeOnlyResponse();
         const impersonationError = await requireImpersonationConfirmation(
           request, env, body, '提交编程题', 'problem', body.problemId,
         );
@@ -676,6 +701,34 @@ function normalizeStudentUsername(value) {
   return username;
 }
 
+async function isExamModeEnabled(env) {
+  if (!env.OJ_DB) return false;
+  const setting = await env.OJ_DB.prepare(`
+    SELECT setting_value FROM system_settings WHERE setting_key = 'exam_mode'
+  `).first();
+  return setting?.setting_value === '1';
+}
+
+function examModeOnlyResponse() {
+  return jsonResponse({
+    error: '当前处于考试模式，只能访问和提交套卷',
+    code: 'EXAM_MODE_ONLY',
+  }, 403);
+}
+
+async function handleAdminSystemSettingsSave(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '系统设置数据库尚未配置' }, 503);
+  const examMode = body.examMode === true;
+  await env.OJ_DB.prepare(`
+    INSERT INTO system_settings (setting_key, setting_value, updated_at)
+    VALUES ('exam_mode', ?1, ?2)
+    ON CONFLICT(setting_key) DO UPDATE SET
+      setting_value = excluded.setting_value,
+      updated_at = excluded.updated_at
+  `).bind(examMode ? '1' : '0', Date.now()).run();
+  return jsonResponse({ success: true, examMode });
+}
+
 async function handleStudentAccountStatus(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '学生账号数据库尚未配置' }, 503);
   const username = normalizeStudentUsername(body.username);
@@ -685,7 +738,11 @@ async function handleStudentAccountStatus(body, env) {
     FROM student_accounts
     WHERE username = ?1
   `).bind(username).first();
-  return jsonResponse({ registered: Boolean(account), hasPassword: Boolean(account?.password_hash) });
+  return jsonResponse({
+    registered: Boolean(account),
+    hasPassword: Boolean(account?.password_hash),
+    examMode: await isExamModeEnabled(env),
+  });
 }
 
 async function handleStudentLogin(body, env) {
@@ -826,7 +883,11 @@ async function handleStudentSkipLogin(body, env) {
 
 async function studentSessionSuccessResponse(username, authVersion, env) {
   const session = await createStudentSession(username, authVersion, env);
-  return jsonResponse({ success: true, expiresIn: STUDENT_SESSION_TTL_SECONDS }, 200, {
+  return jsonResponse({
+    success: true,
+    expiresIn: STUDENT_SESSION_TTL_SECONDS,
+    examMode: await isExamModeEnabled(env),
+  }, 200, {
     'Set-Cookie': buildStudentSessionCookie(session.token, STUDENT_SESSION_TTL_SECONDS),
   });
 }
@@ -1025,6 +1086,11 @@ async function handleAdminImportStudents(body, env) {
       now,
     ),
     env.OJ_DB.prepare('DELETE FROM student_sessions WHERE username = ?1').bind(account.username),
+    env.OJ_DB.prepare('DELETE FROM exam_access_revocations WHERE username = ?1').bind(account.username),
+    env.OJ_DB.prepare(`
+      INSERT OR IGNORE INTO exam_roster (exam_id, username, created_at)
+      SELECT exam_id, ?1, ?2 FROM exam_access_policies WHERE managed_default_allowed = 0
+    `).bind(account.username, now),
   ]);
   for (let index = 0; index < statements.length; index += 100) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
@@ -1057,6 +1123,11 @@ async function handleAdminResetStudentAccount(body, env) {
         updated_at = excluded.updated_at
     `).bind(username, salt, hash, STUDENT_PASSWORD_ITERATIONS, now),
     env.OJ_DB.prepare('DELETE FROM student_sessions WHERE username = ?1').bind(username),
+    env.OJ_DB.prepare('DELETE FROM exam_access_revocations WHERE username = ?1').bind(username),
+    env.OJ_DB.prepare(`
+      INSERT OR IGNORE INTO exam_roster (exam_id, username, created_at)
+      SELECT exam_id, ?1, ?2 FROM exam_access_policies WHERE managed_default_allowed = 0
+    `).bind(username, now),
   ]);
   return jsonResponse({
     success: true,
@@ -1224,12 +1295,57 @@ async function handleAdminExamRosterImport(body, env) {
       statements.push(env.OJ_DB.prepare(`
         INSERT OR IGNORE INTO exam_roster (exam_id, username, created_at) VALUES (?1, ?2, ?3)
       `).bind(examId, username, now));
+      statements.push(env.OJ_DB.prepare(`
+        DELETE FROM exam_access_revocations WHERE exam_id = ?1 AND username = ?2
+      `).bind(examId, username));
     }
   }
   for (let index = 0; index < statements.length; index += 100) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
   }
   return jsonResponse({ success: true, added: usernames.length, rosterPending: !exam });
+}
+
+async function handleAdminExamAccessRevoke(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '套卷权限数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  const exam = await env.OJ_DB.prepare('SELECT id FROM exam_papers WHERE id = ?1').bind(examId).first();
+  if (!exam) return jsonResponse({ error: '试卷不存在，请先保存套卷' }, 404);
+  const preserved = await env.OJ_DB.prepare(`
+    SELECT COUNT(*) AS count FROM exam_submissions
+    WHERE exam_id = ?1 AND is_preview = 0
+  `).bind(examId).first();
+  const now = Date.now();
+  if (body.all === true) {
+    await env.OJ_DB.batch([
+      env.OJ_DB.prepare(`
+        INSERT INTO exam_access_policies (exam_id, managed_default_allowed, updated_at)
+        VALUES (?1, 0, ?2)
+        ON CONFLICT(exam_id) DO UPDATE SET
+          managed_default_allowed = 0,
+          updated_at = excluded.updated_at
+      `).bind(examId, now),
+      env.OJ_DB.prepare('DELETE FROM exam_roster WHERE exam_id = ?1').bind(examId),
+      env.OJ_DB.prepare('DELETE FROM exam_access_revocations WHERE exam_id = ?1').bind(examId),
+    ]);
+    return jsonResponse({ success: true, all: true, preservedSubmissions: Number(preserved?.count || 0) });
+  }
+
+  const username = normalizeStudentUsername(body.username);
+  if (!username) return jsonResponse({ error: '学生用户名不正确' }, 400);
+  const account = await env.OJ_DB.prepare('SELECT 1 AS found FROM student_accounts WHERE username = ?1')
+    .bind(username).first();
+  if (!account) return jsonResponse({ error: '该学生账号不存在' }, 404);
+  await env.OJ_DB.batch([
+    env.OJ_DB.prepare('DELETE FROM exam_roster WHERE exam_id = ?1 AND username = ?2').bind(examId, username),
+    env.OJ_DB.prepare(`
+      INSERT INTO exam_access_revocations (exam_id, username, created_at)
+      VALUES (?1, ?2, ?3)
+      ON CONFLICT(exam_id, username) DO UPDATE SET created_at = excluded.created_at
+    `).bind(examId, username, now),
+  ]);
+  return jsonResponse({ success: true, username, preservedSubmissions: Number(preserved?.count || 0) });
 }
 
 async function deriveStudentPasswordHash(password, salt, iterations) {
@@ -1303,9 +1419,12 @@ function availabilityState(availability, now = Date.now()) {
   if (!availability?.enabled || !availability.windows?.length) {
     return { state: 'unrestricted', canEdit: true, canSubmit: true, serverTime: now };
   }
-  for (const window of availability.windows) {
+  for (const [index, window] of availability.windows.entries()) {
     if (now < window.start) {
-      return { state: 'upcoming', canEdit: false, canSubmit: false, nextStart: window.start, serverTime: now };
+      return {
+        state: index === 0 ? 'upcoming' : 'paused',
+        canEdit: false, canSubmit: false, nextStart: window.start, serverTime: now,
+      };
     }
     if (now < window.end) {
       return {
@@ -1370,6 +1489,7 @@ async function isManagedStudent(env, username) {
 
 function timedAccessError(state) {
   if (state.state === 'upcoming') return jsonResponse({ error: '尚未到答题开放时间', code: 'NOT_STARTED', timing: state }, 403);
+  if (state.state === 'paused') return jsonResponse({ error: '当前答题时段已暂停，请等待下一时段开始', code: 'ANSWER_PAUSED', timing: state }, 403);
   if (state.state === 'grace') return jsonResponse({ error: '答题时间已结束，答案已经冻结', code: 'ANSWER_FROZEN', timing: state }, 409);
   return jsonResponse({ error: '答题时间已经结束', code: 'ANSWER_CLOSED', timing: state }, 403);
 }
@@ -1643,6 +1763,10 @@ async function handleAdminExamGet(body, env) {
   const roster = await env.OJ_DB.prepare('SELECT username FROM exam_roster WHERE exam_id = ?1 ORDER BY username')
     .bind(examId).all();
   paper.allowedUsers = (roster.results || []).map(row => row.username);
+  const accessPolicy = await env.OJ_DB.prepare(`
+    SELECT managed_default_allowed FROM exam_access_policies WHERE exam_id = ?1
+  `).bind(examId).first();
+  paper.managedDefaultAllowed = Number(accessPolicy?.managed_default_allowed ?? 1) === 1;
   paper.serialNo = await ensureExamSerial(paper, env, record.group_name, record);
   return jsonResponse(await enrichExamProgrammingParts(paper, env, record.group_name));
 }
@@ -1731,6 +1855,9 @@ async function handleAdminExamSave(body, env) {
     statements.push(env.OJ_DB.prepare(`
       INSERT INTO exam_roster (exam_id, username, created_at) VALUES (?1, ?2, ?3)
     `).bind(paper.id, username, now));
+    statements.push(env.OJ_DB.prepare(`
+      DELETE FROM exam_access_revocations WHERE exam_id = ?1 AND username = ?2
+    `).bind(paper.id, username));
   }
   for (let index = 0; index < statements.length; index += 100) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
@@ -1742,15 +1869,47 @@ async function canStudentAccessExam(env, examId, username) {
   if (!examId || !username) return false;
   const allowed = await env.OJ_DB.prepare(`
     SELECT 1 AS allowed
-    WHERE EXISTS (
-      SELECT 1 FROM student_accounts WHERE username = ?1 AND is_managed = 1
-    ) OR EXISTS (
+    WHERE NOT EXISTS (
+      SELECT 1 FROM exam_access_revocations x
+      WHERE x.exam_id = ?2 AND x.username = ?1
+    ) AND (
+      (
+        COALESCE((
+          SELECT managed_default_allowed FROM exam_access_policies WHERE exam_id = ?2
+        ), 1) = 1
+        AND EXISTS (
+          SELECT 1 FROM student_accounts WHERE username = ?1 AND is_managed = 1
+        )
+      ) OR EXISTS (
       SELECT 1 FROM exam_roster r
       JOIN student_accounts a ON a.username = r.username
       WHERE r.exam_id = ?2 AND r.username = ?1 AND a.password_hash IS NOT NULL
+      )
     )
   `).bind(username, examId).first();
   return Boolean(allowed);
+}
+
+async function validateExamModeExecution(body, env) {
+  const examId = normalizeExamId(body.examId);
+  const problemId = String(body.problemId || '').trim().toUpperCase();
+  const username = normalizeStudentUsername(body.username);
+  if (!examId || !/^(?:P\d{3,6}|T\d{3})$/.test(problemId) || !username) return examModeOnlyResponse();
+  const record = await readExamRecord(env, examId);
+  if (!record || record.status !== 'published' || !await canStudentAccessExam(env, examId, username)) {
+    return jsonResponse({ error: '你没有该套卷的准入权限', code: 'EXAM_ACCESS_DENIED' }, 403);
+  }
+  const paper = parseExamRecord(record);
+  const linked = paper.questions.some(question => question.parts.some(part => (
+    part.type === 'programming' && part.problemId === problemId
+  )));
+  if (!linked) return examModeOnlyResponse();
+  const effectiveAvailability = await studentAvailability(
+    paper.availability, 'exam', record.group_name, examId, username, env,
+  );
+  const timing = availabilityState(effectiveAvailability);
+  if (timing.state !== 'unrestricted' && timing.state !== 'active') return timedAccessError(timing);
+  return null;
 }
 
 async function handleStudentExamList(body, env) {
@@ -1765,11 +1924,18 @@ async function handleStudentExamList(body, env) {
            s.id AS submission_id, s.grading_status, s.total_score AS achieved_score,
            s.graded_count, s.total_parts, s.released, s.submitted_at,
            CASE WHEN
-             EXISTS (SELECT 1 FROM student_accounts a WHERE a.username = ?1 AND a.is_managed = 1)
-             OR EXISTS (
-               SELECT 1 FROM exam_roster r
-               JOIN student_accounts a ON a.username = r.username
-               WHERE r.exam_id = p.id AND r.username = ?1 AND a.password_hash IS NOT NULL
+             NOT EXISTS (
+               SELECT 1 FROM exam_access_revocations x
+               WHERE x.exam_id = p.id AND x.username = ?1
+             ) AND (
+               (
+                 COALESCE((SELECT managed_default_allowed FROM exam_access_policies ap WHERE ap.exam_id = p.id), 1) = 1
+                 AND EXISTS (SELECT 1 FROM student_accounts a WHERE a.username = ?1 AND a.is_managed = 1)
+               ) OR EXISTS (
+                 SELECT 1 FROM exam_roster r
+                 JOIN student_accounts a ON a.username = r.username
+                 WHERE r.exam_id = p.id AND r.username = ?1 AND a.password_hash IS NOT NULL
+               )
              )
            THEN 1 ELSE 0 END AS access_allowed
     FROM exam_papers p
@@ -3203,6 +3369,11 @@ async function handleData(request, env) {
     return jsonResponse({ error: '组别不正确' }, 400);
   }
   const group = normalizeGroup(requestedGroup);
+
+  const mayBeStudentStandardPage = fileType === 'problems' || fileType === 'problem' || fileType === 'submissions';
+  if (mayBeStudentStandardPage && !readCookie(request, ADMIN_SESSION_COOKIE) && await isExamModeEnabled(env)) {
+    return examModeOnlyResponse();
+  }
 
   if (env.OJ_DB && fileType === 'submissions') {
     return await handleD1Submissions(request, env, params);
@@ -4717,10 +4888,13 @@ async function prepareJudgeSubmission(body, env, allowDraft = false) {
     );
     const timing = availabilityState(effectiveAvailability);
     if (!timing.canEdit) {
+      const paused = timing.state === 'paused';
       throw judgeError(
-        timing.state === 'upcoming' ? '尚未到答题开放时间' : '答题时间已经结束，答案已冻结',
+        timing.state === 'upcoming' ? '尚未到答题开放时间'
+          : paused ? '当前答题时段已暂停，请等待下一时段开始'
+          : '答题时间已经结束，答案已冻结',
         timing.state === 'grace' ? 409 : 403,
-        timing.state === 'upcoming' ? 'NOT_STARTED' : 'ANSWER_CLOSED',
+        timing.state === 'upcoming' ? 'NOT_STARTED' : paused ? 'ANSWER_PAUSED' : 'ANSWER_CLOSED',
       );
     }
   }

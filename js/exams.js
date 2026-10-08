@@ -23,6 +23,8 @@ class ExamUI {
     this.finalizeRetryTimer = null;
     this.finalizeDeadlineTimer = null;
     this.exitTimer = null;
+    this.listTimingOffset = 0;
+    this.listClockTimer = null;
   }
 
   init() {
@@ -61,6 +63,7 @@ class ExamUI {
       else this.returnFromProgrammingProblem();
     });
     this.refreshTimer = setInterval(() => this.autoRefresh(), 600000);
+    this.listClockTimer = setInterval(() => this.updateListClocks(), 1000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) this.autoRefresh();
     });
@@ -159,6 +162,8 @@ class ExamUI {
         return;
       }
       this.exams = exams;
+      const serverTime = exams.find(exam => Number.isFinite(Number(exam?.timing?.serverTime)))?.timing?.serverTime;
+      if (serverTime) this.listTimingOffset = Number(serverTime) - Date.now();
       this.loadedKey = key;
       this.renderList();
     } catch (error) {
@@ -178,16 +183,16 @@ class ExamUI {
     }
     container.innerHTML = this.exams.map(exam => {
       const allowed = exam.accessAllowed !== false;
-      const status = !allowed
-        ? '无权限'
-        : exam.submittedAt
-        ? exam.gradingStatus === 'completed' ? '批改完成' : `批改中 ${exam.gradedCount}/${exam.totalParts}`
-        : '未提交';
-      const timingText = this.listTimingText(exam.timing);
+      const submitted = Boolean(exam.submittedAt);
+      const gradingText = submitted
+        ? (exam.gradingStatus === 'completed' ? '批改完成' : `批改中 ${exam.gradedCount}/${exam.totalParts}`)
+        : '';
+      const timingState = exam.timing?.state || 'unrestricted';
+      const timingText = this.listTimingText(exam.timing, Date.now() + this.listTimingOffset);
       return `<button type="button" class="exam-card${allowed ? '' : ' is-locked'}" data-open-exam="${this.escape(exam.id)}" data-access-allowed="${allowed ? '1' : '0'}" aria-disabled="${allowed ? 'false' : 'true'}">
         <div><span class="problem-id">${this.escape(exam.id)}</span><strong>${this.escape(exam.title)}</strong>${allowed ? '' : '<span class="exam-card-lock">🔒 无权限</span>'}</div>
         <p>${this.escape(exam.description || '综合套卷')}</p>
-        <footer><span>总分 ${this.escape(exam.totalScore)}</span>${timingText ? `<span>${this.escape(timingText)}</span>` : ''}<span>${this.escape(status)}</span>${exam.resultVisible ? `<b>${this.escape(exam.achievedScore)} 分</b>` : ''}</footer>
+        <footer><span>总分 ${this.escape(exam.totalScore)}</span>${exam.resultVisible ? `<b>${this.escape(exam.achievedScore)} 分</b>` : ''}<span class="exam-card-statuses"><span class="exam-status-pill timing ${this.escape(timingState)}" data-exam-timing="${this.escape(exam.id)}">${this.escape(timingText)}</span><span class="exam-status-pill submission ${submitted ? 'submitted' : 'pending'}">${submitted ? '已提交' : '未提交'}</span>${gradingText ? `<span>${this.escape(gradingText)}</span>` : ''}</span></footer>
       </button>`;
     }).join('');
     container.querySelectorAll('[data-open-exam]').forEach(button => {
@@ -202,12 +207,29 @@ class ExamUI {
     });
   }
 
-  listTimingText(timing) {
-    if (!timing || timing.state === 'unrestricted') return '';
-    if (timing.state === 'upcoming') return `${new Date(timing.nextStart).toLocaleString()} 开始`;
-    if (timing.state === 'active') return '答题中';
+  listTimingText(timing, now = Date.now()) {
+    if (!timing || timing.state === 'unrestricted') return '不限时';
+    if (timing.state === 'upcoming') return `还有 ${this.app._duration(Math.max(0, timing.nextStart - now))} 开始`;
+    if (timing.state === 'paused') return `已暂停答卷 · 还有 ${this.app._duration(Math.max(0, timing.nextStart - now))} 继续`;
+    if (timing.state === 'active') return `还有 ${this.app._duration(Math.max(0, timing.windowEnd - now))} 结束`;
     if (timing.state === 'grace') return '答案已冻结';
     return '已结束';
+  }
+
+  updateListClocks() {
+    if (this.app.views.currentView !== 'exams' || !this.exams.length) return;
+    const now = Date.now() + this.listTimingOffset;
+    let boundaryPassed = false;
+    for (const exam of this.exams) {
+      const node = document.querySelector(`[data-exam-timing="${CSS.escape(exam.id)}"]`);
+      if (!node) continue;
+      node.textContent = this.listTimingText(exam.timing, now);
+      const target = exam.timing?.state === 'active' ? exam.timing.windowEnd
+        : ['upcoming', 'paused'].includes(exam.timing?.state) ? exam.timing.nextStart
+        : exam.timing?.state === 'grace' ? exam.timing.graceEndsAt : 0;
+      if (target && now >= target) boundaryPassed = true;
+    }
+    if (boundaryPassed && !this.refreshing && Date.now() - this.lastRefreshAt > 3000) this.loadList(true, true);
   }
 
   async openExam(examId) {
@@ -541,6 +563,7 @@ class ExamUI {
     banner.hidden = !this.paper.availability?.enabled;
     banner.className = `timing-banner ${state.state === 'active' ? 'active' : state.state === 'grace' ? 'warning' : 'closed'}`;
     if (state.state === 'upcoming') banner.textContent = `尚未开始 · ${new Date(state.nextStart).toLocaleString()} 开放（还有 ${this.app._duration(state.nextStart - now)}）`;
+    else if (state.state === 'paused') banner.textContent = `已暂停答卷 · 下一时段还有 ${this.app._duration(state.nextStart - now)} 开始`;
     else if (state.state === 'active') banner.textContent = `答题进行中 · 距本时段结束 ${this.app._duration(state.windowEnd - now)} · 草稿自动保存到服务器`;
     else if (state.state === 'grace') banner.textContent = `答案已锁定 · ${this.app._duration(state.graceEndsAt - now)} 后自动提交`;
     else if (state.state === 'ended') banner.textContent = '全部答题时间已经结束，当前仅可查看。';

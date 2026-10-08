@@ -9,8 +9,8 @@
   <link rel="apple-touch-icon" href="assets/logo-circle.png?v=20260920-2">
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
-  <link rel="stylesheet" href="css/style.css?v=20261002-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261004-03">
+  <link rel="stylesheet" href="css/style.css?v=20261009-01">
+  <link rel="stylesheet" href="css/admin.css?v=20261009-01">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -318,6 +318,12 @@
                   <button id="download-exam-roster" type="button" class="admin-button secondary" disabled>⇩ 导出更新后的 Excel</button>
                   <span id="exam-roster-status">已有密码保持不变；仅无密码账号生成随机密码；可多次追加导入</span>
                 </div>
+                <div class="exam-access-revoke">
+                  <label class="form-field"><span>撤销单个学生权限</span><input id="exam-revoke-username" class="admin-input" maxlength="50" autocomplete="off" placeholder="输入学生用户名"></label>
+                  <button id="revoke-exam-user" type="button" class="admin-button danger">撤销此人权限</button>
+                  <button id="revoke-exam-all" type="button" class="admin-button danger">一键撤销所有人权限</button>
+                </div>
+                <p id="exam-access-status" class="account-import-status" role="status"></p>
               </section>
               <div class="testcase-heading"><div><strong>试卷题目</strong><p>大题内可自由组合选择、填空、简答和编程小题</p></div><button id="add-exam-question" type="button" class="admin-button secondary">＋ 添加大题</button></div>
               <div id="exam-question-editor" class="exam-question-editor"></div>
@@ -413,6 +419,13 @@
 
       <section id="panel-system" class="admin-panel">
         <div class="admin-page-title"><div><p class="eyebrow">OPERATIONS</p><h2>系统状态</h2><p>检查各组件连接状态与常用运维入口</p></div></div>
+        <article class="admin-card exam-mode-settings">
+          <div class="card-heading"><div><h3>学生端运行模式</h3><p>考试模式只保留套卷入口；Worker 同时阻止普通题目操作和学生修改密码</p></div></div>
+          <div class="exam-mode-settings-row">
+            <label class="exam-mode-toggle"><input id="exam-mode-enabled" type="checkbox"><span><strong>开启考试模式</strong><small id="exam-mode-status">正在读取当前状态...</small></span></label>
+            <button id="save-exam-mode" type="button" class="admin-button primary">保存模式</button>
+          </div>
+        </article>
         <div class="status-grid">
           <article class="status-card"><span id="status-worker-dot" class="status-dot pending"></span><div><h3>Cloudflare Worker</h3><p id="status-worker">检查中...</p></div></article>
           <article class="status-card"><span id="status-github-dot" class="status-dot pending"></span><div><h3>GitHub 数据存储</h3><p id="status-github">检查中...</p></div></article>
@@ -449,7 +462,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20261004-02"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
-  <script src="js/admin.js?v=20261004-02"></script>
-  <script src="js/admin-exams.js?v=20261004-03"></script>
+  <script src="js/admin.js?v=20261009-01"></script>
+  <script src="js/admin-exams.js?v=20261009-01"></script>
 </body>
 </html>

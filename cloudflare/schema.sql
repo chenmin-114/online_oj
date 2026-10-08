@@ -150,6 +150,32 @@ CREATE TABLE IF NOT EXISTS exam_roster (
 CREATE INDEX IF NOT EXISTS idx_exam_roster_username
   ON exam_roster(username, exam_id);
 
+-- 全局运行模式只保存很少量键值；考试模式由 Worker 强制执行。
+CREATE TABLE IF NOT EXISTS system_settings (
+  setting_key TEXT PRIMARY KEY,
+  setting_value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- 默认情况下，批量注册的正式账号可进入所有套卷；管理员可按卷关闭该默认权限，
+-- 再通过额外名单逐个恢复。单人撤权用于覆盖正式账号的默认权限。
+CREATE TABLE IF NOT EXISTS exam_access_policies (
+  exam_id TEXT PRIMARY KEY,
+  managed_default_allowed INTEGER NOT NULL DEFAULT 1
+    CHECK (managed_default_allowed IN (0, 1)),
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS exam_access_revocations (
+  exam_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (exam_id, username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exam_access_revocations_username
+  ON exam_access_revocations(username, exam_id);
+
 -- 试卷每次修改只新增一个共享版本，历史提交按版本读取，
 -- 不需要在每个学生的提交中重复保存整张题面。
 CREATE TABLE IF NOT EXISTS exam_versions (
