@@ -24,13 +24,8 @@
   "hintsDefaultExpanded": true,
   "hints": [],
   "availability": {
-    "enabled": true,
-    "windows": [
-      {
-        "start": 1791280800000,
-        "end": 1791388740000
-      }
-    ],
+    "enabled": false,
+    "windows": [],
     "afterEndView": "none"
   },
   "pythonJudgeMode": "standard",
