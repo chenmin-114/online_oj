@@ -215,5 +215,19 @@
     "file": "p022.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "P023",
+    "title": "（Day 19）从“你好世界”到“世界你好”，这19天，你把忐忑敲成了笃定",
+    "difficulty": "easy",
+    "status": "published",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "p023.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]
