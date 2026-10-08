@@ -3,17 +3,17 @@
   "title": "（Day 19）从“你好世界”到“世界你好”，这19天，你把忐忑敲成了笃定",
   "difficulty": "easy",
   "status": "published",
-  "description": "19天前，你敲下 `hello world` 时，它只是屏幕上一行陌生的字母，代表着你闯入编程世界的忐忑；今天再敲 `hello world`，它已经是你熟悉的伙伴，背后是19天里调不通的指针、改不完的bug、熬过的夜，更是你即将走向的、更广阔的世界。\n\n不妨再用一次敲击，完成这跨越19天的击掌：输入 `past`，它会告诉你当初的 hello world 有多青涩；输入 `future`，它会告诉你现在的 hello world 有多辽阔。这不是选择题，而是让你亲眼看见：你和“hello world”都长大了。\n\n## 要求\n\n从键盘输入一个字符串（仅限 `past` 或 `future`），根据输入输出对应内容：\n\n- 输入 `past` → 输出 `hello world, you were my first step. I was scared but I tried.`\n- 输入 `future` → 输出 `hello world, you are my next chapter. The world is wide and I'm ready.`\n- 输入其他 → 输出 `No matter what you choose, both are part of your story.`",
+  "description": "19天前，你敲下 `hello world` 时，它只是屏幕上一行陌生的字母，代表着你闯入编程世界的忐忑；今天再敲 `hello world`，它已经是你熟悉的伙伴，背后是19天里调不通的指针、改不完的bug、熬过的夜，更是你即将走向的、更广阔的世界。\n\n不妨再用一次敲击，完成这跨越19天的击掌：输入 `past`，它会告诉你当初的 hello world 有多青涩；输入 `future`，它会告诉你现在的 hello world 有多辽阔。这不是选择题，而是让你亲眼看见：你和“hello world”都长大了。\n\n## 要求\n\n从键盘输入一个字符串（仅限 `past` 或 `future`），根据输入输出对应内容：\n\n- 输入 `past` → 输出 `hello world, you were my first step. I was scared but I began.`\n- 输入 `future` → 输出 `hello world, you are my next chapter. The world is wide and I'm ready.`\n- 输入其他 → 输出 `No matter what you choose, both are part of your story.`",
   "inputFormat": "一行一个字符串，表示选择的时间维度（`past` / `future` / 其他）。",
   "outputFormat": "一行对应的英文句子，注意句末有英文句号。",
   "constraints": "",
   "sampleExplanation": "",
   "sampleInput": "past",
-  "sampleOutput": "hello world, you were my first step. I was scared but I tried.",
+  "sampleOutput": "hello world, you were my first step. I was scared but I began.",
   "samples": [
     {
       "input": "past",
-      "output": "hello world, you were my first step. I was scared but I tried."
+      "output": "hello world, you were my first step. I was scared but I began."
     },
     {
       "input": "future",
