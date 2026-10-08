@@ -11,7 +11,8 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  # 静态站只需发布 main 的最新版本，避免频繁更新题目时旧任务长期堵住队列。
+  cancel-in-progress: true
 
 jobs:
   deploy:
