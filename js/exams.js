@@ -28,6 +28,11 @@ class ExamUI {
   }
 
   init() {
+    const answerSheetButton = document.getElementById('download-exam-docx');
+    const answerSheetImport = document.querySelector('.exam-docx-import');
+    // 学生统一在线作答；Word 答题卡只保留给管理员预览检查使用。
+    answerSheetButton.hidden = !this.app.adminExamPreview;
+    answerSheetImport.hidden = !this.app.adminExamPreview;
     document.querySelector('[data-view="exams"]').addEventListener('click', () => this.loadList(true, Boolean(this.loadedKey)));
     document.getElementById('back-to-exam-list').addEventListener('click', () => {
       clearInterval(this.timingTimer);
@@ -264,7 +269,7 @@ class ExamUI {
       this.app.lastTimeSyncAt = Date.now();
       this.app._trackExamView(this.paper.id);
       this.renderPaper();
-      document.getElementById('download-exam-docx').disabled = false;
+      document.getElementById('download-exam-docx').disabled = !this.app.adminExamPreview;
       status.textContent = this.submission
         ? `已于 ${new Date(this.submission.submittedAt).toLocaleString()} 提交；再次提交将以新答案作为最终评分依据`
         : this.app.adminExamPreview
@@ -278,7 +283,7 @@ class ExamUI {
   }
 
   async downloadAnswerSheet() {
-    if (!this.paper) return;
+    if (!this.app.adminExamPreview || !this.paper) return;
     const button = document.getElementById('download-exam-docx');
     const status = document.getElementById('exam-answer-sheet-status');
     button.disabled = true;
@@ -296,7 +301,7 @@ class ExamUI {
   async importAnswerSheet(input) {
     const file = input.files?.[0];
     input.value = '';
-    if (!file || !this.paper) return;
+    if (!this.app.adminExamPreview || !file || !this.paper) return;
     const status = document.getElementById('exam-answer-sheet-status');
     status.textContent = '正在读取 Word 答题卡...';
     try {
