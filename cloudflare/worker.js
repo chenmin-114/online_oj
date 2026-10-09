@@ -1954,12 +1954,16 @@ async function handleStudentExamList(body, env) {
     const viewAccess = timing.state !== 'ended'
       ? answerAccess
       : availability.afterEndView === 'all' || (availability.afterEndView === 'authorized' && answerAccess);
+    // 正式答题尚未开始时只公开列表与倒计时，不提前返回题面入口。
+    // 有效的个人补时会把 effectiveAvailability 改为当前 active，因此仍可提前进入。
+    const enterAccess = viewAccess && timing.state !== 'upcoming';
     return {
     id: row.id,
     title: row.title,
     description: row.description,
     totalScore: Number(row.total_score),
     accessAllowed: viewAccess,
+    enterAllowed: enterAccess,
     answerAllowed: answerAccess,
     timing,
     submittedAt: row.submitted_at ? Number(row.submitted_at) : null,
@@ -2019,6 +2023,7 @@ async function handleStudentExamGet(body, env) {
     && (paper.availability.afterEndView === 'all'
       || (paper.availability.afterEndView === 'authorized' && answerAccess));
   if (!answerAccess && !postViewAllowed) return jsonResponse({ error: '你不在这张套卷的准入范围内' }, 403);
+  if (timing.state === 'upcoming') return timedAccessError(timing);
   if (timing.state === 'ended' && !postViewAllowed) {
     return jsonResponse({ error: '这张套卷已经结束且未开放观看', code: 'VIEW_CLOSED', timing }, 403);
   }

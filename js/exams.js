@@ -183,14 +183,15 @@ class ExamUI {
     }
     container.innerHTML = this.exams.map(exam => {
       const allowed = exam.accessAllowed !== false;
+      const enterAllowed = allowed && exam.enterAllowed !== false;
       const submitted = Boolean(exam.submittedAt);
       const gradingText = submitted
         ? (exam.gradingStatus === 'completed' ? '批改完成' : `批改中 ${exam.gradedCount}/${exam.totalParts}`)
         : '';
       const timingState = exam.timing?.state || 'unrestricted';
       const timingText = this.listTimingText(exam.timing, Date.now() + this.listTimingOffset);
-      return `<button type="button" class="exam-card${allowed ? '' : ' is-locked'}" data-open-exam="${this.escape(exam.id)}" data-access-allowed="${allowed ? '1' : '0'}" aria-disabled="${allowed ? 'false' : 'true'}">
-        <div><span class="problem-id">${this.escape(exam.id)}</span><strong>${this.escape(exam.title)}</strong>${allowed ? '' : '<span class="exam-card-lock">🔒 无权限</span>'}</div>
+      return `<button type="button" class="exam-card${enterAllowed ? '' : ' is-locked'}" data-open-exam="${this.escape(exam.id)}" data-access-allowed="${allowed ? '1' : '0'}" data-enter-allowed="${enterAllowed ? '1' : '0'}" aria-disabled="${enterAllowed ? 'false' : 'true'}">
+        <div><span class="problem-id">${this.escape(exam.id)}</span><strong>${this.escape(exam.title)}</strong>${!allowed ? '<span class="exam-card-lock">🔒 无权限</span>' : !enterAllowed ? '<span class="exam-card-lock">⏳ 未开始</span>' : ''}</div>
         <p>${this.escape(exam.description || '综合套卷')}</p>
         <footer><span>总分 ${this.escape(exam.totalScore)}</span>${exam.resultVisible ? `<b>${this.escape(exam.achievedScore)} 分</b>` : ''}<span class="exam-card-statuses"><span class="exam-status-pill timing ${this.escape(timingState)}" data-exam-timing="${this.escape(exam.id)}">${this.escape(timingText)}</span><span class="exam-status-pill submission ${submitted ? 'submitted' : 'pending'}">${submitted ? '已提交' : '未提交'}</span>${gradingText ? `<span>${this.escape(gradingText)}</span>` : ''}</span></footer>
       </button>`;
@@ -200,6 +201,10 @@ class ExamUI {
         if (button.dataset.accessAllowed !== '1') {
           const exam = this.exams.find(item => item.id === button.dataset.openExam);
           alert(exam?.timing?.state === 'ended' ? '这张套卷已经结束，管理员没有开放观看权限' : '暂无权限，请向管理员申请');
+          return;
+        }
+        if (button.dataset.enterAllowed !== '1') {
+          alert('尚未到答题开放时间，请等待考试开始；如需提前进入，请联系管理员单独授权。');
           return;
         }
         this.openExam(button.dataset.openExam);
