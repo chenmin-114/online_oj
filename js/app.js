@@ -1289,6 +1289,10 @@ class App {
     const passwordButton = document.getElementById('change-password-btn');
     if (passwordButton) passwordButton.hidden = this.adminImpersonation || this.examMode;
     if (!this.examMode || this.adminExamPreview || this.adminProblemPreview) return;
+    // 登录初始化会并行请求普通题目列表。慢网络下，该请求的考试模式拒绝响应
+    // 可能晚于学生打开套卷；此时不能把合法的套卷页或关联编程题误切回列表。
+    // 这里只保护页面状态，运行与提交仍由 Worker 校验套卷准入、关联题号和服务端时间。
+    if (this.views.currentView === 'exam' || this.examUI?.programmingContext) return;
     // 使正在进行的普通题目请求失效，并清除已经预加载的题目数据。
     this.problemLoadSequence += 1;
     this.problemRequestSequence += 1;
