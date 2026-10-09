@@ -25,6 +25,8 @@ class ExamUI {
     this.exitTimer = null;
     this.listTimingOffset = 0;
     this.listClockTimer = null;
+    this.submitting = false;
+    this.lastSubmitFailed = false;
   }
 
   init() {
@@ -255,6 +257,8 @@ class ExamUI {
     this.finalizeRetryTimer = null;
     this.finalizeDeadlineTimer = null;
     this.exitTimer = null;
+    this.submitting = false;
+    this.lastSubmitFailed = false;
     const status = document.getElementById('exam-submit-status');
     document.getElementById('exam-answer-sheet-status').textContent = '';
     document.getElementById('download-exam-docx').disabled = true;
@@ -586,8 +590,15 @@ class ExamUI {
       ['language-select', 'reset-code-btn', 'run-btn', 'custom-input', 'clear-input-btn'].forEach(id => { const node = document.getElementById(id); if (node) node.disabled = locked; });
     }
     const submit = document.getElementById('submit-exam');
-    submit.disabled = !this.app.adminExamPreview && this.paper.availability?.enabled && !state.canSubmit;
-    submit.textContent = state.state === 'grace' ? '确认提交冻结答案' : '提交整张试卷';
+    if (this.submitting) {
+      submit.disabled = true;
+      submit.textContent = '提交中…';
+    } else {
+      submit.disabled = !this.app.adminExamPreview && this.paper.availability?.enabled && !state.canSubmit;
+      submit.textContent = state.state === 'grace'
+        ? '确认提交冻结答案'
+        : this.lastSubmitFailed ? '重新提交' : '提交整张试卷';
+    }
     if (state.state === 'active' && state.windowEnd - now <= 5000 && this.precloseSavedFor !== state.windowEnd) {
       this.precloseSavedFor = state.windowEnd;
       this.saveServerDraft();
@@ -675,7 +686,7 @@ class ExamUI {
   }
 
   async submit() {
-    if (!this.paper) return;
+    if (!this.paper || this.submitting) return;
     const timing = this.currentTiming();
     if (!this.app.adminExamPreview && timing.state === 'grace') {
       if (!this.app.confirmAdminImpersonationAction(`提交套卷《${this.paper.title}》的冻结答案`)) return;
@@ -686,6 +697,8 @@ class ExamUI {
     const status = document.getElementById('exam-submit-status');
     const answers = this.collectAnswers();
     if (!this.app.confirmAdminImpersonationAction(`提交套卷《${this.paper.title}》`)) return;
+    this.submitting = true;
+    this.lastSubmitFailed = false;
     button.disabled = true;
     button.textContent = '提交中…';
     status.textContent = '正在保存答案并自动批改选择题、填空题和编程题；编程题较多时需要稍等。';
@@ -700,17 +713,19 @@ class ExamUI {
       status.textContent = `提交成功：这是第 ${result.attemptNo} 次提交，已完成 ${result.gradedCount}/${result.totalParts} 个小题的批改。`;
       this.renderResult(this.submission);
       this.loadedKey = '';
+      this.lastSubmitFailed = false;
       this.showSubmitModal(
         true,
         '提交完成',
         `《${this.paper.title}》已成功提交。\n这是第 ${result.attemptNo} 次提交，已完成 ${result.gradedCount}/${result.totalParts} 个小题的自动批改。`,
       );
     } catch (error) {
+      this.lastSubmitFailed = true;
       status.textContent = `提交失败：${error.message}。答案仍保存在本机，可以稍后重试。`;
       this.showSubmitModal(false, '提交失败', `${error.message}\n答案仍保存在本机，请检查网络后重新提交。`);
     } finally {
-      button.disabled = false;
-      button.textContent = '提交整张试卷';
+      this.submitting = false;
+      this.applyTimingState();
     }
   }
 
