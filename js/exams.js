@@ -30,9 +30,9 @@ class ExamUI {
   init() {
     const answerSheetButton = document.getElementById('download-exam-docx');
     const answerSheetImport = document.querySelector('.exam-docx-import');
-    // 学生统一在线作答；Word 答题卡只保留给管理员预览检查使用。
+    // 学生可以导入管理员发放的答题卡，但下载入口只保留给管理员预览检查使用。
     answerSheetButton.hidden = !this.app.adminExamPreview;
-    answerSheetImport.hidden = !this.app.adminExamPreview;
+    answerSheetImport.hidden = false;
     document.querySelector('[data-view="exams"]').addEventListener('click', () => this.loadList(true, Boolean(this.loadedKey)));
     document.getElementById('back-to-exam-list').addEventListener('click', () => {
       clearInterval(this.timingTimer);
@@ -301,7 +301,7 @@ class ExamUI {
   async importAnswerSheet(input) {
     const file = input.files?.[0];
     input.value = '';
-    if (!this.app.adminExamPreview || !file || !this.paper) return;
+    if (!file || !this.paper) return;
     const status = document.getElementById('exam-answer-sheet-status');
     status.textContent = '正在读取 Word 答题卡...';
     try {
