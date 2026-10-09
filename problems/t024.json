@@ -1,0 +1,32 @@
+{
+  "id": "T024",
+  "title": "迷宫最短路径与重绘",
+  "difficulty": "hard",
+  "status": "draft",
+  "description": "给定 `N × M` 迷宫（`#` 墙、`.` 通路、`S` 起点、`E` 终点），从 `S` 出发，每次只能上下左右移动一格，求一条最短路径。\n\n为保证多条最短路径时答案唯一，扩展相邻格的优先级固定为：**右 R、下 D、左 L、上 U**。重绘时只把路径经过的 `.` 改成 `*`，`S` 和 `E` 保持不变。",
+  "inputFormat": "第一行 `N M`；接下来 `N` 行，每行 `M` 个字符。",
+  "outputFormat": "不可达时只输出 `NO PATH`。可达时：第一行步数 `L`，第二行方向串，随后输出重绘后的 `N` 行迷宫。",
+  "constraints": "2 ≤ N,M ≤ 100；恰有一个 S 和一个 E。",
+  "sampleExplanation": "",
+  "sampleInput": "9 9\n#########\n#S......#\n#.#.###.#\n#.###...#\n#.#.#.#.#\n#...#.#.#\n#####.#.#\n#......E#\n#########",
+  "sampleOutput": "12\nRRRRRRDDDDDD\n#########\n#S******#\n#.#.###*#\n#.###..*#\n#.#.#.#*#\n#...#.#*#\n#####.#*#\n#......E#\n#########",
+  "samples": [
+    {
+      "input": "9 9\n#########\n#S......#\n#.#.###.#\n#.###...#\n#.#.#.#.#\n#...#.#.#\n#####.#.#\n#......E#\n#########",
+      "output": "12\nRRRRRRDDDDDD\n#########\n#S******#\n#.#.###*#\n#.###..*#\n#.#.#.#*#\n#...#.#*#\n#####.#*#\n#......E#\n#########"
+    }
+  ],
+  "showTestDetails": false,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "availability": {
+    "enabled": false,
+    "windows": [],
+    "afterEndView": "none"
+  },
+  "pythonJudgeMode": "standard",
+  "codeTemplates": {
+    "c": "#include <stdio.h>\n\nint main(void) {\n    /* TODO：建议使用 BFS，并记录每个格子的前驱和方向。 */\n    return 0;\n}\n"
+  },
+  "group": "control"
+}

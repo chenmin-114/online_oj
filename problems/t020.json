@@ -1,0 +1,32 @@
+{
+  "id": "T020",
+  "title": "奶茶店促销计价模块",
+  "difficulty": "medium",
+  "status": "draft",
+  "description": "补全给定 C 程序，组合调用 5 个已实现的工具函数，按“原价 → 会员折扣 → 满 15 减 3 → 最低 5 元保护”的固定顺序处理每笔订单。不得修改工具函数。\n\n优惠标签必须根据实际触发情况输出：`NONE`、`MEMBER`、`REDUCTION` 或 `MEMBER+REDUCTION`。",
+  "inputFormat": "第一行整数 `N`。接下来 `N` 行依次为：单价（实数）、数量（整数）、是否会员（1/0）。",
+  "outputFormat": "输出 `N` 行：`订单序号 最终价格 优惠标签`。价格固定保留两位小数。",
+  "constraints": "1 ≤ N ≤ 100；0 < 单价 ≤ 10000；1 ≤ 数量 ≤ 1000。",
+  "sampleExplanation": "",
+  "sampleInput": "5\n18 1 1\n12 2 0\n25 1 1\n8 3 1\n20 1 0",
+  "sampleOutput": "",
+  "samples": [
+    {
+      "input": "5\n18 1 1\n12 2 0\n25 1 1\n8 3 1\n20 1 0",
+      "expectedOutput": "1 14.40 MEMBER\n2 21.00 REDUCTION\n3 17.00 MEMBER+REDUCTION\n4 16.20 MEMBER+REDUCTION\n5 17.00 REDUCTION"
+    }
+  ],
+  "showTestDetails": false,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "availability": {
+    "enabled": false,
+    "windows": [],
+    "afterEndView": "none"
+  },
+  "pythonJudgeMode": "standard",
+  "codeTemplates": {
+    "c": "/* milk_tea_price.c - Dev-C++ Compatible Daily Life Version */\r\n#include <stdio.h>\r\n\r\n/* ============================================================\r\n * === 工具函数区 (已实现，禁止修改) ===========================\r\n * ============================================================ */\r\n\r\n/* 1. 计算原价 */\r\ndouble calc_base_price(double unit_price, int qty) {\r\n    return unit_price * (double)qty;\r\n}\r\n\r\n/* 2. 应用会员折扣(8折) */\r\ndouble apply_member_discount(double price) {\r\n    return price * 0.8;\r\n}\r\n\r\n/* 3. 检查是否满足满减门槛(>=15元) */\r\nint check_full_reduction(double price) {\r\n    if (price >= 15.0) return 1;\r\n    return 0;\r\n}\r\n\r\n/* 4. 应用满减优惠(减3元) */\r\ndouble apply_reduction(double price) {\r\n    return price - 3.0;\r\n}\r\n\r\n/* 5. 保底价格保护(不低于min_val) */\r\ndouble clamp_min(double price, double min_val) {\r\n    if (price < min_val) return min_val;\r\n    return price;\r\n}\r\n\r\n/* ============================================================\r\n * === 考生作答区 =============================================\r\n * ============================================================ */\r\n\r\n#define COST_FLOOR 5.0\r\n\r\nint main(void) {\n    int n;\n    if (scanf(\"%d\", &n) != 1) return 0;\n\n    for (int i = 0; i < n; ++i) {\n        double unit_price;\n        int qty, is_member;\n        scanf(\"%lf%d%d\", &unit_price, &qty, &is_member);\n\n        /* TODO：必须组合调用题目给出的 5 个工具函数完成计价。 */\n        double final_price = 0.0;\n        int has_reduction = 0;\n        const char *promo_tag = \"NONE\";\n\n        printf(\"%d %.2f %s\\n\", i + 1, final_price, promo_tag);\n    }\n    return 0;\n}\n"
+  },
+  "group": "control"
+}

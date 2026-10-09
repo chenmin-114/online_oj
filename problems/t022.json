@@ -1,0 +1,32 @@
+{
+  "id": "T022",
+  "title": "学生信息结构体统计",
+  "difficulty": "easy",
+  "status": "draft",
+  "description": "使用 `Student` 结构体存储学生的学号、姓名和成绩。读入全部学生，逐人输出规范化信息，并计算总分与平均分。",
+  "inputFormat": "第一行整数 `N`。接下来 `N` 行：`学号 姓名 成绩`。姓名不含空格。",
+  "outputFormat": "先输出 `N` 行 `学号 姓名 成绩`（成绩保留两位小数），再输出 `Total: 总分` 和 `Average: 平均分`，均保留两位小数。",
+  "constraints": "1 ≤ N ≤ 100；姓名长度不超过 19；0 ≤ 成绩 ≤ 100。",
+  "sampleExplanation": "",
+  "sampleInput": "3\n1001 Alice 86.5\n1002 Bob 90\n1003 Carol 77.25",
+  "sampleOutput": "1001 Alice 86.50\n1002 Bob 90.00\n1003 Carol 77.25\nTotal: 253.75\nAverage: 84.58",
+  "samples": [
+    {
+      "input": "3\n1001 Alice 86.5\n1002 Bob 90\n1003 Carol 77.25",
+      "output": "1001 Alice 86.50\n1002 Bob 90.00\n1003 Carol 77.25\nTotal: 253.75\nAverage: 84.58"
+    }
+  ],
+  "showTestDetails": false,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "availability": {
+    "enabled": false,
+    "windows": [],
+    "afterEndView": "none"
+  },
+  "pythonJudgeMode": "standard",
+  "codeTemplates": {
+    "c": "#include <stdio.h>\n\ntypedef struct {\n    int num;\n    char name[20];\n    float score;\n} Student;\n\nint main(void) {\n    int n;\n    Student students[100];\n    scanf(\"%d\", &n);\n    /* TODO：输入、输出学生信息，并计算总分和平均分。 */\n    return 0;\n}\n"
+  },
+  "group": "control"
+}

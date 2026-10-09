@@ -1,0 +1,36 @@
+{
+  "id": "T023",
+  "title": "句子单词统计与反转",
+  "difficulty": "medium",
+  "status": "draft",
+  "description": "读入一个至少含 3 个英文单词的句子，统计单词数，按单词顺序整体反转，并判断原句的单词序列是否为回文。连续空白按一个分隔符处理。比较时区分大小写。",
+  "inputFormat": "一行英文句子，只包含英文字母和空格，至少 3 个单词。",
+  "outputFormat": "三行依次输出：`Words: 数量`、`Reversed: 反转后的句子`、`Palindrome: YES` 或 `Palindrome: NO`。",
+  "constraints": "整行长度不超过 1000。",
+  "sampleExplanation": "",
+  "sampleInput": "one two one",
+  "sampleOutput": "Words: 3\nReversed: one two one\nPalindrome: YES",
+  "samples": [
+    {
+      "input": "one two one",
+      "output": "Words: 3\nReversed: one two one\nPalindrome: YES"
+    },
+    {
+      "input": "we love embedded systems",
+      "output": "Words: 4\nReversed: systems embedded love we\nPalindrome: NO"
+    }
+  ],
+  "showTestDetails": false,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "availability": {
+    "enabled": false,
+    "windows": [],
+    "afterEndView": "none"
+  },
+  "pythonJudgeMode": "standard",
+  "codeTemplates": {
+    "c": "#include <stdio.h>\n\nint main(void) {\n    char sentence[1001];\n    fgets(sentence, sizeof(sentence), stdin);\n    /* TODO：切分单词、反转并判断回文。 */\n    return 0;\n}\n"
+  },
+  "group": "control"
+}

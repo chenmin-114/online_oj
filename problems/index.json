@@ -224,5 +224,131 @@
     "file": "p023.json",
     "acceptRate": "0%",
     "submitCount": 0
+  },
+  {
+    "id": "T020",
+    "title": "奶茶店促销计价模块",
+    "difficulty": "medium",
+    "status": "draft",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "t020.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "T021",
+    "title": "2026 年日期与星期判断",
+    "difficulty": "easy",
+    "status": "draft",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "t021.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "T022",
+    "title": "学生信息结构体统计",
+    "difficulty": "easy",
+    "status": "draft",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "t022.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "T023",
+    "title": "句子单词统计与反转",
+    "difficulty": "medium",
+    "status": "draft",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "t023.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "T024",
+    "title": "迷宫最短路径与重绘",
+    "difficulty": "hard",
+    "status": "draft",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "t024.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "T025",
+    "title": "按照参照数组进行相对排序",
+    "difficulty": "medium",
+    "status": "draft",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "t025.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "T026",
+    "title": "传感器数据清洗管道",
+    "difficulty": "hard",
+    "status": "draft",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "t026.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "T027",
+    "title": "一根筋电梯调度",
+    "difficulty": "hard",
+    "status": "draft",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "t027.json",
+    "acceptRate": "0%",
+    "submitCount": 0
+  },
+  {
+    "id": "T028",
+    "title": "简易 FreeRTOS 风格任务调度器",
+    "difficulty": "hard",
+    "status": "draft",
+    "availability": {
+      "enabled": false,
+      "windows": [],
+      "afterEndView": "none"
+    },
+    "file": "t028.json",
+    "acceptRate": "0%",
+    "submitCount": 0
   }
 ]

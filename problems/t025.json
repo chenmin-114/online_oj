@@ -1,0 +1,36 @@
+{
+  "id": "T025",
+  "title": "按照参照数组进行相对排序",
+  "difficulty": "medium",
+  "status": "draft",
+  "description": "给定数组 `arr1` 和元素互不相同的数组 `arr2`，`arr2` 的每个元素都出现在 `arr1` 中。调整 `arr1`：出现在 `arr2` 中的元素按 `arr2` 的先后顺序排列；其余元素按升序放在末尾。鼓励使用动态内存分配。",
+  "inputFormat": "第一行 `N M`。第二行 `N` 个整数为 arr1。第三行 `M` 个整数为 arr2。",
+  "outputFormat": "一行输出排序后的 `N` 个整数，以单个空格分隔，行末不添加多余空格。",
+  "constraints": "1 ≤ M ≤ N ≤ 100000；整数范围为 -10^9 到 10^9。",
+  "sampleExplanation": "",
+  "sampleInput": "11 6\n2 3 1 3 2 4 6 7 9 2 19\n2 1 4 3 9 6",
+  "sampleOutput": "2 2 2 1 4 3 3 9 6 7 19",
+  "samples": [
+    {
+      "input": "11 6\n2 3 1 3 2 4 6 7 9 2 19\n2 1 4 3 9 6",
+      "output": "2 2 2 1 4 3 3 9 6 7 19"
+    },
+    {
+      "input": "6 4\n28 6 22 8 44 17\n22 28 8 6",
+      "output": "22 28 8 6 17 44"
+    }
+  ],
+  "showTestDetails": false,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "availability": {
+    "enabled": false,
+    "windows": [],
+    "afterEndView": "none"
+  },
+  "pythonJudgeMode": "standard",
+  "codeTemplates": {
+    "c": "#include <stdio.h>\n\nint main(void) {\n    /* TODO：读入数组并完成相对排序。 */\n    return 0;\n}\n"
+  },
+  "group": "control"
+}

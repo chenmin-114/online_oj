@@ -1,0 +1,36 @@
+{
+  "id": "T026",
+  "title": "传感器数据清洗管道",
+  "difficulty": "hard",
+  "status": "draft",
+  "description": "补全 `sensor_data_pipeline`：依次执行窗口为 3 的中值滤波、原地剔除 `[0,100]` 外的数据、归一化到 `[0,1]`。输出数组必须使用 `safe_calloc` 分配；任意失败路径都要释放已分配内存。不得修改给定工具函数。",
+  "inputFormat": "第一行非负整数 `N`；当 N>0 时，第二行给出 N 个浮点数。",
+  "outputFormat": "第一行输出 `返回值 输出长度`。成功且输出非空时，第二行输出归一化结果，每项固定 4 位小数。",
+  "constraints": "0 ≤ N ≤ 10000。",
+  "sampleExplanation": "",
+  "sampleInput": "10\n10 12 11 999 13 11 12 -5 10 11",
+  "sampleOutput": "0 10\n0.6667 0.3333 0.6667 1.0000 1.0000 0.6667 0.3333 0.0000 0.0000 0.3333",
+  "samples": [
+    {
+      "input": "10\n10 12 11 999 13 11 12 -5 10 11",
+      "output": "0 10\n0.6667 0.3333 0.6667 1.0000 1.0000 0.6667 0.3333 0.0000 0.0000 0.3333"
+    },
+    {
+      "input": "3\n200 300 400",
+      "output": "0 0"
+    }
+  ],
+  "showTestDetails": false,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "availability": {
+    "enabled": false,
+    "windows": [],
+    "afterEndView": "none"
+  },
+  "pythonJudgeMode": "standard",
+  "codeTemplates": {
+    "c": "#include <stdio.h>\r\n#include <stdlib.h>\r\n#include <string.h>\r\n#include <float.h>\r\n#include <math.h>\r\n\r\n/* ============================================================\r\n * === 工具函数区 (已完整实现，禁止修改) ========================\r\n * ============================================================ */\r\n\r\n/**\r\n * @brief 安全内存分配（自动清零）\r\n */\r\nvoid *safe_calloc(size_t nmemb, size_t size) {\r\n    if (nmemb == 0 || size == 0) return NULL;\r\n    if (nmemb > SIZE_MAX / size) return NULL;\r\n    return calloc(nmemb, size);\r\n}\r\n\r\n/**\r\n * @brief 安全释放内存并置NULL\r\n */\r\nvoid safe_free(void **ptr) {\r\n    if (ptr && *ptr) { free(*ptr); *ptr = NULL; }\r\n}\r\n\r\n/**\r\n * @brief 滑动窗口中值滤波\r\n * @return 0成功; -1参数错误(window<=0/偶数/NULL指针); len==0时返回0不写dst\r\n */\r\nint median_filter(const float *src, size_t len, float *dst, int window) {\r\n    if (!src || !dst) return -1;\r\n    if (window <= 0 || window % 2 == 0) return -1;\r\n    if (len == 0) return 0;\r\n    int half = window / 2;\r\n    float tmp[64]; // 简化实现，假设window<=64\r\n    for (size_t i = 0; i < len; i++) {\r\n        int cnt = 0;\r\n        for (int j = -half; j <= half; j++) {\r\n            long idx = (long)i + j;\r\n            if (idx >= 0 && idx < (long)len) tmp[cnt++] = src[idx];\r\n        }\r\n        for (int a = 0; a < cnt-1; a++)\r\n            for (int b = 0; b < cnt-1-a; b++)\r\n                if (tmp[b] > tmp[b+1]) { float t=tmp[b]; tmp[b]=tmp[b+1]; tmp[b+1]=t; }\r\n        dst[i] = tmp[cnt / 2];\r\n    }\r\n    return 0;\r\n}\r\n\r\n/**\r\n * @brief 原地剔除[min,max]范围外的数据\r\n * @param out_len 剔除后有效个数\r\n * @return 0成功; -1参数错误\r\n */\r\nint clamp_outliers(float *data, size_t len, float min_val, float max_val, size_t *out_len) {\r\n    if (!data || !out_len) return -1;\r\n    if (min_val > max_val) return -1;\r\n    if (len == 0) { *out_len = 0; return 0; }\r\n    size_t w = 0;\r\n    for (size_t i = 0; i < len; i++)\r\n        if (data[i] >= min_val && data[i] <= max_val) data[w++] = data[i];\r\n    *out_len = w;\r\n    return 0;\r\n}\r\n\r\n/**\r\n * @brief 原地归一化到[0,1]；全相同则置0.0\r\n * @return 0成功; -1 data为NULL\r\n */\r\nint normalize_01(float *data, size_t len) {\r\n    if (!data) return -1;\r\n    if (len == 0) return 0;\r\n    float mn = data[0], mx = data[0];\r\n    for (size_t i = 1; i < len; i++) {\r\n        if (data[i] < mn) mn = data[i];\r\n        if (data[i] > mx) mx = data[i];\r\n    }\r\n    float range = mx - mn;\r\n    if (range < FLT_EPSILON) {\r\n        for (size_t i = 0; i < len; i++) data[i] = 0.0f;\r\n        return 0;\r\n    }\r\n    for (size_t i = 0; i < len; i++) data[i] = (data[i] - mn) / range;\r\n    return 0;\r\n}\r\n\r\n/* ============================================================\r\n * === 考生作答区 =============================================\r\n * ============================================================ */\r\n\r\n/**\r\n * TODO: 实现传感器数据清洗管道\r\n * \r\n * 处理流程: 原始数据 → 中值滤波(window=3) → 剔除[0,100]外异常值 → 归一化\r\n * \r\n * @param raw_data   原始数据\r\n * @param raw_len    原始长度\r\n * @param out_data   [输出] 结果数组(本函数内用safe_calloc分配，调用者用safe_free释放)\r\n * @param out_len    [输出] 结果长度\r\n * @return 0成功; -1参数非法; -2内存失败; -3工具函数执行失败\r\n */\r\nint sensor_data_pipeline(\n    const float *raw_data, size_t raw_len,\n    float **out_data, size_t *out_len)\n{\n    /* TODO：在这里组合调用给定工具函数。 */\n    return -1;\n}\n\nint main(void) {\n    size_t n;\n    if (scanf(\"%zu\", &n) != 1) return 0;\n    float *raw = n ? (float *)safe_calloc(n, sizeof(float)) : NULL;\n    if (n && !raw) return 1;\n    for (size_t i = 0; i < n; ++i) scanf(\"%f\", &raw[i]);\n\n    float *out = NULL;\n    size_t out_len = 0;\n    int ret = sensor_data_pipeline(raw, n, &out, &out_len);\n    printf(\"%d %zu\\n\", ret, out_len);\n    if (ret == 0 && out_len > 0) {\n        for (size_t i = 0; i < out_len; ++i) {\n            if (i) putchar(' ');\n            printf(\"%.4f\", out[i]);\n        }\n        putchar('\\n');\n    }\n    safe_free((void **)&raw);\n    safe_free((void **)&out);\n    return 0;\n}\n"
+  },
+  "group": "control"
+}

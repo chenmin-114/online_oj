@@ -32,9 +32,26 @@ class ExamDocx {
   }
 
   static answerText(part, answer) {
-    if (part.type === 'multiple_choice') return Array.isArray(answer) ? answer.join('、') : '';
+    if (part.type === 'multiple_choice') return Array.isArray(answer)
+      ? answer.map(item => this.optionLabel(item, part.options)).join(',')
+      : '';
+    if (part.type === 'single_choice') return this.optionLabel(answer, part.options);
     if (part.type === 'programming') return String(answer?.code || '');
     return String(answer || '');
+  }
+
+  static optionLabel(value, options = []) {
+    if (!value) return '';
+    const index = options.findIndex(option => String(option).trim() === String(value).trim());
+    return index >= 0 ? String.fromCharCode(65 + index) : String(value);
+  }
+
+  static answerGuide(part) {
+    if (part.type === 'single_choice') return '作答格式：只填写一个大写选项字母，例如 A。不要抄写选项文字。';
+    if (part.type === 'multiple_choice') return '作答格式：按字母顺序填写全部选项，用英文逗号分隔，例如 A,C,D。不要抄写选项文字。';
+    if (part.type === 'fill_blank') return '作答格式：只填写横线处的最终答案；除题目要求的单位外，不要添加解释文字。';
+    if (part.type === 'programming') return '作答格式：保留语言标记为 c，并在答案区域粘贴一份可独立编译的完整 C 源码。不要粘贴运行结果、截图或 Markdown 代码围栏。';
+    return '作答格式：直接分点作答；每个要点单独一行并使用“1.”、“2.”编号。需要写运行结果时，先写“结果：”，再写“分析：”。';
   }
 
   static buildParagraphs(paper, answers, username, group) {
@@ -42,7 +59,8 @@ class ExamDocx {
       { text: `${paper.id} · ${paper.title}`, style: 'Title' },
       { text: `${group === 'vision' ? '视觉组' : '电控组'}｜总分 ${paper.totalScore}｜答题人：${username}`, style: 'Meta' },
       { text: '填写说明', style: 'Heading1' },
-      { text: '请只在每个“答案开始”和“答案结束”标记之间作答，不要修改标记中的编号。选择题可填写完整选项或选项序号；编程题请保留语言行并粘贴完整源代码。填写后回到套卷页面导入本文件，即可自动填充。', style: 'Notice' },
+      { text: '本文件就是整张试卷唯一的 Word 答题卡。请只在每个绿色“答案开始”和“答案结束”标记之间作答，不要删除、改名或移动标记，也不要把一道题的答案写到另一道题的区域。', style: 'Notice' },
+      { text: '选择题只填大写字母；多选题用英文逗号分隔；简答题按要点编号；编程题粘贴可独立编译的完整 C 源码。完成后回到对应套卷页面导入本文件，系统会按隐藏题号自动填入，请在提交前再次检查。', style: 'Notice' },
     ];
     if (paper.description) {
       paragraphs.push({ text: '试卷说明与要求', style: 'Heading1' });
@@ -51,24 +69,31 @@ class ExamDocx {
 
     paper.questions.forEach((question, questionIndex) => {
       paragraphs.push({ text: `第 ${questionIndex + 1} 题　${question.title}（${this.questionPoints(question)} 分）`, style: 'Heading1' });
-      this.addText(paragraphs, question.description);
+      const programmingOnly = question.parts.every(part => part.type === 'programming');
+      if (!programmingOnly) this.addText(paragraphs, question.description);
+      else paragraphs.push({ text: '本题完整题面、给定代码和样例请在网站中打开关联编程题查看；答题卡只收集最终源代码。', style: 'Notice' });
       if (question.scoringMode === 'programming_required') {
         paragraphs.push({ text: '评分规则：编程部分未通过时，本大题整体计 0 分。', style: 'Notice' });
       }
       question.parts.forEach((part, partIndex) => {
         paragraphs.push({ text: `${questionIndex + 1}.${partIndex + 1} ${this.partTypeName(part.type)}（${part.points} 分）`, style: 'Heading2' });
-        this.addText(paragraphs, part.prompt);
+        if (part.type !== 'programming') this.addText(paragraphs, part.prompt);
         if (part.options?.length) {
           part.options.forEach((option, index) => paragraphs.push({ text: `${String.fromCharCode(65 + index)}. ${this.plainText(option)}`, style: 'Option' }));
         }
-        if (part.type === 'programming' && part.problem) this.addProgrammingProblem(paragraphs, part.problem);
+        if (part.type === 'programming' && part.problem) {
+          paragraphs.push({ text: `关联编程题：${part.problem.id || part.problemId || ''} ${part.problem.title || ''}`.trim(), style: 'Heading3' });
+        }
+        paragraphs.push({ text: this.answerGuide(part), style: 'AnswerGuide' });
         if (part.type === 'programming') {
           paragraphs.push({ text: `【JC-OJ语言:${part.id}】${answers[part.id]?.language || 'c'}`, style: 'AnswerMarker' });
         }
         paragraphs.push({ text: `【JC-OJ答案开始:${part.id}】`, style: 'AnswerMarker' });
         const answer = this.answerText(part, answers[part.id]);
         if (answer) answer.split(/\r?\n/).forEach(line => paragraphs.push({ text: line, style: part.type === 'programming' ? 'Code' : 'Answer' }));
-        else paragraphs.push({ text: '请在此处填写答案', style: 'Placeholder' });
+        else {
+          paragraphs.push({ text: part.type === 'programming' ? '请在此处粘贴完整 C 源码' : '请在此处填写答案', style: 'Placeholder' });
+        }
         paragraphs.push({ text: `【JC-OJ答案结束:${part.id}】`, style: 'AnswerMarker' });
       });
     });
@@ -145,6 +170,7 @@ class ExamDocx {
       ${style('Heading3', '三级标题', 22, '365F86', true, '<w:spacing w:before="120" w:after="70"/><w:keepNext/>')}
       ${style('Option', '选项', 22, '222222', false, '<w:ind w:left="360"/><w:spacing w:after="70"/>')}
       ${style('Notice', '说明', 20, '7A4D00', false, '<w:shd w:fill="FFF4D6"/><w:spacing w:before="80" w:after="120"/>')}
+      ${style('AnswerGuide', '作答格式', 20, '254F7A', true, '<w:shd w:fill="EAF2F8"/><w:spacing w:before="80" w:after="80"/>')}
       ${style('AnswerMarker', '答案标记', 20, '1E6B45', true, '<w:shd w:fill="E8F5EE"/><w:spacing w:before="100" w:after="70"/>')}
       ${style('Answer', '答案', 22, '111111', false, '<w:ind w:left="240"/><w:spacing w:after="80"/>')}
       ${style('Placeholder', '占位提示', 20, '999999', false, '<w:ind w:left="240"/><w:spacing w:after="80"/>')}
@@ -173,7 +199,10 @@ class ExamDocx {
       const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const match = text.match(new RegExp(`【JC-OJ答案开始:${escapedId}】\\n?([\\s\\S]*?)\\n?【JC-OJ答案结束:${escapedId}】`));
       if (!match) continue;
-      let value = match[1].replace(/^请在此处填写答案$/m, '').trim();
+      let value = match[1]
+        .replace(/^请在此处填写答案$/m, '')
+        .replace(/^请在此处粘贴完整 C 源码$/m, '')
+        .trim();
       if (part.type === 'programming') {
         const languageMatch = text.match(new RegExp(`【JC-OJ语言:${escapedId}】([^\\n]*)`));
         answers[id] = { language: this.normalizeLanguage(languageMatch?.[1]), code: value };

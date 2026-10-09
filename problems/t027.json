@@ -1,0 +1,36 @@
+{
+  "id": "T027",
+  "title": "一根筋电梯调度",
+  "difficulty": "hard",
+  "status": "draft",
+  "description": "电梯初始停在第 `S` 层且方向朝上。每趟只处理楼层位于当前方向前方且目标方向一致的请求；同层同方向请求一次处理。当前方向无请求则立即掉头；连续两个相反方向都找不到顺路请求时停止。电梯只在实际处理请求的楼层停靠。求最终停靠楼层。",
+  "inputFormat": "第一行 `N M`，第二行 `S`，随后 M 行 `F D`（D=1 向上，D=0 向下）。",
+  "outputFormat": "一个整数，表示最终停靠楼层。",
+  "constraints": "2 ≤ N ≤ 50；1 ≤ M ≤ 100；1 ≤ S,F ≤ N。第 1 层无向下请求，第 N 层无向上请求。",
+  "sampleExplanation": "",
+  "sampleInput": "10 4\n3\n5 1\n8 1\n2 0\n7 0",
+  "sampleOutput": "2",
+  "samples": [
+    {
+      "input": "10 4\n3\n5 1\n8 1\n2 0\n7 0",
+      "output": "2"
+    },
+    {
+      "input": "5 1\n5\n2 1",
+      "output": "5"
+    }
+  ],
+  "showTestDetails": false,
+  "hintsDefaultExpanded": true,
+  "hints": [],
+  "availability": {
+    "enabled": false,
+    "windows": [],
+    "afterEndView": "none"
+  },
+  "pythonJudgeMode": "standard",
+  "codeTemplates": {
+    "c": "#include <stdio.h>\n\nint main(void) {\n    /* TODO：维护当前楼层、方向、请求状态和连续空趟次数。 */\n    return 0;\n}\n"
+  },
+  "group": "control"
+}
