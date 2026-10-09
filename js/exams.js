@@ -27,6 +27,7 @@ class ExamUI {
     this.listClockTimer = null;
     this.submitting = false;
     this.lastSubmitFailed = false;
+    this.programmingReturnPosition = null;
   }
 
   init() {
@@ -453,6 +454,11 @@ class ExamUI {
         throw new Error('完整题面暂时无法读取，请刷新套卷后重试');
       }
       this.saveDraft();
+      this.programmingReturnPosition = {
+        partId,
+        scrollY: window.scrollY,
+        viewportTop: button?.getBoundingClientRect().top,
+      };
       this.programmingContext = { partId, part };
       this.app.openExamProgrammingProblem(part);
     } catch (error) {
@@ -506,12 +512,27 @@ class ExamUI {
 
   returnFromProgrammingProblem() {
     if (!this.programmingContext) return;
+    const returnPosition = this.programmingReturnPosition;
     this.captureProgrammingCode();
     this.saveDraft();
     this.clearProgrammingContext();
     this.renderPaper();
     this.app.views.show('exam');
     this.applyTimingState();
+    this.restoreProgrammingReturnPosition(returnPosition);
+  }
+
+  restoreProgrammingReturnPosition(position) {
+    if (!position) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const selector = `[data-open-exam-problem="${CSS.escape(position.partId)}"]`;
+      const target = document.querySelector(selector);
+      let top = Number(position.scrollY) || 0;
+      if (target && Number.isFinite(Number(position.viewportTop))) {
+        top = window.scrollY + target.getBoundingClientRect().top - Number(position.viewportTop);
+      }
+      window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+    }));
   }
 
   leaveProgrammingProblem() {
@@ -523,6 +544,7 @@ class ExamUI {
 
   clearProgrammingContext() {
     this.programmingContext = null;
+    this.programmingReturnPosition = null;
     const context = document.getElementById('exam-problem-context');
     if (context) context.hidden = true;
     const submit = document.getElementById('submit-btn');
