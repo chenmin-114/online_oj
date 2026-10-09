@@ -3364,19 +3364,27 @@ async function handleStudentMessageRead(body, env) {
 async function handleData(request, env) {
   const params = new URL(request.url).searchParams;
   const fileType = params.get('file');
+  const adminDataRequest = params.get('admin') === '1';
   const requestedGroup = params.get('group');
   if (requestedGroup && !Object.hasOwn(GROUPS, requestedGroup)) {
     return jsonResponse({ error: '组别不正确' }, 400);
   }
   const group = normalizeGroup(requestedGroup);
 
+  // 管理端读取草稿和隐藏数据时必须显式声明，并验证真实的短期会话。
+  // 仅仅携带一个同名 Cookie 不能改变普通学生请求的权限。
+  if (adminDataRequest) {
+    const authError = await requireAdmin(request, env);
+    if (authError) return authError;
+  }
+
   const mayBeStudentStandardPage = fileType === 'problems' || fileType === 'problem' || fileType === 'submissions';
-  if (mayBeStudentStandardPage && !readCookie(request, ADMIN_SESSION_COOKIE) && await isExamModeEnabled(env)) {
+  if (mayBeStudentStandardPage && !adminDataRequest && await isExamModeEnabled(env)) {
     return examModeOnlyResponse();
   }
 
   if (env.OJ_DB && fileType === 'submissions') {
-    return await handleD1Submissions(request, env, params);
+    return await handleD1Submissions(request, env, params, adminDataRequest);
   }
   if (env.OJ_DB && fileType === 'ranking-v2') {
     const authError = await requireAdmin(request, env);
@@ -3427,12 +3435,9 @@ async function handleData(request, env) {
     try {
       let problems = JSON.parse(rawContent);
       if (!Array.isArray(problems)) throw new Error('题目索引必须是数组');
-      const hasAdminSession = Boolean(readCookie(request, ADMIN_SESSION_COOKIE));
+      const hasAdminSession = adminDataRequest;
       let studentExtensions = new Map();
-      if (hasAdminSession) {
-        const authError = await requireAdmin(request, env);
-        if (authError) return authError;
-      } else {
+      if (!hasAdminSession) {
         problems = problems.filter(problem => problem.status !== 'draft');
         const username = await studentSessionUsername(request, env);
         studentExtensions = await studentExtensionMap(env, username, group);
@@ -3481,10 +3486,8 @@ async function handleData(request, env) {
       return jsonResponse({ error: '题目文件格式不正确' }, 500);
     }
 
-    const hasAdminSession = Boolean(readCookie(request, ADMIN_SESSION_COOKIE));
+    const hasAdminSession = adminDataRequest;
     if (hasAdminSession) {
-      const authError = await requireAdmin(request, env);
-      if (authError) return authError;
       const hiddenProblem = await readHiddenProblem(problem.id, env, group);
       if (!hiddenProblem || !Array.isArray(hiddenProblem.testCases)) {
         return jsonResponse({ error: '隐藏测试数据不存在' }, 503);
@@ -3689,15 +3692,13 @@ function submissionSummary(row) {
   };
 }
 
-async function handleD1Submissions(request, env, params) {
+async function handleD1Submissions(request, env, params, adminDataRequest = false) {
   const group = normalizeGroup(params.get('group'));
   const groupCondition = group === 'control'
     ? "problem_id NOT LIKE 'vision:%'"
     : "problem_id LIKE 'vision:%'";
-  const hasAdminSession = Boolean(readCookie(request, ADMIN_SESSION_COOKIE));
+  const hasAdminSession = adminDataRequest;
   if (hasAdminSession) {
-    const authError = await requireAdmin(request, env);
-    if (authError) return authError;
     const result = await env.OJ_DB.prepare(`
       SELECT id, username, problem_id, passed, passed_tests, total_tests,
              total_time, language, timestamp

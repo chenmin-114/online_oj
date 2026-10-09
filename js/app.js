@@ -134,6 +134,11 @@ class App {
   }
 
   async loadProblemList() {
+    if (this.examMode && !this.adminProblemPreview) {
+      this.problemList = [];
+      document.getElementById('problem-list').innerHTML = '';
+      return;
+    }
     const loadSequence = ++this.problemLoadSequence;
     const requestedGroup = this.group;
     try {
@@ -144,10 +149,22 @@ class App {
         const apiUrl = configuredUrl
           ? `${configuredUrl}&group=${encodeURIComponent(this.group)}`
           : this._localProblemIndexUrl();
-        response = await fetch(apiUrl, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        response = await fetch(apiUrl, { cache: 'no-store', credentials: 'include' });
+        if (!response.ok) {
+          const payload = await response.clone().json().catch(() => ({}));
+          const error = new Error(payload.error || `HTTP ${response.status}`);
+          error.code = payload.code || '';
+          error.status = response.status;
+          throw error;
+        }
       } catch (workerError) {
+        if (workerError.code === 'EXAM_MODE_ONLY') {
+          this._applyExamMode(true);
+          return;
+        }
         if (!configuredUrl) throw workerError;
+        // 权限拒绝和其他 4xx 是服务端的明确决定，不能退回公开静态题库绕过。
+        if (workerError.status && workerError.status < 500) throw workerError;
         // 自定义接口暂时不可达时，仍允许从 GitHub Pages 加载题目列表。
         response = await fetch(`${this._localProblemIndexUrl()}?t=${Date.now()}`, { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -194,6 +211,11 @@ class App {
     if (group === 'control') url.searchParams.delete('group');
     else url.searchParams.set('group', group);
     history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    if (this.examMode && !this.adminExamPreview && !this.adminProblemPreview) {
+      this.views.show('exams');
+      this.examUI?.onGroupChange();
+      return;
+    }
     this.views.show('problems');
     this.examUI?.onGroupChange();
     document.getElementById('problem-list').innerHTML = '<p class="info">⏳ 正在加载题目...</p>';
@@ -203,6 +225,10 @@ class App {
 
   _renderProblemList(problems) {
     const container = document.getElementById('problem-list');
+    if (this.examMode && !this.adminProblemPreview) {
+      container.innerHTML = '';
+      return;
+    }
     if (!problems.length) {
       container.innerHTML = `<p class="info">${this.group === 'vision' ? '视觉组' : '电控组'}暂无题目</p>`;
       return;
@@ -249,6 +275,11 @@ class App {
   }
 
   async loadProblem(file) {
+    if (this.examMode && !this.adminExamPreview && !this.adminProblemPreview
+      && !this.examUI?.programmingContext) {
+      this._applyExamMode(true);
+      return;
+    }
     clearInterval(this.problemTimingTimer);
     clearTimeout(this.timeSyncTimer);
     clearTimeout(this.problemAutoFinalizeTimer);
@@ -271,14 +302,22 @@ class App {
     const requestedGroup = this.group;
     try {
       const workerUrl = window.OJ_CONFIG.WORKER_URL;
+      const adminPreview = this.adminProblemPreview ? '&admin=1' : '';
       const problemUrl = workerUrl
-        ? `${workerUrl}/?file=problem&name=${encodeURIComponent(file)}&group=${encodeURIComponent(this.group)}&t=${Date.now()}`
+        ? `${workerUrl}/?file=problem&name=${encodeURIComponent(file)}&group=${encodeURIComponent(this.group)}${adminPreview}&t=${Date.now()}`
         : `${this.group === 'vision' ? 'problems/vision' : 'problems'}/${file}?t=${Date.now()}`;
       const response = await fetch(problemUrl, {
         cache: 'no-store',
         credentials: 'include',
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        if (payload.code === 'EXAM_MODE_ONLY') {
+          this._applyExamMode(true);
+          return;
+        }
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
       const problem = await response.json();
       if (requestSequence !== this.problemRequestSequence || requestedGroup !== this.group) return;
       this._saveCurrentCode(this.editor?.getCode(), this.editor?.currentLanguage);
@@ -1250,6 +1289,13 @@ class App {
     const passwordButton = document.getElementById('change-password-btn');
     if (passwordButton) passwordButton.hidden = this.adminImpersonation || this.examMode;
     if (!this.examMode || this.adminExamPreview || this.adminProblemPreview) return;
+    // 使正在进行的普通题目请求失效，并清除已经预加载的题目数据。
+    this.problemLoadSequence += 1;
+    this.problemRequestSequence += 1;
+    this.problemList = [];
+    this.currentProblem = null;
+    const problemList = document.getElementById('problem-list');
+    if (problemList) problemList.innerHTML = '';
     this.examUI?.leaveProgrammingProblem();
     this.views.show('exams');
     this.examUI?.loadList(true, Boolean(this.examUI.loadedKey));

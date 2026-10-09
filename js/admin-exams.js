@@ -647,7 +647,7 @@ class ExamAdmin {
       const problems = await Promise.all(ids.map(async id => {
         const indexItem = this.admin.problems.find(problem => problem.id === id);
         if (!indexItem) throw new Error(`找不到关联编程题 ${id}`);
-        return await this.admin.fetchJson(`${this.admin.config.workerUrl}/?file=problem&name=${encodeURIComponent(indexItem.file)}`);
+        return await this.admin.fetchJson(`${this.admin.config.workerUrl}/?file=problem&admin=1&name=${encodeURIComponent(indexItem.file)}`);
       }));
       const markdown = this.readableExamMarkdown(this.examExportPayload(this.editingPaper, problems));
       const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });

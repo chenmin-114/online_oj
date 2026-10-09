@@ -4,9 +4,9 @@ class OJAdmin {
     this.config = {
       workerUrl,
       repo: 'chenmin-114/online_oj',
-      problemsUrl: `${workerUrl}/?file=problems`,
+      problemsUrl: `${workerUrl}/?file=problems&admin=1`,
       // 数据经 Worker 直读，绕开 GitHub Pages CDN 的 10 分钟缓存
-      submissionsUrl: `${workerUrl}/?file=submissions`,
+      submissionsUrl: `${workerUrl}/?file=submissions&admin=1`,
       rankingUrl: `${workerUrl}/?file=ranking-v2`,
       analyticsUrl: `${workerUrl}/?file=analytics`,
     };
@@ -1142,7 +1142,7 @@ class OJAdmin {
     const requestedGroup = this.group;
     try {
       this.toast('正在读取题目内容...');
-      const problem = await this.fetchJson(`${this.config.workerUrl}/?file=problem&name=${encodeURIComponent(file)}`);
+      const problem = await this.fetchJson(`${this.config.workerUrl}/?file=problem&admin=1&name=${encodeURIComponent(file)}`);
       if (requestedGroup !== this.group) return;
       this.resetProblemEditor();
       this.editingProblem = { file, id: problem.id, group: this.group };
