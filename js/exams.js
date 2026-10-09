@@ -50,6 +50,7 @@ class ExamUI {
       this.loadList(true);
     });
     document.getElementById('submit-exam').addEventListener('click', () => this.submit());
+    document.getElementById('close-exam-submit-modal').addEventListener('click', () => this.closeSubmitModal());
     document.getElementById('download-exam-docx').addEventListener('click', () => this.downloadAnswerSheet());
     document.getElementById('import-exam-docx').addEventListener('change', event => this.importAnswerSheet(event.target));
     document.getElementById('student-exam-form').addEventListener('input', () => {
@@ -686,7 +687,7 @@ class ExamUI {
     const answers = this.collectAnswers();
     if (!this.app.confirmAdminImpersonationAction(`提交套卷《${this.paper.title}》`)) return;
     button.disabled = true;
-    button.textContent = '正在自动批改...';
+    button.textContent = '提交中…';
     status.textContent = '正在保存答案并自动批改选择题、填空题和编程题；编程题较多时需要稍等。';
     try {
       const result = await this.request('exam_submit', {
@@ -699,12 +700,32 @@ class ExamUI {
       status.textContent = `提交成功：这是第 ${result.attemptNo} 次提交，已完成 ${result.gradedCount}/${result.totalParts} 个小题的批改。`;
       this.renderResult(this.submission);
       this.loadedKey = '';
+      this.showSubmitModal(
+        true,
+        '提交完成',
+        `《${this.paper.title}》已成功提交。\n这是第 ${result.attemptNo} 次提交，已完成 ${result.gradedCount}/${result.totalParts} 个小题的自动批改。`,
+      );
     } catch (error) {
       status.textContent = `提交失败：${error.message}。答案仍保存在本机，可以稍后重试。`;
+      this.showSubmitModal(false, '提交失败', `${error.message}\n答案仍保存在本机，请检查网络后重新提交。`);
     } finally {
       button.disabled = false;
       button.textContent = '提交整张试卷';
     }
+  }
+
+  showSubmitModal(success, title, content) {
+    document.getElementById('exam-submit-modal-type').textContent = success ? '套卷提交成功' : '套卷提交异常';
+    document.getElementById('exam-submit-modal-title').textContent = title;
+    document.getElementById('exam-submit-modal-content').textContent = content;
+    document.getElementById('exam-submit-modal').hidden = false;
+    document.body.style.overflow = 'hidden';
+    document.getElementById('close-exam-submit-modal').focus();
+  }
+
+  closeSubmitModal() {
+    document.getElementById('exam-submit-modal').hidden = true;
+    document.body.style.removeProperty('overflow');
   }
 
   renderResult(submission) {
