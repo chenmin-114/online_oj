@@ -406,6 +406,10 @@ export default {
         const authError = await requireStudentAccess(request, env, body.username);
         if (authError) return authError;
         return await handleStudentExamGet(body, env);
+      } else if (body.type === 'exam_problem_get') {
+        const authError = await requireStudentAccess(request, env, body.username);
+        if (authError) return authError;
+        return await handleStudentExamProblemGet(body, env);
       } else if (body.type === 'timed_draft_save') {
         const rateLimitError = await enforceRateLimit(
           env.DRAFT_RATE_LIMITER, request, 'timed-draft', normalizeStudentUsername(body.username), false,
@@ -2064,6 +2068,48 @@ async function handleStudentExamGet(body, env) {
     paper: { ...publicExamPaper(paper), availability: publicAvailability(effectiveAvailability) },
     mySubmission, timedDraft, timing, answerAllowed: answerAccess,
   });
+}
+
+async function handleStudentExamProblemGet(body, env) {
+  const examId = normalizeExamId(body.examId);
+  const problemId = String(body.problemId || '').trim().toUpperCase();
+  const username = normalizeStudentUsername(body.username);
+  if (!examId || !/^(?:P\d{3,6}|T\d{3})$/.test(problemId)) {
+    return jsonResponse({ error: '套卷编程题编号不正确' }, 400);
+  }
+  const record = await readExamRecord(env, examId);
+  if (!record || record.status !== 'published') {
+    return jsonResponse({ error: '试卷不存在或尚未发布' }, 404);
+  }
+  if (!await canStudentAccessExam(env, examId, username)) {
+    return jsonResponse({ error: '你不在这张套卷的准入范围内', code: 'EXAM_ACCESS_DENIED' }, 403);
+  }
+  const paper = parseExamRecord(record);
+  const linked = paper.questions.some(question => question.parts.some(part => (
+    part.type === 'programming' && part.problemId === problemId
+  )));
+  if (!linked) return examModeOnlyResponse();
+
+  const effectiveAvailability = await studentAvailability(
+    paper.availability, 'exam', record.group_name, examId, username, env,
+  );
+  const timing = availabilityState(effectiveAvailability);
+  const postViewAllowed = timing.state === 'ended'
+    && (paper.availability.afterEndView === 'all'
+      || paper.availability.afterEndView === 'authorized');
+  if (timing.state === 'upcoming' || timing.state === 'paused') return timedAccessError(timing);
+  if (timing.state === 'ended' && !postViewAllowed) {
+    return jsonResponse({ error: '这张套卷已经结束且未开放观看', code: 'VIEW_CLOSED', timing }, 403);
+  }
+
+  const problem = await readHiddenProblem(problemId, env, record.group_name);
+  if (!problem || Array.isArray(problem) || problem.id !== problemId) {
+    return jsonResponse({ error: '完整编程题暂时无法读取，请联系管理员', code: 'EXAM_PROBLEM_UNAVAILABLE' }, 503);
+  }
+  const publicProblem = { ...problem };
+  delete publicProblem.testCases;
+  delete publicProblem.showTestDetails;
+  return jsonResponse({ problem: publicProblem, timing });
 }
 
 async function handleAdminExamPreviewGet(body, env) {

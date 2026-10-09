@@ -423,16 +423,46 @@ class ExamUI {
     return answers;
   }
 
-  openProgrammingProblem(partId) {
+  async openProgrammingProblem(partId) {
     const part = this.paper?.questions.flatMap(question => question.parts)
       .find(item => item.id === partId && item.type === 'programming');
-    if (!part?.problem) {
+    if (!part) {
       alert('完整题面暂时无法读取，请刷新套卷后重试');
       return;
     }
-    this.saveDraft();
-    this.programmingContext = { partId, part };
-    this.app.openExamProgrammingProblem(part);
+    const button = document.querySelector(`[data-open-exam-problem="${CSS.escape(partId)}"]`);
+    const originalText = button?.textContent || '打开完整编程题 →';
+    if (button) {
+      button.disabled = true;
+      button.textContent = '正在打开…';
+    }
+    try {
+      if (!this.app.adminExamPreview) {
+        try {
+          const result = await this.request('exam_problem_get', {
+            examId: this.paper.id,
+            problemId: part.problemId,
+          });
+          if (result.problem) part.problem = result.problem;
+        } catch (error) {
+          // 已随套卷返回的完整题面可作为网络抖动时的回退；缺失时才阻止进入。
+          if (!part.problem?.id || part.problem.id !== part.problemId) throw error;
+        }
+      }
+      if (!part.problem?.id || part.problem.id !== part.problemId) {
+        throw new Error('完整题面暂时无法读取，请刷新套卷后重试');
+      }
+      this.saveDraft();
+      this.programmingContext = { partId, part };
+      this.app.openExamProgrammingProblem(part);
+    } catch (error) {
+      alert(`完整题面读取失败：${error.message}`);
+    } finally {
+      if (button?.isConnected) {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
   }
 
   restoreProgrammingAnswer() {
