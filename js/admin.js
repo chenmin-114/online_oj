@@ -387,7 +387,7 @@ class OJAdmin {
     status.className = 'account-import-status';
     status.textContent = file
       ? '文件已选择。点击“生成密码并注册账号”开始处理。'
-      : '已有密码会保留；密码为空时会生成 16 位高随机密码。账号密码只以带盐哈希保存到服务器。';
+      : '已有密码会保留；密码为空时会生成 10 位高随机密码。账号密码只以带盐哈希保存到服务器。';
   }
 
   async resetStudentAccount(event) {
@@ -768,14 +768,15 @@ class OJAdmin {
 
   generateStudentPassword() {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    const passwordLength = 10;
     const limit = Math.floor(256 / alphabet.length) * alphabet.length;
     let password = '';
-    while (password.length < 16) {
+    while (password.length < passwordLength) {
       const bytes = new Uint8Array(24);
       crypto.getRandomValues(bytes);
       for (const byte of bytes) {
         if (byte < limit) password += alphabet[byte % alphabet.length];
-        if (password.length === 16) break;
+        if (password.length === passwordLength) break;
       }
     }
     return password;
