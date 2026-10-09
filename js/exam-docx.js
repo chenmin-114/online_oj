@@ -70,13 +70,21 @@ class ExamDocx {
     paper.questions.forEach((question, questionIndex) => {
       paragraphs.push({ text: `第 ${questionIndex + 1} 题　${question.title}（${this.questionPoints(question)} 分）`, style: 'Heading1' });
       const programmingOnly = question.parts.every(part => part.type === 'programming');
-      if (!programmingOnly) this.addText(paragraphs, question.description);
+      if (!programmingOnly) {
+        // 先完整展示原始大题题干，再列出用于作答和导入的结构化小问。
+        // 小问 prompt 不能代替、概括或改写原题。
+        if (this.plainText(question.description)) {
+          paragraphs.push({ text: '完整题目', style: 'Heading3' });
+        }
+        this.addText(paragraphs, question.description);
+      }
       else paragraphs.push({ text: '本题完整题面、给定代码和样例请在网站中打开关联编程题查看；答题卡只收集最终源代码。', style: 'Notice' });
       if (question.scoringMode === 'programming_required') {
         paragraphs.push({ text: '评分规则：编程部分未通过时，本大题整体计 0 分。', style: 'Notice' });
       }
       question.parts.forEach((part, partIndex) => {
-        paragraphs.push({ text: `${questionIndex + 1}.${partIndex + 1} ${this.partTypeName(part.type)}（${part.points} 分）`, style: 'Heading2' });
+        const partHeading = part.type === 'fill_blank' ? '填空小问' : this.partTypeName(part.type);
+        paragraphs.push({ text: `${questionIndex + 1}.${partIndex + 1} ${partHeading}（${part.points} 分）`, style: 'Heading2' });
         if (part.type !== 'programming') this.addText(paragraphs, part.prompt);
         if (part.options?.length) {
           part.options.forEach((option, index) => paragraphs.push({ text: `${String.fromCharCode(65 + index)}. ${this.plainText(option)}`, style: 'Option' }));
