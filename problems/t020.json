@@ -9,11 +9,11 @@
   "constraints": "1 ≤ N ≤ 100；0 < 单价 ≤ 10000；1 ≤ 数量 ≤ 1000。",
   "sampleExplanation": "",
   "sampleInput": "5\n18 1 1\n12 2 0\n25 1 1\n8 3 1\n20 1 0",
-  "sampleOutput": "",
+  "sampleOutput": "1 14.40 MEMBER\n2 21.00 REDUCTION\n3 17.00 MEMBER+REDUCTION\n4 16.20 MEMBER+REDUCTION\n5 17.00 REDUCTION",
   "samples": [
     {
       "input": "5\n18 1 1\n12 2 0\n25 1 1\n8 3 1\n20 1 0",
-      "expectedOutput": "1 14.40 MEMBER\n2 21.00 REDUCTION\n3 17.00 MEMBER+REDUCTION\n4 16.20 MEMBER+REDUCTION\n5 17.00 REDUCTION"
+      "output": "1 14.40 MEMBER\n2 21.00 REDUCTION\n3 17.00 MEMBER+REDUCTION\n4 16.20 MEMBER+REDUCTION\n5 17.00 REDUCTION"
     }
   ],
   "showTestDetails": false,
