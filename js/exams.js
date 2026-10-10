@@ -808,7 +808,7 @@ class ExamUI {
       return;
     }
     if (this.paper?.examMode && !this.app.adminExamPreview) {
-      container.innerHTML = '<div class="exam-result-card"><h3>试卷已提交</h3><p>考试模式下不公布成绩和批改状态。</p></div>';
+      container.innerHTML = '<div class="exam-result-card"><h3>试卷已提交</h3></div>';
       return;
     }
     if (!submission.resultVisible) {
