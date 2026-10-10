@@ -972,8 +972,8 @@ class ExamAdmin {
         characterCount += answerLength;
       }
       if (current.length) batches.push(current);
-      for (let index = 0; index < batches.length; index += 3) {
-        const submissions = batches.slice(index, index + 3).flat();
+      for (let index = 0; index < batches.length; index += 6) {
+        const submissions = batches.slice(index, index + 6).flat();
         chunks.push({
           ...payload,
           groups: [{ ...group, submissions }],

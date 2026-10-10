@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const MAX_CLAUDE_CONCURRENCY = 3;
+const MAX_CLAUDE_CONCURRENCY = 6;
 const MAX_CLAUDE_OUTPUT_BYTES = 8 * 1024 * 1024;
 
 function fail(message) {
