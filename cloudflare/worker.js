@@ -4420,10 +4420,7 @@ async function processNextRejudgeJob(env) {
 
 async function processRejudgeBatch(env, limit = 1) {
   const count = Math.max(1, Math.min(70, Number(limit) || 1));
-  for (let index = 0; index < count; index += 1) {
-    const processed = await processNextRejudgeJob(env);
-    if (processed === false) break;
-  }
+  await Promise.all(Array.from({ length: count }, () => processNextRejudgeJob(env)));
 }
 
 async function processNextTimedSubmission(env) {
