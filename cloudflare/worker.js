@@ -46,6 +46,7 @@ const CORS_HEADERS = {
   'Access-Control-Max-Age': '86400',
   'Vary': 'Origin',
 };
+const JUDGE0_REQUEST_TIMEOUT_MS = 30000;
 
 // 允许读取的数据文件白名单：查询参数不能直接拼进 GitHub 路径
 const DATA_FILES = {
@@ -4003,6 +4004,8 @@ async function handleExecute(body, env) {
 
   const judge0BaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
   let judge0Res;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), JUDGE0_REQUEST_TIMEOUT_MS);
   try {
     judge0Res = await fetch(`${judge0BaseUrl}/submissions?base64_encoded=true&wait=true`, {
       method: 'POST',
@@ -4015,12 +4018,21 @@ async function handleExecute(body, env) {
         language_id: languageId,
         stdin: encodeBase64Utf8(stdin || ''),
       }),
+      signal: controller.signal,
     });
-  } catch {
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      return jsonResponse({
+        error: '代码执行服务响应超时，请稍后自动重试',
+        code: 'JUDGE0_TIMEOUT',
+      }, 504);
+    }
     return jsonResponse({
       error: '暂时无法连接代码执行服务，请稍后重试',
       code: 'JUDGE0_UNAVAILABLE',
     }, 502);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const data = await parseJsonResponse(judge0Res);
