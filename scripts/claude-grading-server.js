@@ -13,12 +13,11 @@ const ALLOWED_ORIGIN = 'https://jc-oj.online';
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
 const MAX_RESULT_BYTES = 2 * 1024 * 1024;
 const GRADING_TIMEOUT_MS = 20 * 60 * 1000;
-const MAX_CONCURRENT_SINGLE_JOBS = 6;
+const MAX_CONCURRENT_JOBS = 6;
 const MAX_QUEUED_JOBS = 50;
 const activeJobs = new Map();
 const queuedJobs = [];
 let nextJobId = 1;
-let batchJobActive = false;
 
 function responseHeaders(origin = '') {
   return {
@@ -41,8 +40,9 @@ function sendJson(response, status, payload, origin = '') {
 
 function validPackage(payload) {
   if (!payload || payload.format !== 'jc-oj-claude-grading-v1' || !payload.exam?.id
-      || !payload.partId || !Array.isArray(payload.groups) || payload.groups.length < 1 || payload.groups.length > 100) return false;
+      || !payload.partId || !Array.isArray(payload.groups) || payload.groups.length !== 1) return false;
   let submissionCount = 0;
+  let answerCharacters = 0;
   for (const group of payload.groups) {
     const allowedPart = ['fill_blank', 'short_answer'].includes(group?.part?.type);
     if (!group || !group.question || !group.part || !Array.isArray(group.submissions)
@@ -52,12 +52,13 @@ function validPackage(payload) {
         || String(group.part.gradingGuide || '').length > 12000) return false;
     for (const submission of group.submissions) {
       submissionCount += 1;
+      answerCharacters += String(submission?.answer || '').length;
       if (!Number.isInteger(Number(submission?.submissionId))
           || !Number.isInteger(Number(submission?.sourceUpdatedAt))
           || String(submission?.answer || '').length > 30000) return false;
     }
   }
-  return submissionCount >= 1 && submissionCount <= 1000;
+  return submissionCount >= 1 && submissionCount <= 16 && answerCharacters <= 60000;
 }
 
 function readRequestBody(request) {
@@ -138,21 +139,8 @@ function runClaude(payload, onChild) {
   });
 }
 
-function isSingleRegrade(payload) {
-  return payload.forceRegrade === true
-    && Number(payload.submissionId) > 0
-    && payload.groups.reduce((total, group) => total + group.submissions.length, 0) === 1;
-}
-
 function drainJobQueue() {
-  if (batchJobActive || !queuedJobs.length) return;
-  if (activeJobs.size > 0 && queuedJobs[0].kind === 'batch') return;
-  if (activeJobs.size === 0 && queuedJobs[0].kind === 'batch') {
-    startQueuedJob(queuedJobs.shift());
-    return;
-  }
-  while (activeJobs.size < MAX_CONCURRENT_SINGLE_JOBS
-      && queuedJobs.length && queuedJobs[0].kind === 'single') {
+  while (activeJobs.size < MAX_CONCURRENT_JOBS && queuedJobs.length) {
     startQueuedJob(queuedJobs.shift());
   }
 }
@@ -162,14 +150,12 @@ function startQueuedJob(job) {
     drainJobQueue();
     return;
   }
-  if (job.kind === 'batch') batchJobActive = true;
   const work = runClaude(job.payload, child => {
     job.child = child;
     activeJobs.set(job.id, job);
   });
   work.then(job.resolve, job.reject).finally(() => {
     activeJobs.delete(job.id);
-    if (job.kind === 'batch') batchJobActive = false;
     drainJobQueue();
   });
 }
@@ -182,7 +168,6 @@ function enqueueClaude(payload) {
   }
   const job = {
     id: nextJobId++,
-    kind: isSingleRegrade(payload) ? 'single' : 'batch',
     payload,
     child: null,
     cancelled: false,
@@ -226,7 +211,7 @@ const server = http.createServer(async (request, response) => {
       busy: activeJobs.size > 0 || queuedJobs.length > 0,
       activeJobs: activeJobs.size,
       queuedJobs: queuedJobs.length,
-      concurrency: MAX_CONCURRENT_SINGLE_JOBS,
+      concurrency: MAX_CONCURRENT_JOBS,
     }, origin);
     return;
   }

@@ -972,8 +972,7 @@ class ExamAdmin {
         characterCount += answerLength;
       }
       if (current.length) batches.push(current);
-      for (let index = 0; index < batches.length; index += 6) {
-        const submissions = batches.slice(index, index + 6).flat();
+      for (const submissions of batches) {
         chunks.push({
           ...payload,
           groups: [{ ...group, submissions }],
@@ -1043,17 +1042,32 @@ class ExamAdmin {
           throw error;
         }
         const chunks = this.splitAiGradingPackage(gradingPackage);
-        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
-          const chunk = chunks[chunkIndex];
-          status.textContent = `正在批改第 ${index + 1}/${partIds.length} 道题，第 ${chunkIndex + 1}/${chunks.length} 批（${chunk.submissionCount} 份答案）；已保存 ${importedCount} 条...`;
-          const localResult = await this.runAiGradingChunk(chunk);
-          status.textContent = `第 ${index + 1}/${partIds.length} 道题第 ${chunkIndex + 1}/${chunks.length} 批已完成，正在保存...`;
-          const imported = await this.request('admin_exam_ai_import', { payload: localResult });
-          importedCount += imported.imported || 0;
-          autoAdopted += imported.autoAdopted || 0;
-          drafts += imported.drafts || 0;
-          completedChunks += 1;
-        }
+        let nextChunkIndex = 0;
+        let completedPartChunks = 0;
+        let firstError = null;
+        const runWorker = async () => {
+          while (!firstError) {
+            const chunkIndex = nextChunkIndex;
+            nextChunkIndex += 1;
+            if (chunkIndex >= chunks.length) return;
+            const chunk = chunks[chunkIndex];
+            try {
+              status.textContent = `正在批改第 ${index + 1}/${partIds.length} 道题：${completedPartChunks}/${chunks.length} 个对话已保存，最多 6 个并发...`;
+              const localResult = await this.runAiGradingChunk(chunk);
+              const imported = await this.request('admin_exam_ai_import', { payload: localResult });
+              importedCount += imported.imported || 0;
+              autoAdopted += imported.autoAdopted || 0;
+              drafts += imported.drafts || 0;
+              completedChunks += 1;
+              completedPartChunks += 1;
+              status.textContent = `第 ${index + 1}/${partIds.length} 道题：已保存 ${completedPartChunks}/${chunks.length} 个对话，共 ${importedCount} 条结果...`;
+            } catch (error) {
+              firstError = error;
+            }
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(6, chunks.length) }, () => runWorker()));
+        if (firstError) throw firstError;
       }
       status.textContent = importedCount
         ? `批改完成：${importedCount} 条结果，高置信度自动采用 ${autoAdopted} 条，待复核 ${drafts} 条${skippedParts ? `，${skippedParts} 道题无需处理` : ''}`
