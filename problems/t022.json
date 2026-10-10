@@ -3,17 +3,17 @@
   "title": "学生信息结构体统计",
   "difficulty": "easy",
   "status": "draft",
-  "description": "使用 `Student` 结构体存储学生的学号、姓名和成绩。读入全部学生，逐人输出规范化信息，并计算总分与平均分。",
-  "inputFormat": "第一行整数 `N`。接下来 `N` 行：`学号 姓名 成绩`。姓名不含空格。",
-  "outputFormat": "先输出 `N` 行 `学号 姓名 成绩`（成绩保留两位小数），再输出 `Total: 总分` 和 `Average: 平均分`，均保留两位小数。",
-  "constraints": "1 ≤ N ≤ 100；姓名长度不超过 19；0 ≤ 成绩 ≤ 100。",
+  "description": "编写一个 C 语言程序，使用结构体存储学生信息，并实现以下功能：\n\n1. 定义一个名为 `Student` 的结构体，包含学号 `int num`、姓名 `char name[20]`、成绩 `float score`。\n2. 从键盘输入一个学生的信息，并存储到 `Student` 变量中。\n3. 将输入的学生信息输出到屏幕。\n4. 输入 3 个学生的信息，存储到结构体数组中，计算并输出总分和平均分。",
+  "inputFormat": "输入 3 个学生的学号、姓名和成绩。Word 原题没有要求在最前面再输入学生人数 `N`。",
+  "outputFormat": "输出 3 个学生的信息，并输出总分和平均分。Word 原题未限定提示语、行数或小数位数。",
+  "constraints": "",
   "sampleExplanation": "",
-  "sampleInput": "3\n1001 Alice 86.5\n1002 Bob 90\n1003 Carol 77.25",
-  "sampleOutput": "1001 Alice 86.50\n1002 Bob 90.00\n1003 Carol 77.25\nTotal: 253.75\nAverage: 84.58",
+  "sampleInput": "1001 Alice 86.5\n1002 Bob 90\n1003 Carol 77.25",
+  "sampleOutput": "1001 Alice 86.5\n1002 Bob 90\n1003 Carol 77.25\n总分 253.75\n平均分 84.5833",
   "samples": [
     {
-      "input": "3\n1001 Alice 86.5\n1002 Bob 90\n1003 Carol 77.25",
-      "output": "1001 Alice 86.50\n1002 Bob 90.00\n1003 Carol 77.25\nTotal: 253.75\nAverage: 84.58"
+      "input": "1001 Alice 86.5\n1002 Bob 90\n1003 Carol 77.25",
+      "output": "1001 Alice 86.5\n1002 Bob 90\n1003 Carol 77.25\n总分 253.75\n平均分 84.5833"
     }
   ],
   "showTestDetails": false,
@@ -26,7 +26,8 @@
   },
   "pythonJudgeMode": "standard",
   "codeTemplates": {
-    "c": "#include <stdio.h>\n\ntypedef struct {\n    int num;\n    char name[20];\n    float score;\n} Student;\n\nint main(void) {\n    int n;\n    Student students[100];\n    scanf(\"%d\", &n);\n    /* TODO：输入、输出学生信息，并计算总分和平均分。 */\n    return 0;\n}\n"
+    "c": "#include <stdio.h>\n\ntypedef struct {\n    int num;\n    char name[20];\n    float score;\n} Student;\n\nint main(void) {\n    Student students[3];\n    /* TODO：输入 3 个学生的信息，输出信息并计算总分和平均分。 */\n    return 0;\n}\n"
   },
-  "group": "control"
+  "group": "control",
+  "outputChecker": "student_records"
 }

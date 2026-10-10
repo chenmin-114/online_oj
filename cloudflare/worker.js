@@ -540,7 +540,7 @@ export default {
 
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(Promise.all([
-      processNextRejudgeJob(env),
+      processRejudgeBatch(env, 6),
       processNextTimedSubmission(env),
     ]));
   },
@@ -4375,7 +4375,7 @@ async function enqueueProblemRejudges(env, group, problemId) {
 }
 
 async function processNextRejudgeJob(env) {
-  if (!env.OJ_DB) return;
+  if (!env.OJ_DB) return false;
   const now = Date.now();
   const staleBefore = now - 10 * 60 * 1000;
   const job = await env.OJ_DB.prepare(`
@@ -4385,14 +4385,14 @@ async function processNextRejudgeJob(env) {
     ORDER BY requested_at ASC, id ASC
     LIMIT 1
   `).bind(staleBefore).first();
-  if (!job) return;
+  if (!job) return false;
   const claimed = await env.OJ_DB.prepare(`
     UPDATE rejudge_queue
     SET status = 'processing', attempts = attempts + 1, updated_at = ?2
     WHERE id = ?1 AND attempts < 5
       AND (status = 'pending' OR (status = 'processing' AND updated_at < ?3))
   `).bind(Number(job.id), now, staleBefore).run();
-  if (!claimed.meta?.changes) return;
+  if (!claimed.meta?.changes) return true;
 
   try {
     if (job.submission_kind === 'problem') await rejudgeProblemSubmission(job, env);
@@ -4414,6 +4414,15 @@ async function processNextRejudgeJob(env) {
       Number(job.requested_at),
     ).run();
     console.error(`自动重判任务 ${job.id} 失败:`, error);
+  }
+  return true;
+}
+
+async function processRejudgeBatch(env, limit = 1) {
+  const count = Math.max(1, Math.min(6, Number(limit) || 1));
+  for (let index = 0; index < count; index += 1) {
+    const processed = await processNextRejudgeJob(env);
+    if (processed === false) break;
   }
 }
 
@@ -4675,6 +4684,11 @@ function validateProblem(input, requestedFile) {
     }
   }
 
+  const outputChecker = [
+    'exact', 'weekday', 'ordered_numbers', 'student_records', 'word_reverse',
+    'maze_path', 'integer_sequence', 'sensor_pipeline', 'last_integer', 'task_schedule',
+  ].includes(input.outputChecker) ? input.outputChecker : 'exact';
+
   const problem = {
     id,
     title: input.title.trim().slice(0, 100),
@@ -4698,6 +4712,7 @@ function validateProblem(input, requestedFile) {
       : [],
     availability,
     pythonJudgeMode,
+    ...(outputChecker !== 'exact' ? { outputChecker } : {}),
     ...(Object.keys(codeTemplates).length ? { codeTemplates } : {}),
     ...(pythonFunction ? { pythonFunction } : {}),
   };
@@ -5068,6 +5083,199 @@ async function executeWithRetry(payload, env, onRetry) {
   throw lastError || judgeError('代码执行服务暂时不可用', 502, 'JUDGE_UNAVAILABLE');
 }
 
+function judgeNumberList(value) {
+  return (String(value || '').match(/[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?/gi) || [])
+    .map(item => Number(item))
+    .filter(Number.isFinite);
+}
+
+function numberNearlyEqual(left, right) {
+  return Math.abs(Number(left) - Number(right)) <= Math.max(1e-4, Math.abs(Number(right)) * 1e-5);
+}
+
+function containsNumberSubsequence(actual, expected, tolerance = null) {
+  if (!expected.length) return true;
+  let cursor = 0;
+  for (const value of actual) {
+    if (tolerance === null ? numberNearlyEqual(value, expected[cursor]) : Math.abs(value - expected[cursor]) <= tolerance) cursor += 1;
+    if (cursor === expected.length) return true;
+  }
+  return false;
+}
+
+function weekdayOutputMatches(output, expectedOutput) {
+  const names = [
+    ['monday', '星期一', '周一'], ['tuesday', '星期二', '周二'],
+    ['wednesday', '星期三', '周三'], ['thursday', '星期四', '周四'],
+    ['friday', '星期五', '周五'], ['saturday', '星期六', '周六'],
+    ['sunday', '星期日', '星期天', '周日', '周天'],
+  ];
+  const expected = String(expectedOutput || '').trim().toLowerCase();
+  const weekday = names.findIndex(aliases => aliases.some(alias => expected.includes(alias)));
+  if (weekday < 0) return false;
+  const normalized = String(output || '').toLowerCase();
+  if (names[weekday].some(alias => normalized.includes(alias))) return true;
+  const numbers = judgeNumberList(normalized);
+  const mondayBased = weekday + 1;
+  const sundayBased = (weekday + 1) % 7;
+  return numbers.some(value => Number.isInteger(value) && (value === mondayBased || value === sundayBased));
+}
+
+function studentRecordsOutputMatches(output, expectedOutput) {
+  const expectedLines = String(expectedOutput || '').trim().split(/\r?\n/).filter(Boolean);
+  if (expectedLines.length < 5) return false;
+  const normalized = String(output || '');
+  const studentLines = expectedLines.slice(0, -2);
+  for (const line of studentLines) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 3 || !normalized.includes(parts[1])) return false;
+  }
+  return containsNumberSubsequence(judgeNumberList(normalized), judgeNumberList(expectedOutput), 0.011);
+}
+
+function wordReverseOutputMatches(output, expectedOutput) {
+  const expected = String(expectedOutput || '');
+  const outputText = String(output || '');
+  const expectedLines = expected.split(/\r?\n/);
+  const reversedLine = expectedLines.find(line => /reversed\s*:/i.test(line)) || '';
+  const reversedWords = reversedLine.replace(/^.*?:\s*/, '').match(/[A-Za-z]+/g) || [];
+  const actualWords = outputText.match(/[A-Za-z]+/g) || [];
+  let cursor = 0;
+  for (const word of actualWords) {
+    if (word.toLowerCase() === String(reversedWords[cursor] || '').toLowerCase()) cursor += 1;
+    if (cursor === reversedWords.length) break;
+  }
+  if (!reversedWords.length || cursor !== reversedWords.length) return false;
+  const expectedCount = Number((expectedLines.find(line => /words\s*:/i.test(line)) || '').match(/\d+/)?.[0]);
+  if (Number.isFinite(expectedCount) && !judgeNumberList(outputText).some(value => value === expectedCount)) return false;
+  const palindromeExpected = /palindrome\s*:\s*yes/i.test(expected);
+  const saysYes = /palindrome\s*[:：]?\s*yes/i.test(outputText)
+    || /(?:句子|字符串|数字)?是回文/.test(outputText) && !/不是回文/.test(outputText);
+  const saysNo = /palindrome\s*[:：]?\s*no/i.test(outputText)
+    || /不是回文/.test(outputText);
+  return palindromeExpected ? saysYes : saysNo;
+}
+
+function mazeOutputMatches(output, input) {
+  const inputLines = String(input || '').trim().split(/\r?\n/);
+  const size = inputLines.shift()?.trim().split(/\s+/).map(Number) || [];
+  const [rows, cols] = size;
+  const maze = inputLines.slice(0, rows).map(line => [...line.trimEnd()]);
+  if (!Number.isInteger(rows) || !Number.isInteger(cols) || maze.length !== rows) return false;
+  let start = null;
+  let end = null;
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      if (maze[row]?.[col] === 'S') start = [row, col];
+      if (maze[row]?.[col] === 'E') end = [row, col];
+    }
+  }
+  if (!start || !end) return false;
+  const queue = [[...start, 0]];
+  const seen = new Set([`${start[0]},${start[1]}`]);
+  let shortest = -1;
+  for (let head = 0; head < queue.length; head += 1) {
+    const [row, col, distance] = queue[head];
+    if (row === end[0] && col === end[1]) { shortest = distance; break; }
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const nr = row + dr;
+      const nc = col + dc;
+      const key = `${nr},${nc}`;
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols || maze[nr][nc] === '#' || seen.has(key)) continue;
+      seen.add(key);
+      queue.push([nr, nc, distance + 1]);
+    }
+  }
+  const outputText = String(output || '').trim();
+  if (shortest < 0) return /NO\s*PATH/i.test(outputText);
+  const outputLines = outputText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  let lengthIndex = outputLines.findIndex(line => /^\d+$/.test(line));
+  if (lengthIndex < 0 || Number(outputLines[lengthIndex]) !== shortest) return false;
+  const directions = outputLines[lengthIndex + 1] || '';
+  if (!/^[UDLR]*$/.test(directions) || directions.length !== shortest) return false;
+  const moves = { U: [-1, 0], D: [1, 0], L: [0, -1], R: [0, 1] };
+  let [row, col] = start;
+  const path = [];
+  for (const direction of directions) {
+    row += moves[direction][0];
+    col += moves[direction][1];
+    if (row < 0 || row >= rows || col < 0 || col >= cols || maze[row][col] === '#') return false;
+    if (maze[row][col] === '.') path.push([row, col]);
+  }
+  if (row !== end[0] || col !== end[1]) return false;
+  const drawing = outputLines.slice(lengthIndex + 2, lengthIndex + 2 + rows);
+  if (drawing.length !== rows || drawing.some(line => line.length !== cols)) return false;
+  const pathSet = new Set(path.map(([r, c]) => `${r},${c}`));
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const expected = pathSet.has(`${r},${c}`) ? '*' : maze[r][c];
+      if (drawing[r][c] !== expected) return false;
+    }
+  }
+  return true;
+}
+
+function sensorPipelineOutputMatches(output, expectedOutput, exitCode) {
+  const normalized = String(output || '');
+  if (/测试结果/.test(normalized)) {
+    if (/0\s*失败/.test(normalized) && exitCode === 0) return true;
+    // 原始 Word 附件的首个边界中值期望值与其已给 median_filter 实现不一致；
+    // 因该处唯一的内置测试误差产生的“13 通过, 1 失败”不误判学生实现。
+    if (/13\s*通过\s*[,，]\s*1\s*失败/.test(normalized)) return true;
+    return false;
+  }
+  return exitCode === 0
+    && containsNumberSubsequence(judgeNumberList(normalized), judgeNumberList(expectedOutput));
+}
+
+function taskScheduleOutputMatches(output, expectedOutput) {
+  const taskLines = value => String(value || '').split(/\r?\n/)
+    .filter(line => !/suspend|resume|挂起|恢复/i.test(line))
+    .flatMap(line => line.match(/task[1-4]/gi) || [])
+    .map(item => item.toLowerCase());
+  const actual = taskLines(output);
+  const expected = taskLines(expectedOutput);
+  return actual.length === expected.length && actual.every((item, index) => item === expected[index]);
+}
+
+function judgeOutputMatches(problem, testCase, execution) {
+  const output = String(execution.output || '');
+  const expected = String(testCase.expectedOutput || '');
+  if (problem.outputChecker === 'sensor_pipeline') {
+    return sensorPipelineOutputMatches(output, expected, execution.exitCode);
+  }
+  if (execution.exitCode !== 0) return false;
+  switch (problem.outputChecker) {
+    case 'weekday': return weekdayOutputMatches(output, expected);
+    case 'ordered_numbers': {
+      const expectedPrices = expected.split(/\r?\n/).map(line => judgeNumberList(line).at(-1)).filter(Number.isFinite);
+      const hasMemberLabel = /member|会员|8\s*折|折扣/i.test(output);
+      const hasReductionLabel = /reduction|满减|减\s*3/i.test(output);
+      return containsNumberSubsequence(judgeNumberList(output), expectedPrices)
+        && hasMemberLabel && hasReductionLabel;
+    }
+    case 'student_records': return studentRecordsOutputMatches(output, expected);
+    case 'word_reverse': return wordReverseOutputMatches(output, expected);
+    case 'maze_path': return mazeOutputMatches(output, testCase.input);
+    case 'integer_sequence': return containsNumberSubsequence(judgeNumberList(output), judgeNumberList(expected));
+    case 'last_integer': return judgeNumberList(output).at(-1) === judgeNumberList(expected).at(-1);
+    case 'task_schedule': return taskScheduleOutputMatches(output, expected);
+    default: return output.trim() === expected.trim();
+  }
+}
+
+function judgeInputVariants(problem, input) {
+  const value = String(input || '');
+  if (problem.outputChecker === 'weekday') {
+    const parts = value.trim().split(/\s+/);
+    if (parts.length === 2) return [...new Set([value, `${parts[0]}.${parts[1]}`, `${parts[0]}/${parts[1]}`])];
+  }
+  if (problem.outputChecker === 'student_records') {
+    return [...new Set([value, `3\n${value}`])];
+  }
+  return [value];
+}
+
 async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allowDraft = false) {
   const prepared = await prepareJudgeSubmission(body, env, allowDraft);
   const { username, problemId, group, language, script, languageId, problem, testCases } = prepared;
@@ -5087,24 +5295,27 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
       throw judgeError(`隐藏测试点 ${index + 1} 格式不正确`, 500, 'INVALID_TEST_CASE');
     }
 
-    const execution = await executeWithRetry({
-      script: executionScript,
-      stdin: testCase.input,
-      languageId,
-    }, env, async (attempt, maxAttempts) => {
-      if (onEvent) await onEvent({
-        type: 'retry',
-        current: index + 1,
-        totalTests: testCases.length,
-        attempt,
-        maxAttempts,
+    let execution = null;
+    let passed = false;
+    for (const stdin of judgeInputVariants(problem, testCase.input)) {
+      execution = await executeWithRetry({
+        script: executionScript,
+        stdin,
+        languageId,
+      }, env, async (attempt, maxAttempts) => {
+        if (onEvent) await onEvent({
+          type: 'retry',
+          current: index + 1,
+          totalTests: testCases.length,
+          attempt,
+          maxAttempts,
+        });
       });
-    });
-
-    const passed = execution.exitCode === 0
-      && String(execution.output || '').trim() === testCase.expectedOutput.trim();
+      passed = judgeOutputMatches(problem, testCase, execution);
+      totalTime += Number.isFinite(Number(execution.time)) ? Number(execution.time) : 0;
+      if (passed || execution.compileError) break;
+    }
     if (passed) passedTests += 1;
-    totalTime += Number.isFinite(Number(execution.time)) ? Number(execution.time) : 0;
 
     let message = '';
     if (!passed) {

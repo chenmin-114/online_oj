@@ -32,5 +32,6 @@
   "codeTemplates": {
     "c": "#include <stdio.h>\n\nint main(void) {\n    /* TODO：维护当前楼层、方向、请求状态和连续空趟次数。 */\n    return 0;\n}\n"
   },
-  "group": "control"
+  "group": "control",
+  "outputChecker": "last_integer"
 }

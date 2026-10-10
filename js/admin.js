@@ -1176,7 +1176,12 @@ class OJAdmin {
       const problem = await this.fetchJson(`${this.config.workerUrl}/?file=problem&admin=1&name=${encodeURIComponent(file)}`);
       if (requestedGroup !== this.group) return;
       this.resetProblemEditor();
-      this.editingProblem = { file, id: problem.id, group: this.group };
+      this.editingProblem = {
+        file,
+        id: problem.id,
+        group: this.group,
+        outputChecker: problem.outputChecker || 'exact',
+      };
       this.setProblemEditorMode(true);
 
       document.getElementById('problem-id').value = problem.id || '';
@@ -1814,6 +1819,7 @@ class OJAdmin {
       hintsDefaultExpanded: document.getElementById('problem-hints-default-expanded').checked,
       hints: document.getElementById('problem-hints').value.split('\n').map(item => item.trim()).filter(Boolean),
       pythonJudgeMode: document.getElementById('problem-python-judge-mode').value,
+      outputChecker: this.editingProblem?.outputChecker || 'exact',
       pythonFunctionSignature: document.getElementById('problem-python-function-signature').value,
       codeTemplates: Object.fromEntries(Object.entries(this.problemCodeTemplates)
         .filter(([, template]) => typeof template === 'string' && template.trim())),

@@ -3,21 +3,17 @@
   "title": "句子单词统计与反转",
   "difficulty": "medium",
   "status": "draft",
-  "description": "读入一个至少含 3 个英文单词的句子，统计单词数，按单词顺序整体反转，并判断原句的单词序列是否为回文。连续空白按一个分隔符处理。比较时区分大小写。",
-  "inputFormat": "一行英文句子，只包含英文字母和空格，至少 3 个单词。",
-  "outputFormat": "三行依次输出：`Words: 数量`、`Reversed: 反转后的句子`、`Palindrome: YES` 或 `Palindrome: NO`。",
-  "constraints": "整行长度不超过 1000。",
+  "description": "从用户那里获取一个包含至少三个单词的句子，计算并输出句子中的单词数量；将句子中所有单词的顺序反转（第一个单词变成最后一个，第二个单词变成倒数第二个，依次类推），然后输出反转后的句子；比较原句子和反转后的句子，相同则输出“句子是回文”，否则输出“句子不是回文”。\n\n如果发现难度较高，可将单词降级为数字，数字与数字之间不用空格隔开，但最终得分最高为 4 分。",
+  "inputFormat": "输入一个包含至少 3 个单词的句子，单词之间用空格隔开。",
+  "outputFormat": "输出单词数量、反转后的句子，并输出“句子是回文”或“句子不是回文”。Word 原题未规定固定的英文标签。",
+  "constraints": "",
   "sampleExplanation": "",
   "sampleInput": "one two one",
-  "sampleOutput": "Words: 3\nReversed: one two one\nPalindrome: YES",
+  "sampleOutput": "3\none two one\n句子是回文",
   "samples": [
     {
       "input": "one two one",
-      "output": "Words: 3\nReversed: one two one\nPalindrome: YES"
-    },
-    {
-      "input": "we love embedded systems",
-      "output": "Words: 4\nReversed: systems embedded love we\nPalindrome: NO"
+      "output": "3\none two one\n句子是回文"
     }
   ],
   "showTestDetails": false,
@@ -32,5 +28,6 @@
   "codeTemplates": {
     "c": "#include <stdio.h>\n\nint main(void) {\n    char sentence[1001];\n    fgets(sentence, sizeof(sentence), stdin);\n    /* TODO：切分单词、反转并判断回文。 */\n    return 0;\n}\n"
   },
-  "group": "control"
+  "group": "control",
+  "outputChecker": "word_reverse"
 }

@@ -3,21 +3,17 @@
   "title": "2026 年日期与星期判断",
   "difficulty": "easy",
   "status": "draft",
-  "description": "已知 2026 年 1 月 1 日是星期四。输入 2026 年的一个合法日期，判断这一天是星期几。请正确处理 2 月和各月天数。",
-  "inputFormat": "一行两个整数 `month day`，表示月份和日期。输入保证是 2026 年的合法日期。",
-  "outputFormat": "输出一个英文星期名，只能是 `Monday`、`Tuesday`、`Wednesday`、`Thursday`、`Friday`、`Saturday`、`Sunday` 之一。",
-  "constraints": "1 ≤ month ≤ 12，日期合法。",
+  "description": "2026 年 1 月 1 日是星期四，输入 2026 年其他某个日期，判断这一天是星期几。注意正确处理二月。",
+  "inputFormat": "输入 2026 年的月份和日期。Word 原题未限定两个数之间的分隔形式。",
+  "outputFormat": "输出该日期是星期几。可使用中文、英文或含义明确的数字表示，不限定固定文本。",
+  "constraints": "",
   "sampleExplanation": "",
   "sampleInput": "1 1",
-  "sampleOutput": "Thursday",
+  "sampleOutput": "星期四",
   "samples": [
     {
       "input": "1 1",
-      "output": "Thursday"
-    },
-    {
-      "input": "3 1",
-      "output": "Sunday"
+      "output": "星期四"
     }
   ],
   "showTestDetails": false,
@@ -32,5 +28,6 @@
   "codeTemplates": {
     "c": "#include <stdio.h>\n\nint main(void) {\n    int month, day;\n    scanf(\"%d%d\", &month, &day);\n    /* TODO：计算并输出星期。 */\n    return 0;\n}\n"
   },
-  "group": "control"
+  "group": "control",
+  "outputChecker": "weekday"
 }

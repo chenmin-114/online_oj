@@ -3,19 +3,14 @@
   "title": "奶茶店促销计价模块",
   "difficulty": "medium",
   "status": "draft",
-  "description": "补全给定 C 程序，组合调用 5 个已实现的工具函数，按“原价 → 会员折扣 → 满 15 减 3 → 最低 5 元保护”的固定顺序处理每笔订单。不得修改工具函数。\n\n优惠标签必须根据实际触发情况输出：`NONE`、`MEMBER`、`REDUCTION` 或 `MEMBER+REDUCTION`。",
-  "inputFormat": "第一行整数 `N`。接下来 `N` 行依次为：单价（实数）、数量（整数）、是否会员（1/0）。",
-  "outputFormat": "输出 `N` 行：`订单序号 最终价格 优惠标签`。价格固定保留两位小数。",
-  "constraints": "1 ≤ N ≤ 100；0 < 单价 ≤ 10000；1 ≤ 数量 ≤ 1000。",
+  "description": "你正在为一家奶茶店开发收银系统的核心计价模块。系统已提供 5 个基础计算工具函数。\n\n请补全 `main` 函数中的 TODO 部分，实现以下促销计价逻辑：\n\n1. 遍历订单列表；\n2. 计算每杯奶茶的原价（单价 × 数量）；\n3. 会员折扣：如果是会员，对原价打 8 折；非会员不打折；\n4. 满减判断：打折后的单杯价格若 ≥ 15 元，触发“满15减3”优惠；\n5. 最终价保护：确保最终价格不低于成本价 5 元（防止亏本）；\n6. 打印每杯的最终价格和触发的优惠类型。",
+  "inputFormat": "无需从标准输入读取数据；订单数据已给在原始 `milk_tea_price.c` 程序中。",
+  "outputFormat": "按题意打印每杯奶茶的最终价格和实际触发的优惠类型。Word 原题未规定固定的标签文字或小数位数。",
+  "constraints": "",
   "sampleExplanation": "",
-  "sampleInput": "5\n18 1 1\n12 2 0\n25 1 1\n8 3 1\n20 1 0",
-  "sampleOutput": "1 14.40 MEMBER\n2 21.00 REDUCTION\n3 17.00 MEMBER+REDUCTION\n4 16.20 MEMBER+REDUCTION\n5 17.00 REDUCTION",
-  "samples": [
-    {
-      "input": "5\n18 1 1\n12 2 0\n25 1 1\n8 3 1\n20 1 0",
-      "output": "1 14.40 MEMBER\n2 21.00 REDUCTION\n3 17.00 MEMBER+REDUCTION\n4 16.20 MEMBER+REDUCTION\n5 17.00 REDUCTION"
-    }
-  ],
+  "sampleInput": "",
+  "sampleOutput": "",
+  "samples": [],
   "showTestDetails": false,
   "hintsDefaultExpanded": true,
   "hints": [],
@@ -26,7 +21,8 @@
   },
   "pythonJudgeMode": "standard",
   "codeTemplates": {
-    "c": "/* milk_tea_price.c - Dev-C++ Compatible Daily Life Version */\r\n#include <stdio.h>\r\n\r\n/* ============================================================\r\n * === 工具函数区 (已实现，禁止修改) ===========================\r\n * ============================================================ */\r\n\r\n/* 1. 计算原价 */\r\ndouble calc_base_price(double unit_price, int qty) {\r\n    return unit_price * (double)qty;\r\n}\r\n\r\n/* 2. 应用会员折扣(8折) */\r\ndouble apply_member_discount(double price) {\r\n    return price * 0.8;\r\n}\r\n\r\n/* 3. 检查是否满足满减门槛(>=15元) */\r\nint check_full_reduction(double price) {\r\n    if (price >= 15.0) return 1;\r\n    return 0;\r\n}\r\n\r\n/* 4. 应用满减优惠(减3元) */\r\ndouble apply_reduction(double price) {\r\n    return price - 3.0;\r\n}\r\n\r\n/* 5. 保底价格保护(不低于min_val) */\r\ndouble clamp_min(double price, double min_val) {\r\n    if (price < min_val) return min_val;\r\n    return price;\r\n}\r\n\r\n/* ============================================================\r\n * === 考生作答区 =============================================\r\n * ============================================================ */\r\n\r\n#define COST_FLOOR 5.0\r\n\r\nint main(void) {\n    int n;\n    if (scanf(\"%d\", &n) != 1) return 0;\n\n    for (int i = 0; i < n; ++i) {\n        double unit_price;\n        int qty, is_member;\n        scanf(\"%lf%d%d\", &unit_price, &qty, &is_member);\n\n        /* TODO：必须组合调用题目给出的 5 个工具函数完成计价。 */\n        double final_price = 0.0;\n        int has_reduction = 0;\n        const char *promo_tag = \"NONE\";\n\n        printf(\"%d %.2f %s\\n\", i + 1, final_price, promo_tag);\n    }\n    return 0;\n}\n"
+    "c": "/* milk_tea_price.c - Dev-C++ Compatible Daily Life Version */\r\n#include <stdio.h>\r\n\r\n/* ============================================================\r\n * === 工具函数区 (已实现，禁止修改) ===========================\r\n * ============================================================ */\r\n\r\n/* 1. 计算原价 */\r\ndouble calc_base_price(double unit_price, int qty) {\r\n    return unit_price * (double)qty;\r\n}\r\n\r\n/* 2. 应用会员折扣(8折) */\r\ndouble apply_member_discount(double price) {\r\n    return price * 0.8;\r\n}\r\n\r\n/* 3. 检查是否满足满减门槛(>=15元) */\r\nint check_full_reduction(double price) {\r\n    if (price >= 15.0) return 1;\r\n    return 0;\r\n}\r\n\r\n/* 4. 应用满减优惠(减3元) */\r\ndouble apply_reduction(double price) {\r\n    return price - 3.0;\r\n}\r\n\r\n/* 5. 保底价格保护(不低于min_val) */\r\ndouble clamp_min(double price, double min_val) {\r\n    if (price < min_val) return min_val;\r\n    return price;\r\n}\r\n\r\n/* ============================================================\r\n * === 考生作答区 =============================================\r\n * ============================================================ */\r\n\r\n#define COST_FLOOR 5.0\r\n\r\nint main(void) {\r\n    /* 订单数据: {单价, 数量, 是否会员(1=是/0=否)} */\r\n    double prices[]   = {18.0, 12.0, 25.0, 8.0, 20.0};\r\n    int qtys[]        = {   1,    2,    1,   3,    1};\r\n    int is_member[]   = {   1,    0,    1,   1,    0};\r\n    int order_count = 5;\r\n\r\n    int i;\r\n    double base, after_discount, final_price;\r\n    int has_reduction;\r\n    const char *promo_tag;\r\n\r\n    printf(\"===== Milk Tea Pricing Test =====\\n\");\r\n\r\n    /* ===== TODO: 请在此处补全代码 ===== */\r\n    /* 核心挑战:\r\n     * 1. 折扣和满减的执行顺序能否颠倒？为什么？\r\n     * 2. \"满15减3\"的判断基准是原价还是折后价？\r\n     * 3. 如何用一个变量记录当前触发了哪种优惠以便打印？\r\n     * 4. clamp_min 应该在流程的哪一步调用？\r\n     *\r\n     * 要求: 必须使用全部5个工具函数，不得自行编写乘除/比较运算\r\n     */\r\n\r\n\r\n    /* ===== 代码结束 ===== */\r\n\r\n    printf(\"===== Done =====\\n\");\r\n    printf(\"\\nPress ENTER to exit...\");\r\n    getchar();\r\n    return 0;\r\n}\r\n"
   },
-  "group": "control"
+  "group": "control",
+  "outputChecker": "ordered_numbers"
 }

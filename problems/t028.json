@@ -3,19 +3,14 @@
   "title": "简易 FreeRTOS 风格任务调度器",
   "difficulty": "hard",
   "status": "draft",
-  "description": "使用 C 语言模拟一个简易任务调度器。`Task` 至少包含任务名、优先级、状态、阻塞剩余时间和任务函数指针。\n\n创建 task1~task4，优先级依次为 3、2、2、1。每个 Tick 选择最高优先级 Ready 任务；同优先级按 task2、task3 的顺序轮转。任务运行一次后进入 Blocked，blocktime 设为 2；本 Tick 末尾新进入 Blocked 的任务也执行一次 `blocktime--`，减到 0 时转为 Ready。第 3 个 Tick 后挂起 task1，第 7 个 Tick 后恢复 task1。",
+  "description": "阅读第 18 题资料，模拟 FreeRTOS 调度器思想，用 C 语言实现一个简单的任务调度器。\n\n1. 声明 `Task` 结构体，至少包含任务名、优先级、状态、阻塞剩余时间和任务函数指针。\n2. 实现创建任务函数，返回初始状态为 Ready、阻塞时间为 0 的结构体对象。\n3. 创建 task1、task2、task3、task4，优先级分别为 3、2、2、1，每个任务函数输出任务名。\n4. 实现 `schedule()`：选择优先级最高的 Ready 任务；同优先级任务轮流执行；运行一次后进入 Blocked，`blocktime=2`。\n5. 实现 `Tick()`：调用一次 `schedule()`，每个时间片结束时更新阻塞任务，阻塞时间减到 0 时恢复 Ready。\n6. 实现 `SuspendTask()` 和 `ResumeTask()`。\n7. 模拟 10 个时间片：运行 3 个 Tick 后挂起优先级为 3 的任务，运行 7 个 Tick 后恢复该任务。",
   "inputFormat": "无输入。",
-  "outputFormat": "严格输出 10 个 Tick 的调度结果；挂起和恢复时各输出一行事件。格式见样例。",
-  "constraints": "固定模拟 4 个任务和 10 个时间片。",
+  "outputFormat": "输出 10 个时间片的任务调度结果。Word 原题未规定 `Tick` 前缀、挂起/恢复提示语等固定文本格式。",
+  "constraints": "",
   "sampleExplanation": "",
   "sampleInput": "",
-  "sampleOutput": "Tick 1: task1\nTick 2: task2\nTick 3: task1\nSuspend: task1\nTick 4: task3\nTick 5: task2\nTick 6: task3\nTick 7: task2\nResume: task1\nTick 8: task1\nTick 9: task3\nTick 10: task1",
-  "samples": [
-    {
-      "input": "",
-      "output": "Tick 1: task1\nTick 2: task2\nTick 3: task1\nSuspend: task1\nTick 4: task3\nTick 5: task2\nTick 6: task3\nTick 7: task2\nResume: task1\nTick 8: task1\nTick 9: task3\nTick 10: task1"
-    }
-  ],
+  "sampleOutput": "",
+  "samples": [],
   "showTestDetails": false,
   "hintsDefaultExpanded": true,
   "hints": [],
@@ -28,5 +23,6 @@
   "codeTemplates": {
     "c": "#include <stdio.h>\n\ntypedef enum { Ready = 0, Running = 1, Blocked = 2, Suspended = 3 } TaskState;\ntypedef struct {\n    char *name;\n    int priority;\n    int state;\n    int blocktime;\n    void (*TaskFunc)(void);\n} Task;\n\n/* TODO：实现 createTask、schedule、Tick、SuspendTask 和 ResumeTask。 */\n\nint main(void) {\n    /* TODO：创建 task1~task4，模拟 10 个时间片并按题目格式输出。 */\n    return 0;\n}\n"
   },
-  "group": "control"
+  "group": "control",
+  "outputChecker": "task_schedule"
 }
