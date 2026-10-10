@@ -4392,7 +4392,8 @@ async function processNextRejudgeJob(env) {
     WHERE id = ?1 AND attempts < 5
       AND (status = 'pending' OR (status = 'processing' AND updated_at < ?3))
   `).bind(Number(job.id), now, staleBefore).run();
-  if (!claimed.meta?.changes) return true;
+  // 多个并发槽可能同时读到同一条待处理任务；领取失败的槽立即重新选择下一条。
+  if (!claimed.meta?.changes) return processNextRejudgeJob(env);
 
   try {
     if (job.submission_kind === 'problem') await rejudgeProblemSubmission(job, env);
