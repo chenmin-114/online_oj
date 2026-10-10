@@ -4421,8 +4421,8 @@ async function processNextRejudgeJob(env) {
 
 async function processRejudgeBatch(env, limit = 1) {
   const count = Math.max(1, Math.min(70, Number(limit) || 1));
-  // 公共 Judge0 在 70 个请求同时进入时会出现连接错误；保持并行，但将瞬时并发控制在 20。
-  const concurrency = 20;
+  // 公共 Judge0 在 70 个请求同时进入时会出现连接错误；保持并行，将瞬时并发控制在 50。
+  const concurrency = 50;
   for (let start = 0; start < count; start += concurrency) {
     const size = Math.min(concurrency, count - start);
     await Promise.all(Array.from({ length: size }, () => processNextRejudgeJob(env)));
