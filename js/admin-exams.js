@@ -39,12 +39,14 @@ class ExamAdmin {
     document.getElementById('back-to-exams').addEventListener('click', () => this.showManager());
     document.getElementById('grading-exam').addEventListener('change', event => {
       document.getElementById('view-grading-exam-submissions').disabled = !event.target.value;
+      document.getElementById('bulk-rejudge-exam-programming').disabled = !event.target.value;
       this.loadGrading(event.target.value);
     });
     document.getElementById('view-grading-exam-submissions').addEventListener('click', () => {
       const examId = document.getElementById('grading-exam').value;
       if (examId) this.admin.openExamSubmissionRecords(examId);
     });
+    document.getElementById('bulk-rejudge-exam-programming').addEventListener('click', () => this.rejudgeAllExamProgramming());
     document.getElementById('grading-mode').addEventListener('change', () => this.renderGrading());
     document.getElementById('grading-part').addEventListener('change', () => this.renderGrading());
     document.getElementById('run-ai-grading').addEventListener('click', () => this.runAiGrading());
@@ -900,6 +902,8 @@ class ExamAdmin {
 
   async loadGrading(examId, { silent = false, preserveSelection = false } = {}) {
     if (!examId) return;
+    const bulkRejudgeButton = document.getElementById('bulk-rejudge-exam-programming');
+    if (bulkRejudgeButton) bulkRejudgeButton.disabled = false;
     const requestedGroup = this.group;
     const workspace = document.getElementById('grading-workspace');
     const selectedId = preserveSelection ? this.submissions[this.studentIndex]?.id : null;
@@ -965,6 +969,26 @@ class ExamAdmin {
       });
     } catch (error) {
       if (!silent) workspace.innerHTML = `<p class="empty-cell">${this.escape(error.message)}</p>`;
+    }
+  }
+
+  async rejudgeAllExamProgramming() {
+    const examId = document.getElementById('grading-exam').value;
+    const button = document.getElementById('bulk-rejudge-exam-programming');
+    if (!examId || button.disabled) return;
+    const formalCount = this.submissions.filter(item => !item.preview).length;
+    if (!confirm(`确定将这套卷全部编程题加入重新批改队列吗？\n\n将处理最多 ${formalCount} 份正式答卷中的全部编程题，已经完成的判题结果也会重新计算。`)) return;
+    button.disabled = true;
+    button.textContent = '正在加入队列...';
+    try {
+      const result = await this.request('admin_exam_programming_bulk_rejudge', { examId });
+      this.admin.toast(`已加入 ${result.jobs} 个编程判题任务，涉及 ${result.students} 名学生`);
+      await this.loadGrading(examId, { silent: true, preserveSelection: true });
+    } catch (error) {
+      this.admin.toast(`批量重新批改失败：${error.message}`);
+    } finally {
+      button.disabled = false;
+      button.textContent = '全部编程题重新批改';
     }
   }
 

@@ -320,6 +320,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamPartBulkAction(body, env);
+      } else if (body.type === 'admin_exam_programming_bulk_rejudge') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamProgrammingBulkRejudge(body, env);
       } else if (body.type === 'admin_rejudge_submission') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -3255,6 +3259,55 @@ async function handleAdminExamPartBulkAction(body, env) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
   }
   return jsonResponse({ success: true, action, count: targets.length });
+}
+
+// 将一套卷中所有正式答卷的所有编程小题加入重判队列。
+// 每个“答卷 + 编程题”只生成一个幂等任务，重复点击不会重复消耗判题额度。
+async function handleAdminExamProgrammingBulkRejudge(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '提交数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  const result = await env.OJ_DB.prepare(`
+    SELECT s.id, s.username, p.group_name, v.structure_json
+    FROM exam_submissions s
+    JOIN exam_papers p ON p.id = s.exam_id
+    JOIN exam_versions v ON v.exam_id = s.exam_id AND v.version = s.exam_version
+    WHERE s.exam_id = ?1 AND s.is_final = 1 AND s.is_preview = 0
+    ORDER BY s.id ASC
+  `).bind(examId).all();
+  const jobs = [];
+  const students = new Set();
+  for (const row of result.results || []) {
+    try {
+      const structure = JSON.parse(row.structure_json);
+      const problemIds = [...new Set((structure.questions || []).flatMap(question => question.parts || [])
+        .filter(part => part.type === 'programming' && /^(?:P\d{3,6}|T\d{3})$/.test(part.problemId))
+        .map(part => part.problemId))];
+      if (!problemIds.length) continue;
+      students.add(row.username);
+      for (const problemId of problemIds) {
+        jobs.push({ submissionId: Number(row.id), group: row.group_name, problemId });
+      }
+    } catch {
+      // 单份损坏的历史答卷不应阻塞其他学生的重判任务。
+    }
+  }
+  if (!jobs.length) return jsonResponse({ success: true, jobs: 0, students: 0 });
+  const now = Date.now();
+  const statements = jobs.map(job => env.OJ_DB.prepare(`
+    INSERT INTO rejudge_queue (
+      submission_kind, submission_id, group_name, problem_id,
+      status, attempts, requested_at, updated_at, last_error
+    ) VALUES ('exam', ?1, ?2, ?3, 'pending', 0, ?4, ?4, '')
+    ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
+      group_name = excluded.group_name, status = 'pending', attempts = 0,
+      requested_at = excluded.requested_at, updated_at = excluded.updated_at,
+      last_error = ''
+  `).bind(job.submissionId, job.group, job.problemId, now));
+  for (let index = 0; index < statements.length; index += 100) {
+    await env.OJ_DB.batch(statements.slice(index, index + 100));
+  }
+  return jsonResponse({ success: true, jobs: jobs.length, students: students.size });
 }
 
 async function resolveAdminSubmissionTarget(body, env) {
