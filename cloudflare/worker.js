@@ -1514,6 +1514,7 @@ function validateExamPaper(input) {
   const description = normalizeExamText(input.description, 10000);
   const status = input.status === 'published' ? 'published' : 'draft';
   const resultPolicy = EXAM_RESULT_POLICIES.has(input.resultPolicy) ? input.resultPolicy : 'after_graded';
+  const examMode = input.examMode === true;
   const allowedUsers = Array.isArray(input.allowedUsers)
     ? [...new Set(input.allowedUsers.map(normalizeStudentUsername).filter(Boolean))]
     : [];
@@ -1596,7 +1597,7 @@ function validateExamPaper(input) {
   }
   if (totalScore > 10000) return { error: '试卷总分不能超过 10000 分' };
   return {
-    paper: { id, title, description, status, resultPolicy, serialNo, allowedUsers, availability, questions },
+    paper: { id, title, description, status, resultPolicy, examMode, serialNo, allowedUsers, availability, questions },
     totalScore: Math.round(totalScore * 100) / 100,
     totalParts,
   };
@@ -1642,6 +1643,7 @@ function parseExamRecord(record) {
     totalScore: Number(record.total_score),
     updatedAt: Number(record.updated_at),
     serialNo: Number(structure.serialNo || record.serial_no || 0),
+    examMode: structure.examMode === true,
     availability: structure.availability || { enabled: false, windows: [], afterEndView: 'none' },
   };
 }
@@ -1703,6 +1705,7 @@ async function handleAdminExamList(body, env) {
   const result = await env.OJ_DB.prepare(`
     SELECT p.id, p.title, p.description, p.status, p.result_policy, p.total_score,
            p.version, p.updated_at,
+           CASE WHEN json_extract(v.structure_json, '$.examMode') = 1 THEN 1 ELSE 0 END AS exam_mode,
            COALESCE(
              NULLIF(CAST(json_extract(v.structure_json, '$.serialNo') AS INTEGER), 0),
              (SELECT COUNT(*) FROM exam_papers p2
@@ -1805,11 +1808,16 @@ async function handleAdminExamSave(body, env) {
   }
   const existing = await readExamRecord(env, paper.id);
   if (existing && existing.group_name !== group) return jsonResponse({ error: '该试卷编号已被其他组别使用' }, 409);
+  if (existing && parseExamRecord(existing).examMode && !paper.examMode) {
+    // 离开考试模式时默认保持成绩封闭，必须由管理员之后明确修改发布规则。
+    paper.resultPolicy = 'manual';
+  }
   paper.serialNo = await ensureExamSerial(paper, env, group, existing);
 
   const structure = JSON.stringify({
     serialNo: paper.serialNo,
     availability: paper.availability,
+    ...(paper.examMode ? { examMode: true } : {}),
     questions: paper.questions,
   });
   const structureChanged = !existing || existing.structure_json !== structure;
@@ -1855,6 +1863,12 @@ async function handleAdminExamSave(body, env) {
     `).bind(paper.id));
   }
   statements.push(env.OJ_DB.prepare('DELETE FROM exam_roster WHERE exam_id = ?1').bind(paper.id));
+  if (paper.examMode) {
+    // 清除过去的手动发布标记；即使稍后关闭考试模式，也不会意外恢复旧发布状态。
+    statements.push(env.OJ_DB.prepare(`
+      UPDATE exam_submissions SET released = 0 WHERE exam_id = ?1 AND released <> 0
+    `).bind(paper.id));
+  }
   for (const username of paper.allowedUsers) {
     statements.push(env.OJ_DB.prepare(`
       INSERT INTO exam_roster (exam_id, username, created_at) VALUES (?1, ?2, ?3)
@@ -1951,7 +1965,12 @@ async function handleStudentExamList(body, env) {
   `).bind(username, group).all();
   return jsonResponse((result.results || []).map(row => {
     let availability = { enabled: false, windows: [], afterEndView: 'none' };
-    try { availability = JSON.parse(row.structure_json)?.availability || availability; } catch { /* 使用无限制默认值 */ }
+    let examMode = false;
+    try {
+      const structure = JSON.parse(row.structure_json);
+      availability = structure?.availability || availability;
+      examMode = structure?.examMode === true;
+    } catch { /* 使用无限制默认值 */ }
     const effectiveAvailability = availabilityWithExtension(availability, extensions.get(`exam:${row.id}`), now);
     const timing = publicAvailability(effectiveAvailability, now).status;
     const answerAccess = Number(row.access_allowed) === 1;
@@ -1969,22 +1988,23 @@ async function handleStudentExamList(body, env) {
     accessAllowed: viewAccess,
     enterAllowed: enterAccess,
     answerAllowed: answerAccess,
+    examMode,
     timing,
     submittedAt: row.submitted_at ? Number(row.submitted_at) : null,
-    gradingStatus: row.grading_status || null,
-    gradedCount: Number(row.graded_count || 0),
-    totalParts: Number(row.total_parts || 0),
-    resultVisible: isExamResultVisible(row.result_policy, row.grading_status, Number(row.released)),
-    achievedScore: isExamResultVisible(row.result_policy, row.grading_status, Number(row.released))
+    gradingStatus: examMode ? null : (row.grading_status || null),
+    gradedCount: examMode ? 0 : Number(row.graded_count || 0),
+    totalParts: examMode ? 0 : Number(row.total_parts || 0),
+    resultVisible: isExamResultVisible(row.result_policy, row.grading_status, Number(row.released), examMode),
+    achievedScore: isExamResultVisible(row.result_policy, row.grading_status, Number(row.released), examMode)
       ? Number(row.achieved_score) : null,
     };
   }));
 }
 
-function isExamResultVisible(policy, gradingStatus, released) {
-  return policy === 'immediate'
+function isExamResultVisible(policy, gradingStatus, released, examMode = false) {
+  return !examMode && (policy === 'immediate'
     || (policy === 'after_graded' && gradingStatus === 'completed')
-    || (policy === 'manual' && released === 1);
+    || (policy === 'manual' && released === 1));
 }
 
 function examCompletionMessageStatement(env, {
@@ -1999,15 +2019,21 @@ function examCompletionMessageStatement(env, {
       message_type, group_name, problem_id, resubmission_key, popup_enabled
     )
     SELECT 'user', ?1, '套卷已批改完成', ?2, ?3, 'exam_graded', ?4, NULL, ?5, 0
-    WHERE ?6 IS NULL OR EXISTS (
+    WHERE NOT EXISTS (
+      SELECT 1 FROM exam_papers current_paper
+      JOIN exam_versions current_version
+        ON current_version.exam_id = current_paper.id AND current_version.version = current_paper.version
+      WHERE current_paper.id = ?7 AND json_extract(current_version.structure_json, '$.examMode') = 1
+    ) AND (?6 IS NULL OR EXISTS (
       SELECT 1 FROM exam_submissions
       WHERE id = ?6 AND is_final = 1 AND is_preview = 0 AND grading_status = 'completed'
-    )
+    ))
   `).bind(
     username,
     `你提交的套卷《${title || examId}》已完成批改，请前往套卷页面查看批改结果。`,
     createdAt || Date.now(), group || null, messageKey,
     Number.isInteger(Number(submissionId)) && Number(submissionId) > 0 ? Number(submissionId) : null,
+    examId,
   );
 }
 
@@ -2038,14 +2064,14 @@ async function handleStudentExamGet(body, env) {
   `).bind(examId, username).first();
   let mySubmission = null;
   if (submission) {
-    const visible = isExamResultVisible(record.result_policy, submission.grading_status, Number(submission.released));
+    const visible = isExamResultVisible(record.result_policy, submission.grading_status, Number(submission.released), paper.examMode);
     mySubmission = {
       id: Number(submission.id),
       answers: JSON.parse(submission.answers_json),
       submittedAt: Number(submission.submitted_at),
-      gradingStatus: submission.grading_status,
-      gradedCount: Number(submission.graded_count),
-      totalParts: Number(submission.total_parts),
+      gradingStatus: paper.examMode ? null : submission.grading_status,
+      gradedCount: paper.examMode ? 0 : Number(submission.graded_count),
+      totalParts: paper.examMode ? 0 : Number(submission.total_parts),
       resultVisible: visible,
       ...(visible ? {
         totalScore: Number(submission.total_score),
@@ -2512,13 +2538,13 @@ async function handleStudentExamSubmit(body, env, options = {}) {
     `).bind(group, examId, paper.version, username, currentTiming.windowStart, now));
   }
   await env.OJ_DB.batch(statements);
-  const visible = isExamResultVisible(paper.resultPolicy, scores.gradingStatus, 0);
+  const visible = isExamResultVisible(paper.resultPolicy, scores.gradingStatus, 0, paper.examMode);
   return jsonResponse({
     success: true,
     attemptNo,
-    gradingStatus: scores.gradingStatus,
-    gradedCount: scores.gradedCount,
-    totalParts: scores.totalParts,
+    gradingStatus: paper.examMode ? null : scores.gradingStatus,
+    gradedCount: paper.examMode ? 0 : scores.gradedCount,
+    totalParts: paper.examMode ? 0 : scores.totalParts,
     resultVisible: visible,
     ...(visible ? { totalScore: scores.totalScore, grading: { partResults } } : {}),
   });
@@ -2586,9 +2612,11 @@ async function handleAdminExamGrade(body, env) {
   if (!submission) return jsonResponse({ error: '试卷提交不存在' }, 404);
   if (Number(submission.is_final) !== 1) return jsonResponse({ error: '该提交已被学生的新提交替代，不能作为最终成绩批改' }, 409);
   const version = await env.OJ_DB.prepare(`
-    SELECT v.structure_json, p.title, p.description, p.status, p.result_policy,
+    SELECT v.structure_json, current_v.structure_json AS current_structure_json,
+           p.title, p.description, p.status, p.result_policy,
            p.total_score, p.group_name, p.updated_at
     FROM exam_versions v JOIN exam_papers p ON p.id = v.exam_id
+    JOIN exam_versions current_v ON current_v.exam_id = p.id AND current_v.version = p.version
     WHERE v.exam_id = ?1 AND v.version = ?2
   `).bind(submission.exam_id, submission.exam_version).first();
   if (!version) return jsonResponse({ error: '试卷历史版本不存在' }, 503);
@@ -2617,7 +2645,11 @@ async function handleAdminExamGrade(body, env) {
     delete result.aiAdopted;
   }
   const scores = calculateExamScores(paper, partResults);
-  const released = typeof body.released === 'boolean' ? (body.released ? 1 : 0) : Number(submission.released);
+  let currentExamMode = false;
+  try { currentExamMode = JSON.parse(version.current_structure_json)?.examMode === true; } catch { /* 旧版结构默认普通模式 */ }
+  const released = currentExamMode
+    ? 0
+    : typeof body.released === 'boolean' ? (body.released ? 1 : 0) : Number(submission.released);
   const now = Date.now();
   const statements = [env.OJ_DB.prepare(`
     UPDATE exam_submissions
@@ -3366,7 +3398,15 @@ async function handleStudentMessages(body, env) {
      AND rr.username = ?1
      AND rr.group_name = m.group_name
      AND rr.problem_id = m.problem_id
-    WHERE m.audience = 'all' OR (m.audience = 'user' AND m.username = ?1)
+    WHERE (m.audience = 'all' OR (m.audience = 'user' AND m.username = ?1))
+      AND NOT EXISTS (
+        SELECT 1 FROM exam_papers hidden_exam
+        JOIN exam_versions hidden_version
+          ON hidden_version.exam_id = hidden_exam.id AND hidden_version.version = hidden_exam.version
+        WHERE m.message_type = 'exam_graded'
+          AND m.resubmission_key = 'exam-graded:' || hidden_exam.id || ':' || ?1
+          AND json_extract(hidden_version.structure_json, '$.examMode') = 1
+      )
     ORDER BY m.created_at DESC, m.id DESC
     LIMIT 100
   `).bind(username).all();

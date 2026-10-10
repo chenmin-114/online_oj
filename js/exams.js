@@ -97,7 +97,9 @@ class ExamUI {
         if (unchanged) return;
         this.renderResult(this.submission);
         document.getElementById('exam-submit-status').textContent = this.submission
-          ? `已于 ${new Date(this.submission.submittedAt).toLocaleString()} 提交；批改状态会自动更新`
+          ? this.paper.examMode && !this.app.adminExamPreview
+            ? `已于 ${new Date(this.submission.submittedAt).toLocaleString()} 提交`
+            : `已于 ${new Date(this.submission.submittedAt).toLocaleString()} 提交；批改状态会自动更新`
           : '答案会自动保存在本机；提交整张试卷后才会进入批改';
       }
     } catch {
@@ -194,7 +196,7 @@ class ExamUI {
       const allowed = exam.accessAllowed !== false;
       const enterAllowed = allowed && exam.enterAllowed !== false;
       const submitted = Boolean(exam.submittedAt);
-      const gradingText = submitted
+      const gradingText = submitted && !exam.examMode
         ? (exam.gradingStatus === 'completed' ? '批改完成' : `批改中 ${exam.gradedCount}/${exam.totalParts}`)
         : '';
       const timingState = exam.timing?.state || 'unrestricted';
@@ -342,7 +344,7 @@ class ExamUI {
     }
     this.answers = answers;
     document.getElementById('student-exam-title').textContent = `${paper.id} · ${paper.title}`;
-    document.getElementById('student-exam-meta').textContent = `${this.app.group === 'vision' ? '视觉组' : '电控组'} · 总分 ${paper.totalScore} · 第 ${paper.version} 版`;
+    document.getElementById('student-exam-meta').textContent = `${this.app.group === 'vision' ? '视觉组' : '电控组'} · 总分 ${paper.totalScore} · 第 ${paper.version} 版${paper.examMode ? ' · 考试模式' : ''}`;
     const description = document.getElementById('student-exam-description');
     description.innerHTML = paper.description ? this.app._formatMarkdown(paper.description) : '';
     if (paper.description) this.app._enhanceMarkdown(description);
@@ -762,14 +764,18 @@ class ExamUI {
       });
       localStorage.removeItem(this.draftKey());
       this.submission = { ...result, answers, submittedAt: Date.now() };
-      status.textContent = `提交成功：这是第 ${result.attemptNo} 次提交，已完成 ${result.gradedCount}/${result.totalParts} 个小题的批改。`;
+      status.textContent = this.paper.examMode && !this.app.adminExamPreview
+        ? `提交成功：这是第 ${result.attemptNo} 次提交。`
+        : `提交成功：这是第 ${result.attemptNo} 次提交，已完成 ${result.gradedCount}/${result.totalParts} 个小题的批改。`;
       this.renderResult(this.submission);
       this.loadedKey = '';
       this.lastSubmitFailed = false;
       this.showSubmitModal(
         true,
         '提交完成',
-        `《${this.paper.title}》已成功提交。\n这是第 ${result.attemptNo} 次提交，已完成 ${result.gradedCount}/${result.totalParts} 个小题的自动批改。`,
+        this.paper.examMode && !this.app.adminExamPreview
+          ? `《${this.paper.title}》已成功提交。\n这是第 ${result.attemptNo} 次提交。`
+          : `《${this.paper.title}》已成功提交。\n这是第 ${result.attemptNo} 次提交，已完成 ${result.gradedCount}/${result.totalParts} 个小题的自动批改。`,
       );
     } catch (error) {
       this.lastSubmitFailed = true;
@@ -799,6 +805,10 @@ class ExamUI {
     const container = document.getElementById('exam-result');
     if (!submission) {
       container.innerHTML = '';
+      return;
+    }
+    if (this.paper?.examMode && !this.app.adminExamPreview) {
+      container.innerHTML = '<div class="exam-result-card"><h3>试卷已提交</h3><p>考试模式下不公布成绩和批改状态。</p></div>';
       return;
     }
     if (!submission.resultVisible) {
