@@ -1028,6 +1028,8 @@ class ExamAdmin {
     let drafts = 0;
     let skippedParts = 0;
     let completedChunks = 0;
+    let unresolvedCount = 0;
+    let failedConversations = 0;
     try {
       for (let index = 0; index < partIds.length; index += 1) {
         const partId = partIds[index];
@@ -1044,9 +1046,8 @@ class ExamAdmin {
         const chunks = this.splitAiGradingPackage(gradingPackage);
         let nextChunkIndex = 0;
         let completedPartChunks = 0;
-        let firstError = null;
         const runWorker = async () => {
-          while (!firstError) {
+          while (true) {
             const chunkIndex = nextChunkIndex;
             nextChunkIndex += 1;
             if (chunkIndex >= chunks.length) return;
@@ -1054,23 +1055,28 @@ class ExamAdmin {
             try {
               status.textContent = `正在批改第 ${index + 1}/${partIds.length} 道题：${completedPartChunks}/${chunks.length} 个对话已保存，最多 6 个并发...`;
               const localResult = await this.runAiGradingChunk(chunk);
-              const imported = await this.request('admin_exam_ai_import', { payload: localResult });
-              importedCount += imported.imported || 0;
-              autoAdopted += imported.autoAdopted || 0;
-              drafts += imported.drafts || 0;
+              unresolvedCount += Array.isArray(localResult.unresolvedSubmissionIds)
+                ? localResult.unresolvedSubmissionIds.length : 0;
+              if (Array.isArray(localResult.results) && localResult.results.length) {
+                const imported = await this.request('admin_exam_ai_import', { payload: localResult });
+                importedCount += imported.imported || 0;
+                autoAdopted += imported.autoAdopted || 0;
+                drafts += imported.drafts || 0;
+              }
               completedChunks += 1;
               completedPartChunks += 1;
               status.textContent = `第 ${index + 1}/${partIds.length} 道题：已保存 ${completedPartChunks}/${chunks.length} 个对话，共 ${importedCount} 条结果...`;
             } catch (error) {
-              firstError = error;
+              failedConversations += 1;
+              completedPartChunks += 1;
+              status.textContent = `第 ${index + 1}/${partIds.length} 道题：${completedPartChunks}/${chunks.length} 个对话已处理，${failedConversations} 个异常；正在继续...`;
             }
           }
         };
         await Promise.all(Array.from({ length: Math.min(6, chunks.length) }, () => runWorker()));
-        if (firstError) throw firstError;
       }
-      status.textContent = importedCount
-        ? `批改完成：${importedCount} 条结果，高置信度自动采用 ${autoAdopted} 条，待复核 ${drafts} 条${skippedParts ? `，${skippedParts} 道题无需处理` : ''}`
+      status.textContent = importedCount || unresolvedCount || failedConversations
+        ? `批改流程完成：已保存 ${importedCount} 条，高置信度自动采用 ${autoAdopted} 条，待复核 ${drafts} 条${unresolvedCount ? `；${unresolvedCount} 份经自动补跑后仍待下次处理` : ''}${failedConversations ? `；${failedConversations} 个对话异常未导入` : ''}${skippedParts ? `；${skippedParts} 道题无需处理` : ''}`
         : '没有新的待批改答案；已有 Claude 草稿不会重复消耗 Token';
       await this.loadGrading(examId, { preserveSelection: true });
     } catch (error) {
