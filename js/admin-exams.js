@@ -955,6 +955,60 @@ class ExamAdmin {
     }
   }
 
+  splitAiGradingPackage(payload) {
+    const chunks = [];
+    for (const group of payload.groups || []) {
+      const batches = [];
+      let current = [];
+      let characterCount = 0;
+      for (const submission of group.submissions || []) {
+        const answerLength = String(submission.answer || '').length;
+        if (current.length && (current.length >= 16 || characterCount + answerLength > 60000)) {
+          batches.push(current);
+          current = [];
+          characterCount = 0;
+        }
+        current.push(submission);
+        characterCount += answerLength;
+      }
+      if (current.length) batches.push(current);
+      for (let index = 0; index < batches.length; index += 3) {
+        const submissions = batches.slice(index, index + 3).flat();
+        chunks.push({
+          ...payload,
+          groups: [{ ...group, submissions }],
+          submissionCount: submissions.length,
+        });
+      }
+    }
+    return chunks;
+  }
+
+  async runAiGradingChunk(gradingPackage) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25 * 60 * 1000);
+    try {
+      const response = await fetch('http://127.0.0.1:37841/grade', {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        headers: { 'Content-Type': 'application/json', 'X-JC-OJ-Grading': '1' },
+        body: JSON.stringify(gradingPackage),
+        signal: controller.signal,
+      });
+      const localResult = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(localResult.error || `本机助手返回 ${response.status}`);
+      return localResult;
+    } catch (error) {
+      if (error.name === 'AbortError') throw new Error('当前批次超过 25 分钟，已停止等待');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async runAiGrading() {
     const examId = this.paper?.id;
     const mode = document.getElementById('grading-mode').value;
@@ -970,13 +1024,12 @@ class ExamAdmin {
     if (!partIds.length) return this.admin.toast(mode === 'part' ? '请先选择一道填空题或简答题' : '这份试卷没有可由 Claude 批改的题目');
     button.disabled = true;
     status.textContent = '正在整理待批改答案...';
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20 * 60 * 1000);
+    let importedCount = 0;
+    let autoAdopted = 0;
+    let drafts = 0;
+    let skippedParts = 0;
+    let completedChunks = 0;
     try {
-      let importedCount = 0;
-      let autoAdopted = 0;
-      let drafts = 0;
-      let skippedParts = 0;
       for (let index = 0; index < partIds.length; index += 1) {
         const partId = partIds[index];
         let gradingPackage;
@@ -989,34 +1042,29 @@ class ExamAdmin {
           }
           throw error;
         }
-        status.textContent = `正在批改第 ${index + 1}/${partIds.length} 道题，共 ${gradingPackage.submissionCount} 份答案...`;
-        const response = await fetch('http://127.0.0.1:37841/grade', {
-          method: 'POST',
-          mode: 'cors',
-          credentials: 'omit',
-          cache: 'no-store',
-          referrerPolicy: 'no-referrer',
-          headers: { 'Content-Type': 'application/json', 'X-JC-OJ-Grading': '1' },
-          body: JSON.stringify(gradingPackage),
-          signal: controller.signal,
-        });
-        const localResult = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(localResult.error || `本机助手返回 ${response.status}`);
-        status.textContent = `第 ${index + 1}/${partIds.length} 道题已完成，正在校验并保存...`;
-        const imported = await this.request('admin_exam_ai_import', { payload: localResult });
-        importedCount += imported.imported || 0;
-        autoAdopted += imported.autoAdopted || 0;
-        drafts += imported.drafts || 0;
+        const chunks = this.splitAiGradingPackage(gradingPackage);
+        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+          const chunk = chunks[chunkIndex];
+          status.textContent = `正在批改第 ${index + 1}/${partIds.length} 道题，第 ${chunkIndex + 1}/${chunks.length} 批（${chunk.submissionCount} 份答案）；已保存 ${importedCount} 条...`;
+          const localResult = await this.runAiGradingChunk(chunk);
+          status.textContent = `第 ${index + 1}/${partIds.length} 道题第 ${chunkIndex + 1}/${chunks.length} 批已完成，正在保存...`;
+          const imported = await this.request('admin_exam_ai_import', { payload: localResult });
+          importedCount += imported.imported || 0;
+          autoAdopted += imported.autoAdopted || 0;
+          drafts += imported.drafts || 0;
+          completedChunks += 1;
+        }
       }
       status.textContent = importedCount
         ? `批改完成：${importedCount} 条结果，高置信度自动采用 ${autoAdopted} 条，待复核 ${drafts} 条${skippedParts ? `，${skippedParts} 道题无需处理` : ''}`
         : '没有新的待批改答案；已有 Claude 草稿不会重复消耗 Token';
       await this.loadGrading(examId, { preserveSelection: true });
     } catch (error) {
-      const detail = error.name === 'AbortError' ? '本机批改超过 20 分钟，已停止等待' : error.message;
-      status.textContent = `一键批改失败：${detail}。请下载并启动本机助手后重试`;
+      const savedText = completedChunks ? `；此前 ${completedChunks} 批共 ${importedCount} 条结果已经保存，重新运行会自动跳过` : '';
+      const failureText = `一键批改中止：${error.message}${savedText}`;
+      await this.loadGrading(examId, { silent: true, preserveSelection: true });
+      status.textContent = failureText;
     } finally {
-      clearTimeout(timeout);
       button.disabled = false;
     }
   }
