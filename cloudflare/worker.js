@@ -47,6 +47,8 @@ const CORS_HEADERS = {
   'Vary': 'Origin',
 };
 const JUDGE0_REQUEST_TIMEOUT_MS = 30000;
+const REJUDGE_LEASE_TIMEOUT_MS = 3 * 60 * 1000;
+const REJUDGE_HEARTBEAT_MS = 60 * 1000;
 
 // 允许读取的数据文件白名单：查询参数不能直接拼进 GitHub 路径
 const DATA_FILES = {
@@ -4442,7 +4444,7 @@ async function enqueueProblemRejudges(env, group, problemId) {
 async function processNextRejudgeJob(env) {
   if (!env.OJ_DB) return false;
   const now = Date.now();
-  const staleBefore = now - 10 * 60 * 1000;
+  const staleBefore = now - REJUDGE_LEASE_TIMEOUT_MS;
   const job = await env.OJ_DB.prepare(`
     SELECT * FROM rejudge_queue
     WHERE attempts < 5
@@ -4460,6 +4462,14 @@ async function processNextRejudgeJob(env) {
   // 多个并发槽可能同时读到同一条待处理任务；领取失败的槽立即重新选择下一条。
   if (!claimed.meta?.changes) return processNextRejudgeJob(env);
 
+  // 一个任务可能包含多个测试点，正常执行时间可能超过租约时长。
+  // 定期续租，只有 Worker 崩溃或真正失联后才会被其他槽回收。
+  const heartbeat = setInterval(() => {
+    env.OJ_DB.prepare(`
+      UPDATE rejudge_queue SET updated_at = ?2
+      WHERE id = ?1 AND requested_at = ?3 AND status = 'processing'
+    `).bind(Number(job.id), Date.now(), Number(job.requested_at)).run().catch(() => {});
+  }, REJUDGE_HEARTBEAT_MS);
   try {
     if (job.submission_kind === 'problem') await rejudgeProblemSubmission(job, env);
     else if (job.submission_kind === 'exam') await rejudgeExamSubmission(job, env);
@@ -4480,6 +4490,8 @@ async function processNextRejudgeJob(env) {
       Number(job.requested_at),
     ).run();
     console.error(`自动重判任务 ${job.id} 失败:`, error);
+  } finally {
+    clearInterval(heartbeat);
   }
   return true;
 }
