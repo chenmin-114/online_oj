@@ -359,6 +359,17 @@ class OJAdmin {
     if (this.submissionKind === 'exam' && document.getElementById('panel-submissions').classList.contains('active')) {
       await this.loadExamSubmissionRecords(true);
     }
+    // 顶部“刷新数据”也应同步当前打开的套卷批改学生列表。
+    // 正在编辑未保存评分时跳过，避免刷新覆盖管理员的输入。
+    const examGradingView = document.getElementById('exam-grading-view');
+    const gradingExam = document.getElementById('grading-exam')?.value;
+    if (window.examAdmin
+      && document.getElementById('panel-exams')?.classList.contains('active')
+      && examGradingView && !examGradingView.hidden
+      && gradingExam
+      && !window.examAdmin.gradingDirty) {
+      await window.examAdmin.loadGrading(gradingExam, { silent: true, preserveSelection: true });
+    }
     this.populateTimedExtensionResources();
     this.updateDataStatus({ submissionsResult, rankingResult });
     this.setStatus('worker', null, '正在检查连接...');
