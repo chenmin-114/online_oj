@@ -15,6 +15,7 @@ class ExamAdmin {
     this.lastRefreshAt = 0;
     this.studentSort = 'submitted_asc';
     this.gradingCompletionFilter = 'all';
+    this.gradingSearch = '';
   }
 
   init() {
@@ -36,7 +37,14 @@ class ExamAdmin {
     document.getElementById('exam-admin-list').addEventListener('click', event => this.handleListClick(event));
     document.getElementById('show-exam-grading').addEventListener('click', () => this.showGrading());
     document.getElementById('back-to-exams').addEventListener('click', () => this.showManager());
-    document.getElementById('grading-exam').addEventListener('change', event => this.loadGrading(event.target.value));
+    document.getElementById('grading-exam').addEventListener('change', event => {
+      document.getElementById('view-grading-exam-submissions').disabled = !event.target.value;
+      this.loadGrading(event.target.value);
+    });
+    document.getElementById('view-grading-exam-submissions').addEventListener('click', () => {
+      const examId = document.getElementById('grading-exam').value;
+      if (examId) this.admin.openExamSubmissionRecords(examId);
+    });
     document.getElementById('grading-mode').addEventListener('change', () => this.renderGrading());
     document.getElementById('grading-part').addEventListener('change', () => this.renderGrading());
     document.getElementById('run-ai-grading').addEventListener('click', () => this.runAiGrading());
@@ -58,6 +66,19 @@ class ExamAdmin {
       this.studentSort = event.target.value;
       this.sortSubmissionsPreservingSelection();
       this.renderStudentList();
+    });
+    document.getElementById('grading-student-search').addEventListener('input', event => {
+      this.gradingSearch = event.target.value.trim().toLowerCase();
+      const visible = this.visibleSubmissionEntries();
+      if (!visible.some(item => item.index === this.studentIndex)) {
+        const nextIndex = visible[0]?.index ?? -1;
+        if (nextIndex >= 0) {
+          this.selectStudent(nextIndex);
+          return;
+        }
+        this.studentIndex = -1;
+      }
+      this.renderGrading();
     });
     document.getElementById('grading-completion-filter').addEventListener('click', event => {
       const option = event.target.closest('[data-grading-completion]');
@@ -177,7 +198,7 @@ class ExamAdmin {
         <td>${this.escape(exam.view_students || 0)}</td>
         <td>${this.escape(exam.submitted_students || 0)}</td>
         <td>${this.escape(exam.completed_students || 0)}</td>
-        <td><button type="button" class="table-link table-link-button" data-preview-exam="${this.escape(exam.id)}">预览</button> · <button type="button" class="table-link table-link-button" data-edit-exam="${this.escape(exam.id)}">编辑</button> · <button type="button" class="table-link table-link-button" data-grade-exam="${this.escape(exam.id)}">批改</button></td>
+        <td><button type="button" class="table-link table-link-button" data-preview-exam="${this.escape(exam.id)}">预览</button> · <button type="button" class="table-link table-link-button" data-edit-exam="${this.escape(exam.id)}">编辑</button> · <button type="button" class="table-link table-link-button" data-grade-exam="${this.escape(exam.id)}">批改</button> · <button type="button" class="table-link table-link-button" data-records-exam="${this.escape(exam.id)}">提交记录</button></td>
       </tr>`).join('') : '<tr><td colspan="8" class="empty-cell">当前组别还没有套卷</td></tr>';
   }
 
@@ -769,6 +790,7 @@ class ExamAdmin {
     const preview = event.target.closest('[data-preview-exam]');
     const edit = event.target.closest('[data-edit-exam]');
     const grade = event.target.closest('[data-grade-exam]');
+    const records = event.target.closest('[data-records-exam]');
     if (preview) this.previewExam(preview.dataset.previewExam);
     if (edit) this.editExam(edit.dataset.editExam);
     if (grade) {
@@ -776,6 +798,7 @@ class ExamAdmin {
       document.getElementById('grading-exam').value = grade.dataset.gradeExam;
       await this.loadGrading(grade.dataset.gradeExam);
     }
+    if (records) await this.admin.openExamSubmissionRecords(records.dataset.recordsExam);
   }
 
   async previewExam(id) {
@@ -861,6 +884,18 @@ class ExamAdmin {
     await this.ensureLoaded();
     document.getElementById('exam-manage-view').hidden = true;
     document.getElementById('exam-grading-view').hidden = false;
+    document.getElementById('view-grading-exam-submissions').disabled = !document.getElementById('grading-exam').value;
+  }
+
+  async openGradingSubmission(examId, username = '') {
+    await this.ensureLoaded();
+    this.admin.openPanel('exams');
+    await this.showGrading();
+    document.getElementById('grading-exam').value = examId;
+    document.getElementById('view-grading-exam-submissions').disabled = false;
+    this.gradingSearch = String(username || '').trim().toLowerCase();
+    document.getElementById('grading-student-search').value = username || '';
+    await this.loadGrading(examId, { preserveSelection: true });
   }
 
   async loadGrading(examId, { silent = false, preserveSelection = false } = {}) {
@@ -874,7 +909,11 @@ class ExamAdmin {
     const workspaceScrollTop = workspace.scrollTop;
     const studentList = document.getElementById('grading-student-list');
     const studentListScrollTop = studentList.scrollTop;
-    if (!preserveSelection) this.gradingDirty = false;
+    if (!preserveSelection) {
+      this.gradingDirty = false;
+      this.gradingSearch = '';
+      document.getElementById('grading-student-search').value = '';
+    }
     if (!silent) workspace.innerHTML = '<p class="empty-cell">正在读取提交...</p>';
     try {
       const [paper, initialSubmissions] = await Promise.all([
@@ -967,6 +1006,7 @@ class ExamAdmin {
 
   visibleSubmissionEntries() {
     return this.submissions.map((submission, index) => ({ submission, index })).filter(({ submission }) => {
+      if (this.gradingSearch && !String(submission.username || '').toLowerCase().includes(this.gradingSearch)) return false;
       if (this.gradingCompletionFilter === 'completed') return submission.gradingStatus === 'completed';
       if (this.gradingCompletionFilter === 'pending') return submission.gradingStatus !== 'completed';
       return true;
@@ -981,7 +1021,14 @@ class ExamAdmin {
     }[value];
     this.closeGradingMenus();
     const visible = this.visibleSubmissionEntries();
-    if (!visible.some(item => item.index === this.studentIndex)) this.studentIndex = visible[0]?.index ?? -1;
+    if (!visible.some(item => item.index === this.studentIndex)) {
+      const nextIndex = visible[0]?.index ?? -1;
+      if (nextIndex >= 0) {
+        this.selectStudent(nextIndex);
+        return;
+      }
+      this.studentIndex = -1;
+    }
     this.renderGrading();
   }
 
@@ -1321,7 +1368,7 @@ class ExamAdmin {
     const formalSubmissions = this.submissions.filter(item => !item.preview);
     const completed = formalSubmissions.filter(item => item.gradingStatus === 'completed').length;
     document.getElementById('grading-summary').textContent = this.paper
-      ? `${formalSubmissions.length} 人正式提交 · ${completed} 人完成批改${this.submissions.some(item => item.preview) ? ' · 含管理员预览记录' : ''}`
+      ? `${formalSubmissions.length} 人正式提交 · ${completed} 人完成批改${this.gradingSearch ? ` · 找到 ${visibleEntries.filter(item => !item.submission.preview).length} 人` : ''}${this.submissions.some(item => item.preview) ? ' · 含管理员预览记录' : ''}`
       : '请选择试卷';
     this.renderStudentList();
     this.renderWorkspace();

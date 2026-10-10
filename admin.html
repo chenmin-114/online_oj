@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20261009-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261010-02">
+  <link rel="stylesheet" href="css/admin.css?v=20261010-03">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -340,6 +340,7 @@
             <div class="filter-bar">
               <button id="back-to-exams" type="button" class="admin-button secondary">← 返回试卷管理</button>
               <select id="grading-exam" class="admin-input"><option value="">选择试卷</option></select>
+              <button id="view-grading-exam-submissions" type="button" class="admin-button secondary" disabled>查看提交记录</button>
               <select id="grading-mode" class="admin-input"><option value="student">按学生批改整卷</option><option value="part">按一道题连续批改</option></select>
               <select id="grading-part" class="admin-input" hidden><option value="">选择小题</option></select>
               <button id="run-ai-grading" type="button" class="admin-button primary" hidden>Claude 一键批改</button>
@@ -364,7 +365,7 @@
           </article>
           <div class="exam-grading-layout">
             <article class="admin-card">
-              <div class="card-heading"><div><h3>学生提交</h3><p id="grading-summary">请选择试卷</p></div><div class="grading-list-filters"><div id="grading-completion-filter" class="grading-split-action"><button id="grading-completion-filter-current" type="button" class="admin-button secondary">全部</button><button type="button" class="admin-button secondary grading-menu-toggle" aria-label="筛选批改状态" aria-expanded="false">▾</button><div class="grading-action-menu"><button type="button" data-grading-completion="all">全部</button><button type="button" data-grading-completion="completed">已改完</button><button type="button" data-grading-completion="pending">未改完</button></div></div><select id="grading-student-sort" class="admin-input compact" aria-label="学生排序"><option value="submitted_asc">提交时间（早到晚）</option><option value="submitted_desc">提交时间（晚到早）</option><option value="username">姓名 / 账号</option><option value="score_desc">成绩（高到低）</option><option value="score_asc">成绩（低到高）</option></select></div></div>
+              <div class="card-heading"><div><h3>学生提交</h3><p id="grading-summary">请选择试卷</p></div><div class="grading-list-filters"><input id="grading-student-search" class="admin-input compact" type="search" maxlength="50" placeholder="查找学生账号" aria-label="查找学生账号"><div id="grading-completion-filter" class="grading-split-action"><button id="grading-completion-filter-current" type="button" class="admin-button secondary">全部</button><button type="button" class="admin-button secondary grading-menu-toggle" aria-label="筛选批改状态" aria-expanded="false">▾</button><div class="grading-action-menu"><button type="button" data-grading-completion="all">全部</button><button type="button" data-grading-completion="completed">已改完</button><button type="button" data-grading-completion="pending">未改完</button></div></div><select id="grading-student-sort" class="admin-input compact" aria-label="学生排序"><option value="submitted_asc">提交时间（早到晚）</option><option value="submitted_desc">提交时间（晚到早）</option><option value="username">姓名 / 账号</option><option value="score_desc">成绩（高到低）</option><option value="score_asc">成绩（低到高）</option></select></div></div>
               <div id="grading-student-list" class="grading-student-list"></div>
             </article>
             <article class="admin-card">
@@ -377,17 +378,21 @@
 
       <section id="panel-submissions" class="admin-panel">
         <div class="admin-page-title row">
-          <div><p class="eyebrow">JUDGING</p><h2>提交记录</h2><p>筛选、检查并导出全站评测记录</p></div>
-          <button id="export-submissions" class="admin-button secondary">⇩ 导出 CSV</button>
+          <div><p class="eyebrow">JUDGING</p><h2>提交记录</h2><p>统一查看编程题和套卷的提交记录</p></div>
+          <div class="title-actions"><button id="return-submissions-to-exams" class="admin-button secondary" type="button" hidden>← 返回套卷</button><button id="export-submissions" class="admin-button secondary">⇩ 导出 CSV</button></div>
         </div>
         <article class="admin-card">
+          <div class="submission-kind-switch" role="group" aria-label="提交记录类型">
+            <button type="button" class="admin-button secondary active" data-submission-kind="problem" aria-pressed="true">题目提交</button>
+            <button type="button" class="admin-button secondary" data-submission-kind="exam" aria-pressed="false">套卷提交</button>
+          </div>
           <div class="filter-bar">
             <input id="submission-search" class="admin-input" type="search" placeholder="搜索用户名或题号">
-            <select id="submission-problem" class="admin-input"><option value="">全部题目</option></select>
-            <select id="submission-result" class="admin-input"><option value="">全部结果</option><option value="accepted">Accepted</option><option value="failed">未通过</option></select>
+            <span id="problem-submission-filters" class="submission-filter-group"><select id="submission-problem" class="admin-input"><option value="">全部题目</option></select><select id="submission-result" class="admin-input"><option value="">全部结果</option><option value="accepted">Accepted</option><option value="failed">未通过</option></select></span>
+            <span id="exam-submission-filters" class="submission-filter-group" hidden><select id="submission-exam" class="admin-input"><option value="">全部套卷</option></select><select id="submission-grading-status" class="admin-input"><option value="">全部批改状态</option><option value="completed">已改完</option><option value="pending">未改完</option></select></span>
             <span id="submission-count" class="filter-count"></span>
           </div>
-          <div class="table-wrap"><table class="admin-table"><thead><tr><th>时间</th><th>用户</th><th>题目</th><th>语言</th><th>结果</th><th>测试点</th><th>耗时</th><th>操作</th></tr></thead><tbody id="all-submissions"></tbody></table></div>
+          <div class="table-wrap"><table class="admin-table"><thead id="submission-table-head"><tr><th>时间</th><th>用户</th><th>题目</th><th>语言</th><th>结果</th><th>测试点</th><th>耗时</th><th>操作</th></tr></thead><tbody id="all-submissions"></tbody></table></div>
         </article>
       </section>
 
@@ -465,7 +470,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20261004-02"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
-  <script src="js/admin.js?v=20261009-03"></script>
-  <script src="js/admin-exams.js?v=20261010-05"></script>
+  <script src="js/admin.js?v=20261010-04"></script>
+  <script src="js/admin-exams.js?v=20261010-06"></script>
 </body>
 </html>

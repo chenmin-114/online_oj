@@ -12,6 +12,10 @@ class OJAdmin {
     };
     this.problems = [];
     this.submissions = [];
+    this.examSubmissionRecords = [];
+    this.filteredExamSubmissionRecords = [];
+    this.examSubmissionRecordsGroup = '';
+    this.submissionKind = 'problem';
     this.group = 'control';
     this.loadSequence = 0;
     this.ranking = { overall: [], problems: {} };
@@ -126,6 +130,10 @@ class OJAdmin {
     document.querySelectorAll('.admin-nav-item').forEach(button => {
       button.addEventListener('click', () => {
         this.openPanel(button.dataset.panel);
+        if (button.dataset.panel === 'submissions') {
+          document.getElementById('return-submissions-to-exams').hidden = true;
+          if (this.submissionKind === 'exam') this.loadExamSubmissionRecords();
+        }
         if (button.dataset.panel === 'messages') this.loadAdminMessages();
         if (button.dataset.panel === 'accounts') {
           this.populateTimedExtensionResources(true);
@@ -134,7 +142,13 @@ class OJAdmin {
       });
     });
     document.querySelectorAll('[data-open-panel]').forEach(button => {
-      button.addEventListener('click', () => this.openPanel(button.dataset.openPanel));
+      button.addEventListener('click', () => {
+        this.openPanel(button.dataset.openPanel);
+        if (button.dataset.openPanel === 'submissions') {
+          document.getElementById('return-submissions-to-exams').hidden = true;
+          if (this.submissionKind === 'exam') this.loadExamSubmissionRecords();
+        }
+      });
     });
   }
 
@@ -148,6 +162,17 @@ class OJAdmin {
     document.getElementById('submission-search').addEventListener('input', () => this.renderSubmissions());
     document.getElementById('submission-problem').addEventListener('change', () => this.renderSubmissions());
     document.getElementById('submission-result').addEventListener('change', () => this.renderSubmissions());
+    document.getElementById('submission-exam').addEventListener('change', () => this.renderSubmissions());
+    document.getElementById('submission-grading-status').addEventListener('change', () => this.renderSubmissions());
+    document.querySelectorAll('[data-submission-kind]').forEach(button => {
+      button.addEventListener('click', () => this.setSubmissionKind(button.dataset.submissionKind));
+    });
+    document.getElementById('return-submissions-to-exams').addEventListener('click', () => {
+      document.getElementById('return-submissions-to-exams').hidden = true;
+      this.openPanel('exams');
+      window.examAdmin?.showManager();
+      window.examAdmin?.ensureLoaded();
+    });
     document.getElementById('all-submissions').addEventListener('click', event => this.handleSubmissionAction(event));
     document.getElementById('export-submissions').addEventListener('click', () => this.exportSubmissions());
     document.getElementById('student-account-file').addEventListener('change', event => {
@@ -273,6 +298,9 @@ class OJAdmin {
     this.resetProblemEditor();
     this.renderGroupSwitcher();
     window.examAdmin?.onGroupChange();
+    this.examSubmissionRecords = [];
+    this.filteredExamSubmissionRecords = [];
+    this.examSubmissionRecordsGroup = '';
     this.timedExtensions = [];
     this.populateTimedExtensionResources();
     document.getElementById('sync-status').textContent = `正在切换到${this.groupLabel()}...`;
@@ -328,6 +356,9 @@ class OJAdmin {
     }
 
     this.renderAll();
+    if (this.submissionKind === 'exam' && document.getElementById('panel-submissions').classList.contains('active')) {
+      await this.loadExamSubmissionRecords(true);
+    }
     this.populateTimedExtensionResources();
     this.updateDataStatus({ submissionsResult, rankingResult });
     this.setStatus('worker', null, '正在检查连接...');
@@ -2003,7 +2034,74 @@ class OJAdmin {
     problemFilter.value = currentFilter;
   }
 
+  async loadExamSubmissionRecords(force = false) {
+    if (!force && this.examSubmissionRecordsGroup === this.group) {
+      this.populateExamSubmissionFilter();
+      this.renderSubmissions();
+      return true;
+    }
+    const requestedGroup = this.group;
+    const body = document.getElementById('all-submissions');
+    if (this.submissionKind === 'exam') body.innerHTML = '<tr><td colspan="8" class="empty-cell">正在读取套卷提交记录...</td></tr>';
+    try {
+      const records = await this.adminRequest('admin_exam_submission_records', { group: requestedGroup });
+      if (this.group !== requestedGroup) return;
+      this.examSubmissionRecords = Array.isArray(records) ? records : [];
+      this.examSubmissionRecordsGroup = requestedGroup;
+      this.populateExamSubmissionFilter();
+      this.renderSubmissions();
+      return true;
+    } catch (error) {
+      if (this.submissionKind === 'exam') body.innerHTML = `<tr><td colspan="8" class="empty-cell">${this.escape(error.message)}</td></tr>`;
+      return false;
+    }
+  }
+
+  populateExamSubmissionFilter() {
+    const select = document.getElementById('submission-exam');
+    const current = select.value;
+    const exams = new Map();
+    this.examSubmissionRecords.forEach(item => exams.set(item.examId, item.examTitle || item.examId));
+    (window.examAdmin?.exams || []).forEach(item => exams.set(item.id, item.title || item.id));
+    select.innerHTML = '<option value="">全部套卷</option>' + [...exams.entries()]
+      .sort((left, right) => left[0].localeCompare(right[0], undefined, { numeric: true }))
+      .map(([id, title]) => `<option value="${this.escape(id)}">${this.escape(id)} · ${this.escape(title)}</option>`).join('');
+    if (exams.has(current)) select.value = current;
+  }
+
+  async setSubmissionKind(kind, { examId = '', fromExams = false } = {}) {
+    if (!['problem', 'exam'].includes(kind)) return;
+    this.submissionKind = kind;
+    document.querySelectorAll('[data-submission-kind]').forEach(button => {
+      const active = button.dataset.submissionKind === kind;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    document.getElementById('problem-submission-filters').hidden = kind !== 'problem';
+    document.getElementById('exam-submission-filters').hidden = kind !== 'exam';
+    document.getElementById('submission-search').placeholder = kind === 'exam'
+      ? '搜索用户名、套卷编号或名称'
+      : '搜索用户名或题号';
+    document.getElementById('return-submissions-to-exams').hidden = !fromExams;
+    if (kind === 'exam') {
+      const loaded = await this.loadExamSubmissionRecords();
+      if (!loaded) return;
+      if (examId) document.getElementById('submission-exam').value = examId;
+    }
+    this.renderSubmissions();
+  }
+
+  async openExamSubmissionRecords(examId = '') {
+    this.openPanel('submissions');
+    await this.setSubmissionKind('exam', { examId, fromExams: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   renderSubmissions() {
+    if (this.submissionKind === 'exam') {
+      this.renderExamSubmissionRecords();
+      return;
+    }
     const query = document.getElementById('submission-search').value.trim().toLowerCase();
     const problem = document.getElementById('submission-problem').value;
     const result = document.getElementById('submission-result').value;
@@ -2017,6 +2115,7 @@ class OJAdmin {
 
     document.getElementById('submission-count').textContent = `${this.filteredSubmissions.length} 条记录`;
     const body = document.getElementById('all-submissions');
+    document.getElementById('submission-table-head').innerHTML = '<tr><th>时间</th><th>用户</th><th>题目</th><th>语言</th><th>结果</th><th>测试点</th><th>耗时</th><th>操作</th></tr>';
     body.innerHTML = this.filteredSubmissions.length ? this.filteredSubmissions.map(item => `
       <tr>
         <td>${this.formatDate(item.timestamp)}</td>
@@ -2031,7 +2130,40 @@ class OJAdmin {
     `).join('') : '<tr><td colspan="8" class="empty-cell">没有符合条件的提交</td></tr>';
   }
 
+  renderExamSubmissionRecords() {
+    const query = document.getElementById('submission-search').value.trim().toLowerCase();
+    const examId = document.getElementById('submission-exam').value;
+    const gradingStatus = document.getElementById('submission-grading-status').value;
+    this.filteredExamSubmissionRecords = this.examSubmissionRecords.filter(item => {
+      const haystack = `${item.username} ${item.examId} ${item.examTitle}`.toLowerCase();
+      return (!query || haystack.includes(query))
+        && (!examId || item.examId === examId)
+        && (!gradingStatus || item.gradingStatus === gradingStatus);
+    });
+    document.getElementById('submission-count').textContent = `${this.filteredExamSubmissionRecords.length} 条记录`;
+    document.getElementById('submission-table-head').innerHTML = '<tr><th>时间</th><th>用户</th><th>套卷</th><th>次数</th><th>版本</th><th>批改进度</th><th>得分</th><th>操作</th></tr>';
+    document.getElementById('all-submissions').innerHTML = this.filteredExamSubmissionRecords.length
+      ? this.filteredExamSubmissionRecords.map(item => `
+        <tr>
+          <td>${this.formatDate(item.submittedAt)}</td>
+          <td>${this.escape(item.username)}</td>
+          <td><strong>${this.escape(item.examId)}</strong><br><small>${this.escape(item.examTitle)}</small></td>
+          <td>第 ${this.escape(item.attemptNo)} 次${item.final ? ' · 当前' : ' · 历史'}</td>
+          <td>v${this.escape(item.examVersion)}</td>
+          <td><span class="result-pill ${item.gradingStatus === 'completed' ? 'accepted' : 'warning'}">${item.gradingStatus === 'completed' ? '已改完' : `未改完 ${this.escape(item.gradedCount)}/${this.escape(item.totalParts)}`}</span></td>
+          <td>${this.escape(item.totalScore)} / ${this.escape(item.examTotalScore)}</td>
+          <td>${item.final ? `<button type="button" class="table-link table-link-button" data-grade-exam-record="${this.escape(item.examId)}" data-grade-exam-user="${this.escape(item.username)}">进入批改</button>` : '<span class="filter-count">已被新提交替代</span>'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="8" class="empty-cell">没有符合条件的套卷提交</td></tr>';
+  }
+
   async handleSubmissionAction(event) {
+    const examGrade = event.target.closest('[data-grade-exam-record]');
+    if (examGrade) {
+      this.openPanel('exams');
+      await window.examAdmin?.openGradingSubmission(examGrade.dataset.gradeExamRecord, examGrade.dataset.gradeExamUser);
+      return;
+    }
     const rejudge = event.target.closest('[data-rejudge-submission]');
     const request = event.target.closest('[data-request-resubmission]');
     if (!rejudge && !request) return;
@@ -2104,19 +2236,22 @@ class OJAdmin {
   }
 
   exportSubmissions() {
-    if (!this.filteredSubmissions.length) {
+    const records = this.submissionKind === 'exam' ? this.filteredExamSubmissionRecords : this.filteredSubmissions;
+    if (!records.length) {
       this.toast('当前没有可导出的记录');
       return;
     }
-    const header = ['timestamp', 'username', 'problemId', 'language', 'passed', 'passedTests', 'totalTests', 'totalTime'];
-    const rows = this.filteredSubmissions.map(item => header.map(key => this.csvCell(item[key])).join(','));
+    const header = this.submissionKind === 'exam'
+      ? ['submittedAt', 'username', 'examId', 'examTitle', 'attemptNo', 'examVersion', 'gradingStatus', 'gradedCount', 'totalParts', 'totalScore', 'examTotalScore', 'final']
+      : ['timestamp', 'username', 'problemId', 'language', 'passed', 'passedTests', 'totalTests', 'totalTime'];
+    const rows = records.map(item => header.map(key => this.csvCell(item[key])).join(','));
     const blob = new Blob(['\ufeff' + [header.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `oj-submissions-${this.group}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `oj-${this.submissionKind}-submissions-${this.group}-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
-    this.toast(`已导出 ${this.filteredSubmissions.length} 条记录`);
+    this.toast(`已导出 ${records.length} 条记录`);
   }
 
   async messageRequest(type, payload = {}) {

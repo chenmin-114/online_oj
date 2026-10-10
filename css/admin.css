@@ -205,6 +205,7 @@
 .result-pill, .difficulty-pill { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 99px; font-size: 10px; font-weight: 700; }
 .result-pill.accepted { color: var(--admin-green); background: rgba(61,214,163,.11); }
 .result-pill.failed { color: #ff7b8b; background: rgba(255,92,111,.11); }
+.result-pill.warning { color: var(--admin-orange); background: rgba(255,173,102,.11); }
 .difficulty-pill.easy { color: var(--admin-green); background: rgba(61,214,163,.1); }
 .difficulty-pill.medium { color: var(--admin-orange); background: rgba(255,173,102,.1); }
 .difficulty-pill.hard { color: #ff7b8b; background: rgba(255,92,111,.1); }
@@ -301,6 +302,10 @@
 .daily-visitor-column small { font-size: 8px; white-space: nowrap; transform: rotate(-42deg); transform-origin: center; }
 
 .filter-bar { gap: 10px; padding: 15px 16px; border-bottom: 1px solid var(--admin-border); flex-wrap: wrap; }
+.submission-kind-switch { padding: 15px 16px 0; display: flex; gap: 8px; }
+.submission-kind-switch .admin-button.active { border-color: var(--admin-blue); background: rgba(91,140,255,.16); color: white; }
+.submission-filter-group { display: flex; gap: 10px; flex-wrap: wrap; }
+.submission-filter-group[hidden] { display: none; }
 .admin-input { min-height: 38px; padding: 0 11px; border: 1px solid var(--admin-border); border-radius: 8px; outline: none; background: #0e1526; color: var(--admin-text); font: inherit; font-size: 12px; }
 .admin-input:focus { border-color: var(--admin-blue); box-shadow: 0 0 0 3px rgba(91,140,255,.1); }
 input.admin-input { min-width: 240px; }
@@ -391,6 +396,7 @@ input.admin-input { min-width: 240px; }
 .grading-student-list { max-height: 720px; overflow-y: auto; }
 .card-heading #grading-student-sort { width: auto; min-width: 158px; padding-block: 7px; }
 .grading-list-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.grading-list-filters #grading-student-search { width: 158px; min-width: 130px; }
 #grading-completion-filter-current { min-width: 68px; }
 .grading-student { width: 100%; padding: 13px 15px; display: grid; gap: 3px; border: 0; border-top: 1px solid var(--admin-border); background: transparent; color: var(--admin-text); text-align: left; cursor: pointer; }
 .grading-student:first-child { border-top: 0; }

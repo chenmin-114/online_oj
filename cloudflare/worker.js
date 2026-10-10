@@ -284,6 +284,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamSubmissions(body, env);
+      } else if (body.type === 'admin_exam_submission_records') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamSubmissionRecords(body, env);
       } else if (body.type === 'admin_exam_submission_get') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -2576,6 +2580,38 @@ async function handleAdminExamSubmissions(body, env) {
     gradingStatus: row.grading_status,
     released: Number(row.released) === 1,
     preview: Number(row.is_preview) === 1,
+    submittedAt: Number(row.submitted_at),
+    updatedAt: Number(row.updated_at),
+  })));
+}
+
+async function handleAdminExamSubmissionRecords(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const group = normalizeGroup(body.group);
+  const result = await env.OJ_DB.prepare(`
+    SELECT s.id, s.exam_id, p.title AS exam_title, p.total_score AS exam_total_score,
+           s.exam_version, s.username, s.attempt_no, s.total_score,
+           s.graded_count, s.total_parts, s.grading_status,
+           s.is_final, s.submitted_at, s.updated_at
+    FROM exam_submissions s
+    JOIN exam_papers p ON p.id = s.exam_id
+    WHERE p.group_name = ?1 AND s.is_preview = 0
+    ORDER BY s.submitted_at DESC, s.id DESC
+    LIMIT 5000
+  `).bind(group).all();
+  return jsonResponse((result.results || []).map(row => ({
+    id: Number(row.id),
+    examId: row.exam_id,
+    examTitle: row.exam_title,
+    examTotalScore: Number(row.exam_total_score),
+    examVersion: Number(row.exam_version),
+    username: row.username,
+    attemptNo: Number(row.attempt_no),
+    totalScore: Number(row.total_score),
+    gradedCount: Number(row.graded_count),
+    totalParts: Number(row.total_parts),
+    gradingStatus: row.grading_status,
+    final: Number(row.is_final) === 1,
     submittedAt: Number(row.submitted_at),
     updatedAt: Number(row.updated_at),
   })));
