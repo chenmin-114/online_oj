@@ -19,6 +19,19 @@ CREATE INDEX IF NOT EXISTS idx_submissions_username_time
 CREATE INDEX IF NOT EXISTS idx_submissions_problem_time
   ON submissions(problem_id, timestamp DESC);
 
+CREATE INDEX IF NOT EXISTS idx_submissions_problem_username
+  ON submissions(problem_id, username);
+
+-- 高频题目列表只读取这张小型汇总表，避免每位学生刷新时扫描全部提交。
+CREATE TABLE IF NOT EXISTS problem_stats (
+  problem_id TEXT PRIMARY KEY,
+  total_submissions INTEGER NOT NULL DEFAULT 0,
+  accepted_submissions INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  CHECK (total_submissions >= 0),
+  CHECK (accepted_submissions >= 0 AND accepted_submissions <= total_submissions)
+);
+
 -- 匿名访问统计：visitor_hash 是登录用户名的不可逆摘要，
 -- 不保存 IP 或明文用户名。
 CREATE TABLE IF NOT EXISTS analytics_site_daily (

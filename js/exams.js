@@ -90,11 +90,14 @@ class ExamUI {
       if (view === 'exams') {
         await this.loadList(true, true);
       } else if (this.paper && this.submission) {
+        const status = await this.request('exam_get', { examId: this.paper.id, statusOnly: true });
+        if (this.app.views.currentView !== 'exam' || status.paper?.id !== this.paper.id) return;
+        const unchanged = this.submissionSignature(status.mySubmission) === this.submissionSignature(this.submission);
+        if (unchanged) return;
+        // 只有状态变化时才读取完整题面和批改详情，平时轮询不再重复读取编程题 KV。
         const result = await this.request('exam_get', { examId: this.paper.id });
         if (this.app.views.currentView !== 'exam' || result.paper?.id !== this.paper.id) return;
-        const unchanged = this.submissionSignature(result.mySubmission) === this.submissionSignature(this.submission);
         this.submission = result.mySubmission;
-        if (unchanged) return;
         this.renderResult(this.submission);
         document.getElementById('exam-submit-status').textContent = this.submission
           ? this.paper.examMode && !this.app.adminExamPreview
@@ -112,12 +115,13 @@ class ExamUI {
   submissionSignature(submission) {
     if (!submission) return '';
     return JSON.stringify({
+      id: submission.id,
+      updatedAt: submission.updatedAt,
       gradingStatus: submission.gradingStatus,
       gradedCount: submission.gradedCount,
       totalParts: submission.totalParts,
       resultVisible: submission.resultVisible,
       totalScore: submission.totalScore,
-      grading: submission.grading,
     });
   }
 

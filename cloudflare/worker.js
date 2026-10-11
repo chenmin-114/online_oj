@@ -52,6 +52,8 @@ const REJUDGE_HEARTBEAT_MS = 60 * 1000;
 const REJUDGE_MAX_ATTEMPTS = 5;
 const REJUDGE_RECOVERY_INTERVAL_MINUTES = 10;
 const BACKGROUND_JUDGE_REQUESTS_PER_MINUTE = 30;
+const EXAM_MODE_CACHE_MS = 5000;
+let examModeCache = { value: false, expiresAt: 0 };
 
 // 允许读取的数据文件白名单：查询参数不能直接拼进 GitHub 路径
 const DATA_FILES = {
@@ -771,10 +773,16 @@ function normalizeStudentUsername(value) {
 
 async function isExamModeEnabled(env) {
   if (!env.OJ_DB) return false;
+  const now = Date.now();
+  if (examModeCache.expiresAt > now) return examModeCache.value;
   const setting = await env.OJ_DB.prepare(`
     SELECT setting_value FROM system_settings WHERE setting_key = 'exam_mode'
   `).first();
-  return setting?.setting_value === '1';
+  examModeCache = {
+    value: setting?.setting_value === '1',
+    expiresAt: now + EXAM_MODE_CACHE_MS,
+  };
+  return examModeCache.value;
 }
 
 function examModeOnlyResponse() {
@@ -794,6 +802,7 @@ async function handleAdminSystemSettingsSave(body, env) {
       setting_value = excluded.setting_value,
       updated_at = excluded.updated_at
   `).bind(examMode ? '1' : '0', Date.now()).run();
+  examModeCache = { value: examMode, expiresAt: Date.now() + EXAM_MODE_CACHE_MS };
   return jsonResponse({ success: true, examMode });
 }
 
@@ -1776,13 +1785,12 @@ async function handleAdminExamList(body, env) {
               WHERE p2.group_name = p.group_name
                 AND (p2.created_at < p.created_at OR (p2.created_at = p.created_at AND p2.id <= p.id)))
            ) AS serial_no,
-           (SELECT COUNT(*) FROM analytics_exam_visitors av
-            WHERE av.group_name = p.group_name AND av.exam_id = p.id) AS view_students,
-           COUNT(CASE WHEN s.is_final = 1 AND s.is_preview = 0 THEN 1 END) AS submitted_students,
-           SUM(CASE WHEN s.is_final = 1 AND s.is_preview = 0 AND s.grading_status = 'completed' THEN 1 ELSE 0 END) AS completed_students
+           COUNT(s.id) AS submitted_students,
+           SUM(CASE WHEN s.grading_status = 'completed' THEN 1 ELSE 0 END) AS completed_students
     FROM exam_papers p
     JOIN exam_versions v ON v.exam_id = p.id AND v.version = p.version
-    LEFT JOIN exam_submissions s ON s.exam_id = p.id
+    LEFT JOIN exam_submissions s
+      ON s.exam_id = p.id AND s.is_final = 1 AND s.is_preview = 0
     WHERE p.group_name = ?1
     GROUP BY p.id
     ORDER BY p.updated_at DESC
@@ -1797,7 +1805,7 @@ async function handleAdminExamList(body, env) {
       SELECT DISTINCT s.exam_id, s.username
       FROM exam_submissions s
       JOIN exam_papers p ON p.id = s.exam_id
-      WHERE p.group_name = ?1 AND s.is_preview = 0
+      WHERE p.group_name = ?1 AND s.is_preview = 0 AND s.is_final = 1
     `).bind(group),
   ]);
   const viewerSets = new Map();
@@ -2121,6 +2129,31 @@ async function handleStudentExamGet(body, env) {
   if (timing.state === 'ended' && !postViewAllowed) {
     return jsonResponse({ error: '这张套卷已经结束且未开放观看', code: 'VIEW_CLOSED', timing }, 403);
   }
+  if (body.statusOnly === true) {
+    const summary = await env.OJ_DB.prepare(`
+      SELECT id, grading_status, total_score, graded_count, total_parts,
+             released, submitted_at, updated_at
+      FROM exam_submissions
+      WHERE exam_id = ?1 AND username = ?2 AND is_preview = 0 AND is_final = 1
+    `).bind(examId, username).first();
+    let mySubmission = null;
+    if (summary) {
+      const visible = isExamResultVisible(
+        record.result_policy, summary.grading_status, Number(summary.released), paper.examMode,
+      );
+      mySubmission = {
+        id: Number(summary.id),
+        submittedAt: Number(summary.submitted_at),
+        updatedAt: Number(summary.updated_at),
+        gradingStatus: paper.examMode ? null : summary.grading_status,
+        gradedCount: paper.examMode ? 0 : Number(summary.graded_count),
+        totalParts: paper.examMode ? 0 : Number(summary.total_parts),
+        resultVisible: visible,
+        ...(visible ? { totalScore: Number(summary.total_score) } : {}),
+      };
+    }
+    return jsonResponse({ paper: { id: examId }, mySubmission, statusOnly: true });
+  }
   await enrichExamProgrammingParts(paper, env, record.group_name);
   const submission = await env.OJ_DB.prepare(`
     SELECT * FROM exam_submissions
@@ -2133,6 +2166,7 @@ async function handleStudentExamGet(body, env) {
       id: Number(submission.id),
       answers: JSON.parse(submission.answers_json),
       submittedAt: Number(submission.submitted_at),
+      updatedAt: Number(submission.updated_at),
       gradingStatus: paper.examMode ? null : submission.grading_status,
       gradedCount: paper.examMode ? 0 : Number(submission.graded_count),
       totalParts: paper.examMode ? 0 : Number(submission.total_parts),
@@ -2573,11 +2607,9 @@ async function handleStudentExamSubmit(body, env, options = {}) {
       scores.totalParts, scores.gradingStatus, now,
     ),
     env.OJ_DB.prepare(`
-      INSERT INTO analytics_exam_visitors
+      INSERT OR IGNORE INTO analytics_exam_visitors
         (group_name, exam_id, visitor_hash, first_seen, last_seen)
       VALUES (?1, ?2, ?3, ?4, ?4)
-      ON CONFLICT(group_name, exam_id, visitor_hash)
-      DO UPDATE SET last_seen = excluded.last_seen
     `).bind(group, examId, visitorHash, now),
   ];
   const completionMessage = examCompletionMessageStatement(env, {
@@ -3702,11 +3734,10 @@ async function handleData(request, env) {
       }
       if (env.OJ_DB) {
         const statsResult = await env.OJ_DB.prepare(`
-          SELECT problem_id, COUNT(*) AS total,
-                 SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) AS accepted
-          FROM submissions
+          SELECT problem_id, total_submissions AS total,
+                 accepted_submissions AS accepted
+          FROM problem_stats
           WHERE ${group === 'control' ? "problem_id NOT LIKE 'vision:%'" : "problem_id LIKE 'vision:%'"}
-          GROUP BY problem_id
         `).all();
         const stats = new Map((statsResult.results || []).map(row => {
           const parsed = publicProblemId(row.problem_id);
@@ -3833,21 +3864,17 @@ async function handleAnalyticsView(body, env) {
 
   if (problemId) {
     statements.push(env.OJ_DB.prepare(`
-      INSERT INTO analytics_problem_visitors
+      INSERT OR IGNORE INTO analytics_problem_visitors
         (group_name, problem_id, visitor_hash, first_seen, last_seen)
       VALUES (?1, ?2, ?3, ?4, ?4)
-      ON CONFLICT(group_name, problem_id, visitor_hash)
-      DO UPDATE SET last_seen = excluded.last_seen
     `).bind(group, problemId, visitorHash, now));
   }
 
   if (examId) {
     statements.push(env.OJ_DB.prepare(`
-      INSERT INTO analytics_exam_visitors
+      INSERT OR IGNORE INTO analytics_exam_visitors
         (group_name, exam_id, visitor_hash, first_seen, last_seen)
       VALUES (?1, ?2, ?3, ?4, ?4)
-      ON CONFLICT(group_name, exam_id, visitor_hash)
-      DO UPDATE SET last_seen = excluded.last_seen
     `).bind(group, examId, visitorHash, now));
   }
 
@@ -4744,7 +4771,7 @@ async function processNextTimedSubmission(env) {
 
 async function rejudgeProblemSubmission(job, env) {
   const row = await env.OJ_DB.prepare(`
-    SELECT id, username, language, code
+    SELECT id, username, language, code, passed
     FROM submissions WHERE id = ?1
   `).bind(Number(job.submission_id)).first();
   if (!row) return;
@@ -4755,14 +4782,26 @@ async function rejudgeProblemSubmission(job, env) {
     language: row.language,
     code: decodeBase64Utf8(String(row.code || '')),
   }, env, null, false, true, { backgroundRejudge: true });
-  await env.OJ_DB.prepare(`
-    UPDATE submissions
-    SET passed = ?2, passed_tests = ?3, total_tests = ?4, total_time = ?5
-    WHERE id = ?1
-  `).bind(
-    Number(row.id), judged.passed ? 1 : 0, judged.passedTests,
-    judged.totalTests, judged.totalTime,
-  ).run();
+  const acceptedDelta = (judged.passed ? 1 : 0) - (Number(row.passed) === 1 ? 1 : 0);
+  const now = Date.now();
+  const statements = [env.OJ_DB.prepare(`
+      UPDATE submissions
+      SET passed = ?2, passed_tests = ?3, total_tests = ?4, total_time = ?5
+      WHERE id = ?1
+    `).bind(
+      Number(row.id), judged.passed ? 1 : 0, judged.passedTests,
+      judged.totalTests, judged.totalTime,
+    )];
+  if (acceptedDelta !== 0) {
+    statements.push(env.OJ_DB.prepare(`
+      UPDATE problem_stats
+      SET accepted_submissions = MIN(total_submissions,
+            MAX(0, accepted_submissions + ?2)),
+          updated_at = ?3
+      WHERE problem_id = ?1
+    `).bind(storedProblemId(job.group_name, job.problem_id), acceptedDelta, now));
+  }
+  await env.OJ_DB.batch(statements);
 }
 
 async function rejudgeExamSubmission(job, env) {
@@ -5734,6 +5773,17 @@ async function persistSubmission(body, env) {
         DELETE FROM resubmission_requests
         WHERE group_name = ?1 AND problem_id = ?2 AND username = ?3
       `).bind(group, normalizedProblemId, displayUsername),
+      env.OJ_DB.prepare(`
+        INSERT INTO problem_stats (
+          problem_id, total_submissions, accepted_submissions, updated_at
+        ) VALUES (?1, 1, ?2, ?3)
+        ON CONFLICT(problem_id) DO UPDATE SET
+          total_submissions = problem_stats.total_submissions + 1,
+          accepted_submissions = problem_stats.accepted_submissions + excluded.accepted_submissions,
+          updated_at = excluded.updated_at
+      `).bind(
+        storedProblemId(group, normalizedProblemId), passed ? 1 : 0, safeTimestamp,
+      ),
     ]);
     return jsonResponse({ success: true, id: result.meta?.last_row_id || null });
   } catch (error) {
