@@ -35,6 +35,7 @@ const NORMAL_REQUEST_BODY_LIMIT = 2 * 1024 * 1024;
 const PROBLEM_UPLOAD_BODY_LIMIT = 16 * 1024 * 1024;
 const LARGE_BODY_REQUEST_TYPES = new Set(['create_problem', 'update_problem']);
 const TIMED_GRACE_MS = 60 * 1000;
+const TIMED_SUBMISSION_LEASE_MS = 15 * 60 * 1000;
 const AFTER_END_VIEW_POLICIES = new Set(['none', 'all', 'authorized']);
 
 const CORS_HEADERS = {
@@ -4692,15 +4693,26 @@ async function recoverPendingRejudgeJobs(env, limit = 100) {
 async function processNextTimedSubmission(env) {
   if (!env.OJ_DB) return;
   const now = Date.now();
+  // queued_at 为负数表示该草稿已被某次 Cron 原子领取；Worker 意外终止后，
+  // 租约到期才重新开放，避免两次重叠 Cron 重复提交同一份答案。
+  await env.OJ_DB.prepare(`
+    UPDATE timed_drafts SET queued_at = ABS(queued_at)
+    WHERE status = 'queued' AND queued_at < 0 AND -queued_at < ?1
+  `).bind(now - TIMED_SUBMISSION_LEASE_MS).run();
   // 学生端在 30 秒时主动排队，后台仍保留到 60 秒接收在途草稿；此处是断网、关页等情况的服务端兜底。
   await env.OJ_DB.prepare(`
     UPDATE timed_drafts SET status = 'queued', queued_at = ?1
     WHERE status = 'active' AND window_end + ?2 <= ?1
   `).bind(now, TIMED_GRACE_MS).run();
   const draft = await env.OJ_DB.prepare(`
-    SELECT * FROM timed_drafts WHERE status = 'queued'
-    ORDER BY queued_at ASC, updated_at ASC LIMIT 1
-  `).first();
+    UPDATE timed_drafts SET queued_at = -?1
+    WHERE rowid = (
+      SELECT rowid FROM timed_drafts
+      WHERE status = 'queued' AND queued_at >= 0
+      ORDER BY queued_at ASC, updated_at ASC LIMIT 1
+    ) AND status = 'queued' AND queued_at >= 0
+    RETURNING *
+  `).bind(now).first();
   if (!draft) return;
   const keyBindings = [
     draft.resource_type, draft.group_name, draft.resource_id, Number(draft.resource_version),
