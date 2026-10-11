@@ -36,6 +36,8 @@ const PROBLEM_UPLOAD_BODY_LIMIT = 16 * 1024 * 1024;
 const LARGE_BODY_REQUEST_TYPES = new Set(['create_problem', 'update_problem']);
 const TIMED_GRACE_MS = 60 * 1000;
 const TIMED_SUBMISSION_LEASE_MS = 15 * 60 * 1000;
+const TIMED_SUBMISSION_MAX_ATTEMPTS = 5;
+const TIMED_SUBMISSION_REDISPATCH_MS = 10 * 60 * 1000;
 const AFTER_END_VIEW_POLICIES = new Set(['none', 'all', 'authorized']);
 
 const CORS_HEADERS = {
@@ -591,7 +593,7 @@ export default {
   async scheduled(controller, env, ctx) {
     const minute = new Date(controller.scheduledTime || Date.now()).getUTCMinutes();
     ctx.waitUntil(Promise.all([
-      processNextTimedSubmission(env),
+      dispatchPendingTimedSubmissions(env, 500),
       minute % REJUDGE_RECOVERY_INTERVAL_MINUTES === 0
         ? recoverPendingRejudgeJobs(env, 100)
         : Promise.resolve(),
@@ -601,15 +603,22 @@ export default {
   async queue(batch, env) {
     for (const message of batch.messages) {
       try {
-        const outcome = await processRejudgeQueueMessage(message.body, env);
+        const timedSubmission = message.body?.jobType === 'timed_submission';
+        const outcome = timedSubmission
+          ? await processTimedSubmissionQueueMessage(message.body, env)
+          : await processRejudgeQueueMessage(message.body, env);
         if (outcome?.reschedule) {
-          await env.REJUDGE_QUEUE.send(outcome.body || message.body, {
+          const queue = timedSubmission ? env.TIMED_SUBMISSION_QUEUE : env.REJUDGE_QUEUE;
+          if (!queue) throw new Error(timedSubmission
+            ? '限时交卷消息队列尚未配置'
+            : '后台重判消息队列尚未配置');
+          await queue.send(outcome.body || message.body, {
             delaySeconds: Math.max(1, Math.min(24 * 60 * 60, Number(outcome.delaySeconds) || 30)),
           });
         }
         message.ack();
       } catch (error) {
-        console.error(`Queue 重判消息 ${message.id} 处理失败:`, error);
+        console.error(`Queue 后台判题消息 ${message.id} 处理失败:`, error);
         message.retry({ delaySeconds: 30 });
       }
     }
@@ -2320,7 +2329,7 @@ function calculateExamScores(paper, partResults) {
   };
 }
 
-async function gradeExamAnswers(paper, answers, username, group, env) {
+async function gradeExamAnswers(paper, answers, username, group, env, executionOptions = {}) {
   const partResults = [];
   for (const question of paper.questions) {
     for (const part of question.parts) {
@@ -2357,7 +2366,7 @@ async function gradeExamAnswers(paper, answers, username, group, env) {
               group,
               language,
               code,
-            }, env, null, false, true);
+            }, env, null, false, true, executionOptions);
             result.status = judged.passed ? 'correct' : 'incorrect';
             result.autoScore = judged.passed ? part.points : 0;
             result.judge = {
@@ -2367,6 +2376,7 @@ async function gradeExamAnswers(paper, answers, username, group, env) {
               totalTime: judged.totalTime,
             };
           } catch (error) {
+            if (executionOptions.throwJudgeErrors === true) throw error;
             result.feedback = `自动判题暂时失败：${String(error.message || error).slice(0, 300)}`;
           }
         } else {
@@ -2461,8 +2471,9 @@ async function handleTimedFinalize(body, env) {
   const endedWindow = [...(resource.availability.windows || [])].reverse().find(item => Date.now() >= item.end);
   if (!endedWindow) return jsonResponse({ error: '找不到已结束的答题时间段' }, 409);
   const now = Date.now();
-  const result = await env.OJ_DB.prepare(`
-    UPDATE timed_drafts SET status = 'queued', queued_at = COALESCE(queued_at, ?7), last_error = ''
+  await env.OJ_DB.prepare(`
+    UPDATE timed_drafts SET status = 'queued', queued_at = COALESCE(queued_at, ?7),
+      dispatched_at = NULL, attempts = 0, last_error = ''
     WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
       AND resource_version = ?4 AND username = ?5 AND window_start = ?6
       AND status IN ('active', 'failed')
@@ -2471,13 +2482,22 @@ async function handleTimedFinalize(body, env) {
     resource.username, endedWindow.start, now,
   ).run();
   const draft = await env.OJ_DB.prepare(`
-    SELECT status FROM timed_drafts WHERE resource_type = ?1 AND group_name = ?2
+    SELECT resource_type, group_name, resource_id, resource_version, username,
+           window_start, status
+    FROM timed_drafts WHERE resource_type = ?1 AND group_name = ?2
       AND resource_id = ?3 AND resource_version = ?4 AND username = ?5 AND window_start = ?6
   `).bind(
     resource.resourceType, resource.group, resource.resourceId, resource.version,
     resource.username, endedWindow.start,
   ).first();
   if (!draft) return jsonResponse({ error: '服务器还没有收到可提交的草稿，请联系管理员', code: 'NO_SERVER_DRAFT' }, 409);
+  if (draft.status === 'queued') {
+    // 客户端触发截止交卷时立即投递；若 Queue 暂时不可用，Cron 会根据
+    // dispatched_at 为空自动补投，答案已经在 D1 中，不影响“交卷成功”。
+    await dispatchTimedSubmissionDrafts(env, [draft]).catch(error => {
+      console.error('限时答卷即时投递失败，等待 Cron 补投:', error);
+    });
+  }
   return jsonResponse({ success: true, queued: draft.status !== 'submitted', status: draft.status, acceptedAt: now });
 }
 
@@ -2588,7 +2608,9 @@ async function handleStudentExamSubmit(body, env, options = {}) {
     if (!validPartIds.has(key)) delete answers[key];
   }
   const compactAnswersJson = JSON.stringify(answers);
-  const partResults = await gradeExamAnswers(paper, answers, username, group, env);
+  const partResults = await gradeExamAnswers(
+    paper, answers, username, group, env, options.executionOptions || {},
+  );
   const scores = calculateExamScores(paper, partResults);
   const gradingJson = JSON.stringify({ partResults });
   const previous = await env.OJ_DB.prepare(`
@@ -2625,6 +2647,20 @@ async function handleStudentExamSubmit(body, env, options = {}) {
     resultPolicy: paper.resultPolicy, gradingStatus: scores.gradingStatus, createdAt: now,
   });
   if (completionMessage) statements.push(completionMessage);
+  if (options.timedDraft) {
+    const timed = options.timedDraft;
+    statements.push(env.OJ_DB.prepare(`
+      UPDATE timed_drafts
+      SET status = 'submitted', submitted_at = ?7, payload_json = '{}',
+          dispatched_at = ?7, last_error = ''
+      WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
+        AND resource_version = ?4 AND username = ?5 AND window_start = ?6
+        AND status = 'queued' AND queued_at < 0
+    `).bind(
+      timed.resourceType, normalizeGroup(timed.group), timed.resourceId,
+      Number(timed.resourceVersion), timed.username, Number(timed.windowStart), now,
+    ));
+  }
   const programmingProblemIds = [...new Set(paper.questions.flatMap(question => question.parts)
     .filter(part => part.type === 'programming' && /^(?:P\d{3,6}|T\d{3})$/.test(part.problemId))
     .map(part => part.problemId))];
@@ -4690,34 +4726,132 @@ async function recoverPendingRejudgeJobs(env, limit = 100) {
   await sendRejudgeQueueMessages(env, pending.results || []);
 }
 
-async function processNextTimedSubmission(env) {
-  if (!env.OJ_DB) return;
+function timedSubmissionQueueBody(draft) {
+  return {
+    version: 1,
+    jobType: 'timed_submission',
+    resourceType: draft.resource_type,
+    group: normalizeGroup(draft.group_name),
+    resourceId: String(draft.resource_id || ''),
+    resourceVersion: Number(draft.resource_version),
+    username: String(draft.username || ''),
+    windowStart: Number(draft.window_start),
+  };
+}
+
+function validateTimedSubmissionQueueBody(rawBody) {
+  if (!rawBody || rawBody.jobType !== 'timed_submission') return null;
+  const body = timedSubmissionQueueBody({
+    resource_type: rawBody.resourceType,
+    group_name: rawBody.group,
+    resource_id: rawBody.resourceId,
+    resource_version: rawBody.resourceVersion,
+    username: rawBody.username,
+    window_start: rawBody.windowStart,
+  });
+  if (!['problem', 'exam'].includes(body.resourceType)
+      || !body.resourceId || !body.username
+      || !Number.isInteger(body.resourceVersion) || body.resourceVersion < 1
+      || !Number.isFinite(body.windowStart)) return null;
+  return body;
+}
+
+async function dispatchTimedSubmissionDrafts(env, drafts) {
+  if (!drafts.length) return;
+  if (!env.TIMED_SUBMISSION_QUEUE) throw new Error('限时交卷消息队列尚未配置');
+  const messages = drafts.map(draft => ({ body: timedSubmissionQueueBody(draft) }));
+  for (let index = 0; index < messages.length; index += 100) {
+    await env.TIMED_SUBMISSION_QUEUE.sendBatch(messages.slice(index, index + 100));
+  }
+  const dispatchedAt = Date.now();
+  const statements = drafts.map(draft => env.OJ_DB.prepare(`
+    UPDATE timed_drafts SET dispatched_at = ?7
+    WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
+      AND resource_version = ?4 AND username = ?5 AND window_start = ?6
+      AND status = 'queued' AND queued_at >= 0
+  `).bind(
+    draft.resource_type, normalizeGroup(draft.group_name), draft.resource_id,
+    Number(draft.resource_version), draft.username, Number(draft.window_start), dispatchedAt,
+  ));
+  for (let index = 0; index < statements.length; index += 100) {
+    await env.OJ_DB.batch(statements.slice(index, index + 100));
+  }
+}
+
+async function dispatchPendingTimedSubmissions(env, limit = 500) {
+  if (!env.OJ_DB || !env.TIMED_SUBMISSION_QUEUE) return;
   const now = Date.now();
-  // queued_at 为负数表示该草稿已被某次 Cron 原子领取；Worker 意外终止后，
-  // 租约到期才重新开放，避免两次重叠 Cron 重复提交同一份答案。
+  const staleBefore = now - TIMED_SUBMISSION_LEASE_MS;
+  // 只有失去心跳并超过租约的任务才重新开放；达到上限后终止，避免死循环。
   await env.OJ_DB.prepare(`
-    UPDATE timed_drafts SET queued_at = ABS(queued_at)
-    WHERE status = 'queued' AND queued_at < 0 AND -queued_at < ?1
-  `).bind(now - TIMED_SUBMISSION_LEASE_MS).run();
-  // 学生端在 30 秒时主动排队，后台仍保留到 60 秒接收在途草稿；此处是断网、关页等情况的服务端兜底。
+    UPDATE timed_drafts
+    SET status = CASE WHEN attempts >= ?2 THEN 'failed' ELSE 'queued' END,
+        queued_at = CASE WHEN attempts >= ?2 THEN queued_at ELSE ?1 END,
+        dispatched_at = NULL, updated_at = ?1,
+        last_error = CASE
+          WHEN attempts >= ?2 AND last_error = '' THEN '限时交卷任务多次超时'
+          ELSE last_error
+        END
+    WHERE status = 'queued' AND queued_at < 0 AND -queued_at < ?3
+  `).bind(now, TIMED_SUBMISSION_MAX_ATTEMPTS, staleBefore).run();
+  // 客户端没能主动触发交卷时，宽限期结束后由服务器统一排队。
   await env.OJ_DB.prepare(`
-    UPDATE timed_drafts SET status = 'queued', queued_at = ?1
+    UPDATE timed_drafts
+    SET status = 'queued', queued_at = ?1, dispatched_at = NULL,
+        attempts = 0, updated_at = ?1, last_error = ''
     WHERE status = 'active' AND window_end + ?2 <= ?1
   `).bind(now, TIMED_GRACE_MS).run();
+  const pending = await env.OJ_DB.prepare(`
+    SELECT resource_type, group_name, resource_id, resource_version, username, window_start
+    FROM timed_drafts
+    WHERE status = 'queued' AND queued_at >= 0 AND attempts < ?1
+      AND (dispatched_at IS NULL OR dispatched_at < ?2)
+    ORDER BY queued_at ASC, updated_at ASC
+    LIMIT ?3
+  `).bind(
+    TIMED_SUBMISSION_MAX_ATTEMPTS,
+    now - TIMED_SUBMISSION_REDISPATCH_MS,
+    Math.max(1, Math.min(500, Number(limit) || 500)),
+  ).all();
+  await dispatchTimedSubmissionDrafts(env, pending.results || []);
+}
+
+function permanentTimedSubmissionError(message) {
+  const error = new Error(message);
+  error.permanent = true;
+  return error;
+}
+
+async function processTimedSubmissionQueueMessage(rawBody, env) {
+  if (!env.OJ_DB) throw new Error('定时草稿数据库尚未配置');
+  const body = validateTimedSubmissionQueueBody(rawBody);
+  if (!body) return { success: true };
+  const now = Date.now();
   const draft = await env.OJ_DB.prepare(`
-    UPDATE timed_drafts SET queued_at = -?1
-    WHERE rowid = (
-      SELECT rowid FROM timed_drafts
-      WHERE status = 'queued' AND queued_at >= 0
-      ORDER BY queued_at ASC, updated_at ASC LIMIT 1
-    ) AND status = 'queued' AND queued_at >= 0
+    UPDATE timed_drafts
+    SET queued_at = -?7, updated_at = ?7, attempts = attempts + 1
+    WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
+      AND resource_version = ?4 AND username = ?5 AND window_start = ?6
+      AND status = 'queued' AND queued_at >= 0 AND attempts < ?8
     RETURNING *
-  `).bind(now).first();
-  if (!draft) return;
+  `).bind(
+    body.resourceType, body.group, body.resourceId, body.resourceVersion,
+    body.username, body.windowStart, now, TIMED_SUBMISSION_MAX_ATTEMPTS,
+  ).first();
+  if (!draft) return { success: true };
   const keyBindings = [
     draft.resource_type, draft.group_name, draft.resource_id, Number(draft.resource_version),
     draft.username, Number(draft.window_start),
   ];
+  const heartbeat = setInterval(() => {
+    const heartbeatAt = Date.now();
+    env.OJ_DB.prepare(`
+      UPDATE timed_drafts SET queued_at = -?7, updated_at = ?7
+      WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
+        AND resource_version = ?4 AND username = ?5 AND window_start = ?6
+        AND status = 'queued' AND queued_at < 0
+    `).bind(...keyBindings, heartbeatAt).run().catch(() => {});
+  }, REJUDGE_HEARTBEAT_MS);
   try {
     const payload = JSON.parse(draft.payload_json);
     if (draft.resource_type === 'problem') {
@@ -4735,18 +4869,23 @@ async function processNextTimedSubmission(env) {
         ).first();
         windowStillValid = Boolean(extension);
       }
-      if (!windowStillValid) throw new Error('题目答题时间已经被管理员修改，旧草稿不再自动提交');
+      if (!windowStillValid) {
+        throw permanentTimedSubmissionError('题目答题时间已经被管理员修改，旧草稿不再自动提交');
+      }
       await runJudgeSubmission({
         username: draft.username,
         problemId: draft.resource_id,
         group: draft.group_name,
         language: payload.language,
         code: payload.code,
-      }, env, null, true, true);
+      }, env, null, true, true, {
+        backgroundRejudge: true,
+        timedDraft: body,
+      });
     } else {
       const currentExam = await readExamRecord(env, draft.resource_id);
       if (!currentExam || Number(currentExam.version) !== Number(draft.resource_version)) {
-        throw new Error('套卷版本已经更新，旧草稿不再自动提交');
+        throw permanentTimedSubmissionError('套卷版本已经更新，旧草稿不再自动提交');
       }
       const currentPaper = parseExamRecord(currentExam);
       let windowStillValid = currentPaper.availability?.windows?.some(item =>
@@ -4762,29 +4901,61 @@ async function processNextTimedSubmission(env) {
         ).first();
         windowStillValid = Boolean(extension);
       }
-      if (!windowStillValid) throw new Error('套卷答题时间已经被管理员修改或撤销，旧草稿不再自动提交');
+      if (!windowStillValid) {
+        throw permanentTimedSubmissionError('套卷答题时间已经被管理员修改或撤销，旧草稿不再自动提交');
+      }
       const response = await handleStudentExamSubmit({
         username: draft.username,
         examId: draft.resource_id,
         group: draft.group_name,
         answers: payload,
-      }, env, { bypassTiming: true });
+      }, env, {
+        bypassTiming: true,
+        timedDraft: body,
+        executionOptions: { backgroundRejudge: true, throwJudgeErrors: true },
+      });
       if (!response.ok) {
         const failure = await response.json().catch(() => ({}));
-        throw new Error(failure.error || `自动提交失败 (${response.status})`);
+        const error = new Error(failure.error || `自动提交失败 (${response.status})`);
+        error.code = failure.code;
+        error.status = response.status;
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) error.permanent = true;
+        throw error;
       }
     }
-    await env.OJ_DB.prepare(`
-      UPDATE timed_drafts SET status = 'submitted', submitted_at = ?7, payload_json = '{}', last_error = ''
-      WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
-        AND resource_version = ?4 AND username = ?5 AND window_start = ?6
-    `).bind(...keyBindings, Date.now()).run();
+    // 成绩写入和草稿完成状态已在同一个 D1 batch 中原子提交。
+    return { success: true };
   } catch (error) {
+    const attempts = Number(draft.attempts || 0);
+    const rateLimited = error?.code === 'BACKGROUND_JUDGE_RATE_LIMITED';
+    const failed = error?.permanent === true || (!rateLimited && attempts >= TIMED_SUBMISSION_MAX_ATTEMPTS);
+    const retryAt = Date.now();
     await env.OJ_DB.prepare(`
-      UPDATE timed_drafts SET status = 'failed', last_error = ?7
+      UPDATE timed_drafts
+      SET status = ?7, queued_at = CASE WHEN ?7 = 'queued' THEN ?8 ELSE queued_at END,
+          dispatched_at = CASE WHEN ?7 = 'queued' THEN ?8 ELSE dispatched_at END,
+          attempts = CASE WHEN ?9 = 1 THEN MAX(attempts - 1, 0) ELSE attempts END,
+          updated_at = ?8, last_error = ?10
       WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
         AND resource_version = ?4 AND username = ?5 AND window_start = ?6
-    `).bind(...keyBindings, String(error?.message || error).slice(0, 1000)).run();
+        AND status = 'queued' AND queued_at < 0
+    `).bind(
+      ...keyBindings, failed ? 'failed' : 'queued', retryAt, rateLimited ? 1 : 0,
+      String(error?.message || error || '限时交卷失败').slice(0, 1000),
+    ).run();
+    console.error('限时交卷后台任务失败:', error);
+    if (failed) return { success: false, failed: true };
+    const retryAfterMs = rateLimited
+      ? Number(error.retryAfterMs || 60000)
+      : [30, 60, 120, 300][Math.min(3, Math.max(0, attempts - 1))] * 1000;
+    return {
+      success: false,
+      reschedule: true,
+      delaySeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)),
+      body,
+    };
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
@@ -5350,8 +5521,10 @@ function wait(delayMs) {
 async function executeWithRetry(payload, env, onRetry, options = {}) {
   const maxAttempts = 3;
   let lastError = null;
+  let attempt = 1;
+  let backgroundRateWaits = 0;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  while (attempt <= maxAttempts) {
     const executionResponse = await handleExecute(payload, env, options);
     const execution = await executionResponse.json();
     if (executionResponse.ok) return execution;
@@ -5363,12 +5536,20 @@ async function executeWithRetry(payload, env, onRetry, options = {}) {
     );
     if (execution.code === 'BACKGROUND_JUDGE_RATE_LIMITED') {
       lastError.retryAfterMs = Number(execution.retryAfterMs || 60000);
+      // Queue 任务已经完成的测试点不能因为全局额度暂时用完而从头重跑。
+      // 在当前租约内等待下一枚令牌，不计入网络失败重试次数。
+      if (options.backgroundRejudge === true && backgroundRateWaits < 10) {
+        backgroundRateWaits += 1;
+        await wait(Math.max(1000, Math.min(61000, lastError.retryAfterMs)));
+        continue;
+      }
       throw lastError;
     }
     const retryable = executionResponse.status === 429 || executionResponse.status >= 500;
     if (!retryable || attempt === maxAttempts) break;
     if (onRetry) await onRetry(attempt + 1, maxAttempts);
     await wait(attempt * 700);
+    attempt += 1;
   }
 
   throw lastError || judgeError('代码执行服务暂时不可用', 502, 'JUDGE_UNAVAILABLE');
@@ -5663,21 +5844,24 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
       language,
       code: encodeBase64Utf8(script),
       timestamp: result.timestamp,
+      timedDraft: executionOptions.timedDraft,
     }, env);
     if (!saveResponse.ok) {
       const saveError = await saveResponse.json();
       throw judgeError(saveError.error || '保存提交记录失败', saveResponse.status, saveError.code || 'SAVE_FAILED');
     }
-    const effectiveAvailability = await studentAvailability(
-      problem.availability, 'problem', group, problemId, username, env, result.timestamp,
-    );
-    const timing = availabilityState(effectiveAvailability, result.timestamp);
-    if (env.OJ_DB && timing.state === 'active') {
-      await env.OJ_DB.prepare(`
-        UPDATE timed_drafts SET status = 'submitted', submitted_at = ?5, payload_json = '{}'
-        WHERE resource_type = 'problem' AND group_name = ?1 AND resource_id = ?2
-          AND resource_version = 1 AND username = ?3 AND window_start = ?4 AND status = 'active'
-      `).bind(group, problemId, username, timing.windowStart, result.timestamp).run();
+    if (!executionOptions.timedDraft) {
+      const effectiveAvailability = await studentAvailability(
+        problem.availability, 'problem', group, problemId, username, env, result.timestamp,
+      );
+      const timing = availabilityState(effectiveAvailability, result.timestamp);
+      if (env.OJ_DB && timing.state === 'active') {
+        await env.OJ_DB.prepare(`
+          UPDATE timed_drafts SET status = 'submitted', submitted_at = ?5, payload_json = '{}'
+          WHERE resource_type = 'problem' AND group_name = ?1 AND resource_id = ?2
+            AND resource_version = 1 AND username = ?3 AND window_start = ?4 AND status = 'active'
+        `).bind(group, problemId, username, timing.windowStart, result.timestamp).run();
+      }
     }
   }
 
@@ -5771,7 +5955,7 @@ async function persistSubmission(body, env) {
 
   const safeTimestamp = Number.isFinite(Number(timestamp)) ? Math.trunc(Number(timestamp)) : Date.now();
   try {
-    const [result] = await env.OJ_DB.batch([
+    const statements = [
       env.OJ_DB.prepare(`
         INSERT INTO submissions (
           username, problem_id, passed, passed_tests, total_tests,
@@ -5803,7 +5987,22 @@ async function persistSubmission(body, env) {
       `).bind(
         storedProblemId(group, normalizedProblemId), passed ? 1 : 0, safeTimestamp,
       ),
-    ]);
+    ];
+    if (body.timedDraft) {
+      const timed = body.timedDraft;
+      statements.push(env.OJ_DB.prepare(`
+        UPDATE timed_drafts
+        SET status = 'submitted', submitted_at = ?7, payload_json = '{}',
+            dispatched_at = ?7, last_error = ''
+        WHERE resource_type = ?1 AND group_name = ?2 AND resource_id = ?3
+          AND resource_version = ?4 AND username = ?5 AND window_start = ?6
+          AND status = 'queued' AND queued_at < 0
+      `).bind(
+        timed.resourceType, normalizeGroup(timed.group), timed.resourceId,
+        Number(timed.resourceVersion), timed.username, Number(timed.windowStart), safeTimestamp,
+      ));
+    }
+    const [result] = await env.OJ_DB.batch(statements);
     return jsonResponse({ success: true, id: result.meta?.last_row_id || null });
   } catch (error) {
     console.error('D1 保存提交失败:', error);

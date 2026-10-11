@@ -246,6 +246,8 @@ CREATE TABLE IF NOT EXISTS timed_drafts (
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'queued', 'submitted', 'failed')),
   updated_at INTEGER NOT NULL,
   queued_at INTEGER,
+  dispatched_at INTEGER,
+  attempts INTEGER NOT NULL DEFAULT 0,
   submitted_at INTEGER,
   last_error TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (resource_type, group_name, resource_id, resource_version, username, window_start)
@@ -253,6 +255,9 @@ CREATE TABLE IF NOT EXISTS timed_drafts (
 
 CREATE INDEX IF NOT EXISTS idx_timed_drafts_due
   ON timed_drafts(status, window_end, updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_timed_drafts_dispatch
+  ON timed_drafts(status, dispatched_at, queued_at);
 
 -- 管理员可从授权时刻起，单独给某个学生开放几分钟补交时间。
 CREATE TABLE IF NOT EXISTS timed_extensions (

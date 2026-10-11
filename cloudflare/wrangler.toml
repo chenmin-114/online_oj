@@ -25,12 +25,24 @@ database_id = "777ac87d-d7c7-463b-82d1-08c5aa7236f4"
 binding = "REJUDGE_QUEUE"
 queue = "oj-rejudge"
 
+[[queues.producers]]
+binding = "TIMED_SUBMISSION_QUEUE"
+queue = "oj-timed-submission"
+
 [[queues.consumers]]
 queue = "oj-rejudge"
 max_batch_size = 1
 max_batch_timeout = 1
 max_retries = 5
 dead_letter_queue = "oj-rejudge-dlq"
+max_concurrency = 6
+
+[[queues.consumers]]
+queue = "oj-timed-submission"
+max_batch_size = 1
+max_batch_timeout = 1
+max_retries = 5
+dead_letter_queue = "oj-timed-submission-dlq"
 max_concurrency = 6
 
 [[durable_objects.bindings]]
