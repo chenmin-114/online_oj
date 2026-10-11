@@ -49,6 +49,9 @@ const CORS_HEADERS = {
 const JUDGE0_REQUEST_TIMEOUT_MS = 30000;
 const REJUDGE_LEASE_TIMEOUT_MS = 3 * 60 * 1000;
 const REJUDGE_HEARTBEAT_MS = 60 * 1000;
+const REJUDGE_MAX_ATTEMPTS = 5;
+const REJUDGE_RECOVERY_INTERVAL_MINUTES = 10;
+const BACKGROUND_JUDGE_REQUESTS_PER_MINUTE = 30;
 
 // 允许读取的数据文件白名单：查询参数不能直接拼进 GitHub 路径
 const DATA_FILES = {
@@ -103,6 +106,36 @@ const SUBMISSION_LANGUAGE_IDS = {
   go: 106,
   rust: 108,
 };
+
+// 所有后台重判请求使用同一个 Durable Object。SQLite API为同步事务，
+// 因此多个 Queue Consumer 同时申请时也会逐个完成“清理、检查、写入”。
+export class Judge0RateGate {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS judge_permits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        used_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_judge_permits_used_at ON judge_permits(used_at);
+    `);
+  }
+
+  async fetch() {
+    const now = Date.now();
+    const cutoff = now - 60 * 1000;
+    this.ctx.storage.sql.exec('DELETE FROM judge_permits WHERE used_at <= ?', cutoff);
+    const countRow = [...this.ctx.storage.sql.exec('SELECT COUNT(*) AS count FROM judge_permits')][0];
+    const used = Number(countRow?.count || 0);
+    if (used >= BACKGROUND_JUDGE_REQUESTS_PER_MINUTE) {
+      const oldestRow = [...this.ctx.storage.sql.exec('SELECT MIN(used_at) AS oldest FROM judge_permits')][0];
+      const retryAfterMs = Math.max(1000, Number(oldestRow?.oldest || now) + 60 * 1000 - now + 100);
+      return Response.json({ allowed: false, used, retryAfterMs });
+    }
+    this.ctx.storage.sql.exec('INSERT INTO judge_permits (used_at) VALUES (?)', now);
+    return Response.json({ allowed: true, used: used + 1, retryAfterMs: 0 });
+  }
+}
 
 export default {
   async fetch(request, env) {
@@ -546,10 +579,30 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    const minute = new Date(controller.scheduledTime || Date.now()).getUTCMinutes();
     ctx.waitUntil(Promise.all([
-      processRejudgeBatch(env, 6),
       processNextTimedSubmission(env),
+      minute % REJUDGE_RECOVERY_INTERVAL_MINUTES === 0
+        ? recoverPendingRejudgeJobs(env, 100)
+        : Promise.resolve(),
     ]));
+  },
+
+  async queue(batch, env) {
+    for (const message of batch.messages) {
+      try {
+        const outcome = await processRejudgeQueueMessage(message.body, env);
+        if (outcome?.reschedule) {
+          await env.REJUDGE_QUEUE.send(outcome.body || message.body, {
+            delaySeconds: Math.max(1, Math.min(24 * 60 * 60, Number(outcome.delaySeconds) || 30)),
+          });
+        }
+        message.ack();
+      } catch (error) {
+        console.error(`Queue 重判消息 ${message.id} 处理失败:`, error);
+        message.retry({ delaySeconds: 30 });
+      }
+    }
   },
 };
 
@@ -3173,6 +3226,44 @@ async function handleAdminExamPartClearGrading(body, env) {
   return jsonResponse({ success: true, action, affected, skipped });
 }
 
+function rejudgeQueueBody(job, requestedAt) {
+  return {
+    version: 1,
+    kind: job.kind,
+    submissionId: Number(job.submissionId),
+    group: normalizeGroup(job.group),
+    problemId: String(job.problemId || '').trim().toUpperCase(),
+    requestedAt: Number(requestedAt ?? job.requestedAt),
+  };
+}
+
+async function sendRejudgeQueueMessages(env, jobs, requestedAt = undefined) {
+  if (!env.REJUDGE_QUEUE) throw new Error('后台重判消息队列尚未配置');
+  const messages = jobs.map(job => ({ body: rejudgeQueueBody(job, requestedAt) }));
+  for (let index = 0; index < messages.length; index += 100) {
+    await env.REJUDGE_QUEUE.sendBatch(messages.slice(index, index + 100));
+  }
+}
+
+async function persistAndDispatchRejudgeJobs(env, jobs, requestedAt = Date.now()) {
+  if (!env.OJ_DB) throw new Error('提交数据库尚未配置');
+  if (!jobs.length) return;
+  const statements = jobs.map(job => env.OJ_DB.prepare(`
+    INSERT INTO rejudge_queue (
+      submission_kind, submission_id, group_name, problem_id,
+      status, attempts, requested_at, updated_at, last_error
+    ) VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, ?5, '')
+    ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
+      group_name = excluded.group_name, status = 'pending', attempts = 0,
+      requested_at = excluded.requested_at, updated_at = excluded.updated_at,
+      last_error = ''
+  `).bind(job.kind, Number(job.submissionId), normalizeGroup(job.group), job.problemId, requestedAt));
+  for (let index = 0; index < statements.length; index += 100) {
+    await env.OJ_DB.batch(statements.slice(index, index + 100));
+  }
+  await sendRejudgeQueueMessages(env, jobs, requestedAt);
+}
+
 async function handleAdminExamPartBulkAction(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
   const examId = normalizeExamId(body.examId);
@@ -3208,23 +3299,17 @@ async function handleAdminExamPartBulkAction(body, env) {
   if (!targets.length) return jsonResponse({ success: true, action, count: 0 });
 
   const now = Date.now();
-  const statements = [];
   if (action === 'rejudge') {
-    for (const target of targets) {
-      statements.push(env.OJ_DB.prepare(`
-        INSERT INTO rejudge_queue (
-          submission_kind, submission_id, group_name, problem_id,
-          status, attempts, requested_at, updated_at, last_error
-        ) VALUES ('exam', ?1, ?2, ?3, 'pending', 0, ?4, ?4, '')
-        ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
-          group_name = excluded.group_name, status = 'pending', attempts = 0,
-          requested_at = excluded.requested_at, updated_at = excluded.updated_at,
-          last_error = ''
-      `).bind(target.submissionId, target.group, problemId, now));
-    }
-  } else {
-    const uniqueTargets = [...new Map(targets.map(target => [target.username, target])).values()];
-    for (const target of uniqueTargets) {
+    await persistAndDispatchRejudgeJobs(env, targets.map(target => ({
+      kind: 'exam', submissionId: target.submissionId,
+      group: target.group, problemId,
+    })), now);
+    return jsonResponse({ success: true, action, count: targets.length });
+  }
+
+  const statements = [];
+  const uniqueTargets = [...new Map(targets.map(target => [target.username, target])).values()];
+  for (const target of uniqueTargets) {
       const groupLabel = GROUPS[target.group]?.label || target.group;
       const resubmissionKey = `${target.group}:${problemId}:${target.username}`;
       statements.push(
@@ -3255,9 +3340,8 @@ async function handleAdminExamPartBulkAction(body, env) {
           ) AND username = ?2
         `).bind(resubmissionKey, target.username),
       );
-    }
-    targets.length = uniqueTargets.length;
   }
+  targets.length = uniqueTargets.length;
   for (let index = 0; index < statements.length; index += 100) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
   }
@@ -3289,7 +3373,7 @@ async function handleAdminExamProgrammingBulkRejudge(body, env) {
       if (!problemIds.length) continue;
       students.add(row.username);
       for (const problemId of problemIds) {
-        jobs.push({ submissionId: Number(row.id), group: row.group_name, problemId });
+        jobs.push({ kind: 'exam', submissionId: Number(row.id), group: row.group_name, problemId });
       }
     } catch {
       // 单份损坏的历史答卷不应阻塞其他学生的重判任务。
@@ -3297,19 +3381,7 @@ async function handleAdminExamProgrammingBulkRejudge(body, env) {
   }
   if (!jobs.length) return jsonResponse({ success: true, jobs: 0, students: 0 });
   const now = Date.now();
-  const statements = jobs.map(job => env.OJ_DB.prepare(`
-    INSERT INTO rejudge_queue (
-      submission_kind, submission_id, group_name, problem_id,
-      status, attempts, requested_at, updated_at, last_error
-    ) VALUES ('exam', ?1, ?2, ?3, 'pending', 0, ?4, ?4, '')
-    ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
-      group_name = excluded.group_name, status = 'pending', attempts = 0,
-      requested_at = excluded.requested_at, updated_at = excluded.updated_at,
-      last_error = ''
-  `).bind(job.submissionId, job.group, job.problemId, now));
-  for (let index = 0; index < statements.length; index += 100) {
-    await env.OJ_DB.batch(statements.slice(index, index + 100));
-  }
+  await persistAndDispatchRejudgeJobs(env, jobs, now);
   return jsonResponse({ success: true, jobs: jobs.length, students: students.size });
 }
 
@@ -3353,16 +3425,10 @@ async function handleAdminRejudgeSubmission(body, env) {
   const target = await resolveAdminSubmissionTarget(body, env);
   if (target.error) return jsonResponse({ error: target.error }, 400);
   const now = Date.now();
-  await env.OJ_DB.prepare(`
-    INSERT INTO rejudge_queue (
-      submission_kind, submission_id, group_name, problem_id,
-      status, attempts, requested_at, updated_at, last_error
-    ) VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, ?5, '')
-    ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
-      group_name = excluded.group_name, status = 'pending', attempts = 0,
-      requested_at = excluded.requested_at, updated_at = excluded.updated_at,
-      last_error = ''
-  `).bind(target.kind, target.submissionId, target.group, target.problemId, now).run();
+  await persistAndDispatchRejudgeJobs(env, [{
+    kind: target.kind, submissionId: target.submissionId,
+    group: target.group, problemId: target.problemId,
+  }], now);
   return jsonResponse({ success: true, queued: true, ...target });
 }
 
@@ -3989,7 +4055,19 @@ function calculateRanking(submissions) {
 /**
  * 处理代码执行请求（代理 Judge0 CE API）
  */
-async function handleExecute(body, env) {
+async function acquireBackgroundJudgePermit(env) {
+  if (!env.JUDGE0_RATE_GATE) {
+    throw judgeError('后台判题限速器尚未配置', 503, 'JUDGE_RATE_GATE_UNAVAILABLE');
+  }
+  const id = env.JUDGE0_RATE_GATE.idFromName('judge0-background-global');
+  const response = await env.JUDGE0_RATE_GATE.get(id).fetch('https://judge-rate-gate/acquire', {
+    method: 'POST',
+  });
+  if (!response.ok) throw judgeError('后台判题限速器暂时不可用', 503, 'JUDGE_RATE_GATE_UNAVAILABLE');
+  return response.json();
+}
+
+async function handleExecute(body, env, options = {}) {
   const { script, stdin } = body;
   const languageId = Number.isInteger(body.languageId)
     ? body.languageId
@@ -4005,6 +4083,16 @@ async function handleExecute(body, env) {
   }
 
   const judge0BaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
+  if (options.backgroundRejudge === true) {
+    const permit = await acquireBackgroundJudgePermit(env);
+    if (!permit.allowed) {
+      return jsonResponse({
+        error: '后台判题已达到每分钟请求上限，将自动延迟重试',
+        code: 'BACKGROUND_JUDGE_RATE_LIMITED',
+        retryAfterMs: Number(permit.retryAfterMs || 60000),
+      }, 429);
+    }
+  }
   let judge0Res;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), JUDGE0_REQUEST_TIMEOUT_MS);
@@ -4416,32 +4504,84 @@ async function enqueueProblemRejudges(env, group, problemId) {
     }
   }
   const now = Date.now();
-  const statements = [];
-  const enqueue = (kind, submissionId) => statements.push(env.OJ_DB.prepare(`
-    INSERT INTO rejudge_queue (
-      submission_kind, submission_id, group_name, problem_id,
-      status, attempts, requested_at, updated_at, last_error
-    ) VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, ?5, '')
-    ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
-      group_name = excluded.group_name,
-      status = 'pending', attempts = 0,
-      requested_at = excluded.requested_at,
-      updated_at = excluded.updated_at,
-      last_error = ''
-  `).bind(kind, submissionId, group, problemId, now));
-  for (const row of problemRows.results || []) enqueue('problem', Number(row.id));
-  for (const id of examSubmissionIds) enqueue('exam', id);
-  for (let index = 0; index < statements.length; index += 100) {
-    await env.OJ_DB.batch(statements.slice(index, index + 100));
-  }
+  const jobs = [
+    ...(problemRows.results || []).map(row => ({
+      kind: 'problem', submissionId: Number(row.id), group, problemId,
+    })),
+    ...examSubmissionIds.map(submissionId => ({
+      kind: 'exam', submissionId, group, problemId,
+    })),
+  ];
+  await persistAndDispatchRejudgeJobs(env, jobs, now);
   return {
-    queued: statements.length > 0,
+    queued: jobs.length > 0,
     problemSubmissions: (problemRows.results || []).length,
     examSubmissions: examSubmissionIds.length,
   };
 }
 
-async function processClaimedRejudgeJob(job, env) {
+function validateRejudgeQueueBody(body) {
+  const kind = body?.kind === 'exam' ? 'exam' : body?.kind === 'problem' ? 'problem' : '';
+  const submissionId = Number(body?.submissionId);
+  const problemId = String(body?.problemId || '').trim().toUpperCase();
+  const requestedAt = Number(body?.requestedAt);
+  if (!kind || !Number.isInteger(submissionId) || submissionId < 1
+      || !/^(?:P\d{3,6}|T\d{3})$/.test(problemId)
+      || !Number.isFinite(requestedAt) || requestedAt < 1) return null;
+  return {
+    version: 1, kind, submissionId, problemId,
+    group: normalizeGroup(body.group), requestedAt,
+  };
+}
+
+async function claimRejudgeQueueJob(body, env) {
+  return env.OJ_DB.prepare(`
+    UPDATE rejudge_queue
+    SET status = 'processing', attempts = attempts + 1, updated_at = ?6
+    WHERE submission_kind = ?1 AND submission_id = ?2
+      AND group_name = ?3 AND problem_id = ?4 AND requested_at = ?5
+      AND status = 'pending' AND attempts < ?7
+    RETURNING *
+  `).bind(
+    body.kind, body.submissionId, body.group, body.problemId,
+    body.requestedAt, Date.now(), REJUDGE_MAX_ATTEMPTS,
+  ).first();
+}
+
+async function processRejudgeQueueMessage(rawBody, env) {
+  if (!env.OJ_DB) throw new Error('提交数据库尚未配置');
+  const body = validateRejudgeQueueBody(rawBody);
+  if (!body) return { success: true };
+  const job = await claimRejudgeQueueJob(body, env);
+  if (!job) {
+    // 只在领取冲突或崩溃重投时额外读取一次状态；正常消息没有这次查询。
+    const current = await env.OJ_DB.prepare(`
+      SELECT status, attempts, requested_at, updated_at FROM rejudge_queue
+      WHERE submission_kind = ?1 AND submission_id = ?2 AND problem_id = ?3
+    `).bind(body.kind, body.submissionId, body.problemId).first();
+    // 任务已完成、失败，或管理员后来创建了新版本任务：旧消息直接确认。
+    if (!current || Number(current.requested_at) !== body.requestedAt || current.status === 'failed') {
+      return { success: true };
+    }
+    if (Number(current.attempts || 0) >= REJUDGE_MAX_ATTEMPTS) {
+      await env.OJ_DB.prepare(`
+        UPDATE rejudge_queue SET status = 'failed', updated_at = ?4,
+          last_error = CASE WHEN last_error = '' THEN '重判任务达到最大尝试次数' ELSE last_error END
+        WHERE submission_kind = ?1 AND submission_id = ?2 AND problem_id = ?3
+      `).bind(body.kind, body.submissionId, body.problemId, Date.now()).run();
+      return { success: false, failed: true };
+    }
+    // 同一任务仍在处理或刚好被另一条重复消息领取，不并发执行；延迟到租约之后复查。
+    const leaseRemainingMs = Math.max(
+      5000,
+      Number(current.updated_at || Date.now()) + REJUDGE_LEASE_TIMEOUT_MS - Date.now() + 1000,
+    );
+    return {
+      success: false, reschedule: true,
+      delaySeconds: Math.ceil(leaseRemainingMs / 1000), body,
+    };
+  }
+
   // 一个任务可能包含多个测试点，正常执行时间可能超过租约时长。
   // 定期续租，只有 Worker 崩溃或真正失联后才会被其他槽回收。
   const heartbeat = setInterval(() => {
@@ -4458,32 +4598,42 @@ async function processClaimedRejudgeJob(job, env) {
       DELETE FROM rejudge_queue
       WHERE id = ?1 AND requested_at = ?2 AND status = 'processing'
     `).bind(Number(job.id), Number(job.requested_at)).run();
+    return { success: true };
   } catch (error) {
     const attempts = Number(job.attempts || 0);
+    const rateLimited = error?.code === 'BACKGROUND_JUDGE_RATE_LIMITED';
+    const failed = !rateLimited && attempts >= REJUDGE_MAX_ATTEMPTS;
     await env.OJ_DB.prepare(`
       UPDATE rejudge_queue
-      SET status = ?2, updated_at = ?3, last_error = ?4
-      WHERE id = ?1 AND requested_at = ?5 AND status = 'processing'
+      SET status = ?2,
+          attempts = CASE WHEN ?3 = 1 THEN MAX(attempts - 1, 0) ELSE attempts END,
+          updated_at = ?4, last_error = ?5
+      WHERE id = ?1 AND requested_at = ?6 AND status = 'processing'
     `).bind(
-      Number(job.id), attempts >= 5 ? 'failed' : 'pending', Date.now(),
-      String(error?.message || error || '重判失败').slice(0, 500),
-      Number(job.requested_at),
+      Number(job.id), failed ? 'failed' : 'pending', rateLimited ? 1 : 0, Date.now(),
+      String(error?.message || error || '重判失败').slice(0, 500), Number(job.requested_at),
     ).run();
     console.error(`自动重判任务 ${job.id} 失败:`, error);
+    if (failed) return { success: false, failed: true };
+    const retryAfterMs = rateLimited
+      ? Number(error.retryAfterMs || 60000)
+      : [30, 60, 120, 300][Math.min(3, Math.max(0, attempts - 1))] * 1000;
+    return {
+      success: false,
+      reschedule: true,
+      delaySeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)),
+      body,
+    };
   } finally {
     clearInterval(heartbeat);
   }
-  return true;
 }
 
-async function processRejudgeBatch(env, limit = 1) {
+async function recoverPendingRejudgeJobs(env, limit = 100) {
   if (!env.OJ_DB) return;
-  const count = Math.max(1, Math.min(10, Number(limit) || 1));
+  if (!env.REJUDGE_QUEUE) return;
   const now = Date.now();
   const staleBefore = now - REJUDGE_LEASE_TIMEOUT_MS;
-
-  // 先回收失去心跳的租约。达到最大重试次数的任务直接保留为 failed，
-  // 其他任务回到 pending，等待本次或后续调度重新领取。
   await env.OJ_DB.prepare(`
     UPDATE rejudge_queue
     SET status = CASE WHEN attempts >= 5 THEN 'failed' ELSE 'pending' END,
@@ -4494,22 +4644,15 @@ async function processRejudgeBatch(env, limit = 1) {
         END
     WHERE status = 'processing' AND updated_at < ?2
   `).bind(now, staleBefore).run();
-
-  // 一条原子语句领取一批不同任务，避免多个并发槽同时选中队首任务后
-  // 递归争抢，导致 D1 行读取量呈平方级增长。
-  const claimed = await env.OJ_DB.prepare(`
-    UPDATE rejudge_queue
-    SET status = 'processing', attempts = attempts + 1, updated_at = ?1
-    WHERE id IN (
-      SELECT id FROM rejudge_queue
-      WHERE status = 'pending' AND attempts < 5
-      ORDER BY requested_at ASC, id ASC
-      LIMIT ?2
-    )
-    RETURNING *
-  `).bind(now, count).all();
-  const jobs = claimed.results || [];
-  await Promise.all(jobs.map(job => processClaimedRejudgeJob(job, env)));
+  const pending = await env.OJ_DB.prepare(`
+    SELECT submission_kind AS kind, submission_id AS submissionId,
+           group_name AS "group", problem_id AS problemId, requested_at AS requestedAt
+    FROM rejudge_queue
+    WHERE status = 'pending' AND attempts < ?1
+    ORDER BY requested_at ASC, id ASC
+    LIMIT ?2
+  `).bind(REJUDGE_MAX_ATTEMPTS, Math.max(1, Math.min(100, Number(limit) || 100))).all();
+  await sendRejudgeQueueMessages(env, pending.results || []);
 }
 
 async function processNextTimedSubmission(env) {
@@ -4611,7 +4754,7 @@ async function rejudgeProblemSubmission(job, env) {
     group: job.group_name,
     language: row.language,
     code: decodeBase64Utf8(String(row.code || '')),
-  }, env, null, false, true);
+  }, env, null, false, true, { backgroundRejudge: true });
   await env.OJ_DB.prepare(`
     UPDATE submissions
     SET passed = ?2, passed_tests = ?3, total_tests = ?4, total_time = ?5
@@ -4648,7 +4791,7 @@ async function rejudgeExamSubmission(job, env) {
         group: job.group_name,
         language: String(answer.language || 'c'),
         code,
-      }, env, null, false, true) : null;
+      }, env, null, false, true, { backgroundRejudge: true }) : null;
       const index = partResults.findIndex(result => result.partId === part.id);
       const existing = index >= 0 ? partResults[index] : {};
       const updated = {
@@ -5146,12 +5289,12 @@ function wait(delayMs) {
   return new Promise(resolve => setTimeout(resolve, delayMs));
 }
 
-async function executeWithRetry(payload, env, onRetry) {
+async function executeWithRetry(payload, env, onRetry, options = {}) {
   const maxAttempts = 3;
   let lastError = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const executionResponse = await handleExecute(payload, env);
+    const executionResponse = await handleExecute(payload, env, options);
     const execution = await executionResponse.json();
     if (executionResponse.ok) return execution;
 
@@ -5160,6 +5303,10 @@ async function executeWithRetry(payload, env, onRetry) {
       executionResponse.status,
       execution.code || 'JUDGE_UNAVAILABLE'
     );
+    if (execution.code === 'BACKGROUND_JUDGE_RATE_LIMITED') {
+      lastError.retryAfterMs = Number(execution.retryAfterMs || 60000);
+      throw lastError;
+    }
     const retryable = executionResponse.status === 429 || executionResponse.status >= 500;
     if (!retryable || attempt === maxAttempts) break;
     if (onRetry) await onRetry(attempt + 1, maxAttempts);
@@ -5362,7 +5509,7 @@ function judgeInputVariants(problem, input) {
   return [value];
 }
 
-async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allowDraft = false) {
+async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allowDraft = false, executionOptions = {}) {
   const prepared = await prepareJudgeSubmission(body, env, allowDraft);
   const { username, problemId, group, language, script, languageId, problem, testCases } = prepared;
   if (onEvent) await onEvent({ type: 'start', totalTests: testCases.length });
@@ -5396,7 +5543,7 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
           attempt,
           maxAttempts,
         });
-      });
+      }, executionOptions);
       passed = judgeOutputMatches(problem, testCase, execution);
       totalTime += Number.isFinite(Number(execution.time)) ? Number(execution.time) : 0;
       if (passed || execution.compileError) break;
