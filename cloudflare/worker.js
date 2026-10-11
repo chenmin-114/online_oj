@@ -174,7 +174,14 @@ export default {
 
     // 其余接口只接受 POST
     if (request.method !== 'POST') {
-      return new Response('Method Not Allowed', { status: 405 });
+      return new Response('Method Not Allowed', {
+        status: 405,
+        headers: {
+          ...CORS_HEADERS,
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Allow': 'GET, POST, OPTIONS',
+        },
+      });
     }
 
     const declaredLength = Number(request.headers.get('Content-Length'));
