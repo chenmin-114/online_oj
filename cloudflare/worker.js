@@ -619,11 +619,26 @@ export default {
         message.ack();
       } catch (error) {
         console.error(`Queue 后台判题消息 ${message.id} 处理失败:`, error);
-        message.retry({ delaySeconds: 30 });
+        message.retry({ delaySeconds: queueInfrastructureRetryDelay(error) });
       }
     }
   },
 };
+
+function queueInfrastructureRetryDelay(error) {
+  const description = String(error?.message || error || '');
+  if (/\b7500\b|D1.*(?:daily row read limit|free tier)/i.test(description)) {
+    const now = Date.now();
+    const nextUtcDay = Date.UTC(
+      new Date(now).getUTCFullYear(),
+      new Date(now).getUTCMonth(),
+      new Date(now).getUTCDate() + 1,
+    );
+    // Queue 延迟采用保守的 6 小时上限；即使离重置还有更久，也只会进行少量复查。
+    return Math.max(300, Math.min(6 * 60 * 60, Math.ceil((nextUtcDay - now) / 1000) + 60));
+  }
+  return 30;
+}
 
 async function readJsonRequest(request, maxBytes) {
   if (!request.body) throw new Error('EMPTY_BODY');
