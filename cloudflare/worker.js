@@ -547,7 +547,7 @@ export default {
 
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(Promise.all([
-      processRejudgeBatch(env, 70),
+      processRejudgeBatch(env, 6),
       processNextTimedSubmission(env),
     ]));
   },
@@ -4441,27 +4441,7 @@ async function enqueueProblemRejudges(env, group, problemId) {
   };
 }
 
-async function processNextRejudgeJob(env) {
-  if (!env.OJ_DB) return false;
-  const now = Date.now();
-  const staleBefore = now - REJUDGE_LEASE_TIMEOUT_MS;
-  const job = await env.OJ_DB.prepare(`
-    SELECT * FROM rejudge_queue
-    WHERE attempts < 5
-      AND (status = 'pending' OR (status = 'processing' AND updated_at < ?1))
-    ORDER BY requested_at ASC, id ASC
-    LIMIT 1
-  `).bind(staleBefore).first();
-  if (!job) return false;
-  const claimed = await env.OJ_DB.prepare(`
-    UPDATE rejudge_queue
-    SET status = 'processing', attempts = attempts + 1, updated_at = ?2
-    WHERE id = ?1 AND attempts < 5
-      AND (status = 'pending' OR (status = 'processing' AND updated_at < ?3))
-  `).bind(Number(job.id), now, staleBefore).run();
-  // 多个并发槽可能同时读到同一条待处理任务；领取失败的槽立即重新选择下一条。
-  if (!claimed.meta?.changes) return processNextRejudgeJob(env);
-
+async function processClaimedRejudgeJob(job, env) {
   // 一个任务可能包含多个测试点，正常执行时间可能超过租约时长。
   // 定期续租，只有 Worker 崩溃或真正失联后才会被其他槽回收。
   const heartbeat = setInterval(() => {
@@ -4479,7 +4459,7 @@ async function processNextRejudgeJob(env) {
       WHERE id = ?1 AND requested_at = ?2 AND status = 'processing'
     `).bind(Number(job.id), Number(job.requested_at)).run();
   } catch (error) {
-    const attempts = Number(job.attempts || 0) + 1;
+    const attempts = Number(job.attempts || 0);
     await env.OJ_DB.prepare(`
       UPDATE rejudge_queue
       SET status = ?2, updated_at = ?3, last_error = ?4
@@ -4497,13 +4477,39 @@ async function processNextRejudgeJob(env) {
 }
 
 async function processRejudgeBatch(env, limit = 1) {
-  const count = Math.max(1, Math.min(70, Number(limit) || 1));
-  // 公共 Judge0 在 70 个请求同时进入时会出现连接错误；保持并行，将瞬时并发控制在 50。
-  const concurrency = 50;
-  for (let start = 0; start < count; start += concurrency) {
-    const size = Math.min(concurrency, count - start);
-    await Promise.all(Array.from({ length: size }, () => processNextRejudgeJob(env)));
-  }
+  if (!env.OJ_DB) return;
+  const count = Math.max(1, Math.min(10, Number(limit) || 1));
+  const now = Date.now();
+  const staleBefore = now - REJUDGE_LEASE_TIMEOUT_MS;
+
+  // 先回收失去心跳的租约。达到最大重试次数的任务直接保留为 failed，
+  // 其他任务回到 pending，等待本次或后续调度重新领取。
+  await env.OJ_DB.prepare(`
+    UPDATE rejudge_queue
+    SET status = CASE WHEN attempts >= 5 THEN 'failed' ELSE 'pending' END,
+        updated_at = ?1,
+        last_error = CASE
+          WHEN attempts >= 5 AND last_error = '' THEN '重判任务多次超时'
+          ELSE last_error
+        END
+    WHERE status = 'processing' AND updated_at < ?2
+  `).bind(now, staleBefore).run();
+
+  // 一条原子语句领取一批不同任务，避免多个并发槽同时选中队首任务后
+  // 递归争抢，导致 D1 行读取量呈平方级增长。
+  const claimed = await env.OJ_DB.prepare(`
+    UPDATE rejudge_queue
+    SET status = 'processing', attempts = attempts + 1, updated_at = ?1
+    WHERE id IN (
+      SELECT id FROM rejudge_queue
+      WHERE status = 'pending' AND attempts < 5
+      ORDER BY requested_at ASC, id ASC
+      LIMIT ?2
+    )
+    RETURNING *
+  `).bind(now, count).all();
+  const jobs = claimed.results || [];
+  await Promise.all(jobs.map(job => processClaimedRejudgeJob(job, env)));
 }
 
 async function processNextTimedSubmission(env) {
