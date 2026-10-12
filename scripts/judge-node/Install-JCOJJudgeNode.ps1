@@ -56,8 +56,16 @@ try {
   $processor = Get-CimInstance Win32_Processor | Select-Object -First 1
   $ramGb = [math]::Floor($computer.TotalPhysicalMemory / 1GB)
   if ($ramGb -lt 8) { Stop-WithMessage '电脑内存低于8GB，不适合安全运行本地判题节点' }
-  if ($processor.VirtualizationFirmwareEnabled -ne $true) {
+  # 启用 Hyper-V/VBS 后，Windows 可能会向 WMI 隐藏真实 CPU 虚拟化能力，
+  # 此时 VirtualizationFirmwareEnabled 会错误地返回 False，但 HypervisorPresent=True
+  # 已足以证明固件虚拟化正在工作。两种可靠信号任意一个为 True 即可继续。
+  $firmwareVirtualizationEnabled = $processor.VirtualizationFirmwareEnabled -eq $true
+  $windowsHypervisorActive = $computer.HypervisorPresent -eq $true
+  if (-not $firmwareVirtualizationEnabled -and -not $windowsHypervisorActive) {
     Stop-WithMessage 'CPU虚拟化尚未在BIOS中开启，请开启 Intel VT-x/AMD-V 后重新运行安装包'
+  }
+  if ($windowsHypervisorActive -and -not $firmwareVirtualizationEnabled) {
+    Write-Host '已通过 Windows 虚拟机监控程序确认 CPU 虚拟化处于启用状态。' -ForegroundColor Green
   }
 
   Add-Type -AssemblyName System.Windows.Forms
