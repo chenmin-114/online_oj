@@ -17,13 +17,21 @@ try:
 except ImportError:
     websocket = None
 
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 STATE_DIR = "/var/lib/jc-oj-node"
 PAIRING_FILE = "/etc/jc-oj-node/pairing.json"
 CONFIG_FILE = os.path.join(STATE_DIR, "credentials.json")
 JUDGE0_URL = "http://127.0.0.1:2358"
 MAX_RESPONSE_BYTES = 1536 * 1024
-ALLOWED_LANGUAGE_IDS = {92, 103, 105}
+# The website uses the current Judge0 CE language IDs, while the deliberately
+# pinned local Judge0 1.13.1 image exposes the older IDs below. Keep the public
+# IDs as the only accepted input and translate them locally; never accept an
+# arbitrary language ID from a job payload.
+LOCAL_LANGUAGE_IDS = {
+    92: 71,   # Python 3.11 -> Python 3.8.1
+    103: 50,  # C GCC 12.2 -> C GCC 9.2.0
+    105: 54,  # C++ GCC 12.2 -> C++ GCC 9.2.0
+}
 
 state_lock = threading.Lock()
 socket_lock = threading.Lock()
@@ -114,7 +122,7 @@ def judge0_ready():
 
 
 def execute_judge0(payload):
-    if not isinstance(payload, dict) or payload.get("language_id") not in ALLOWED_LANGUAGE_IDS:
+    if not isinstance(payload, dict) or payload.get("language_id") not in LOCAL_LANGUAGE_IDS:
         return 404, {"error": "Language is not enabled on this node"}
     source = payload.get("source_code")
     stdin = payload.get("stdin", "")
@@ -129,7 +137,7 @@ def execute_judge0(payload):
     safe_payload = {
         "source_code": source,
         "stdin": stdin,
-        "language_id": payload["language_id"],
+        "language_id": LOCAL_LANGUAGE_IDS[payload["language_id"]],
         "cpu_time_limit": 3,
         "wall_time_limit": 8,
         "memory_limit": 262144,

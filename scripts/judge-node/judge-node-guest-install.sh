@@ -43,6 +43,7 @@ Type=oneshot
 ExecStart=/bin/bash -c 'exec /usr/local/sbin/jc-oj-node-bootstrap.sh "$(cat /etc/jc-oj-node/pairing.b64)" --install'
 StandardOutput=journal+console
 StandardError=journal+console
+TimeoutStartSec=infinity
 Restart=on-failure
 RestartSec=60
 
@@ -117,7 +118,9 @@ set_conf MAX_MAX_FILE_SIZE 4096
 set_conf MAX_NUMBER_OF_RUNS 1
 set_conf MAX_EXTRACT_SIZE 10240
 set_conf ALLOW_ENABLE_NETWORK false
-chmod 600 judge0.conf
+# The parent directory is root-only (0700), while the non-root Judge0 process
+# must be able to read this bind-mounted file inside its container.
+chmod 644 judge0.conf
 
 # Judge0 API is reachable only from localhost; the VM uses NAT and has no forwarded ports.
 sed -i 's/- "2358:2358"/- "127.0.0.1:2358:2358"/' docker-compose.yml
@@ -164,6 +167,7 @@ Type=simple
 ExecStart=/usr/bin/python3 /usr/local/lib/jc-oj-node-agent.py
 Restart=on-failure
 RestartSec=15
+TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
@@ -184,8 +188,8 @@ UNIT
 systemctl daemon-reload
 systemctl enable jc-oj-node.service
 
-# The temporary unattended-install user is no longer needed after provisioning.
-passwd -l jcnode >/dev/null 2>&1 || true
+# Keep the randomly generated maintenance account usable through VirtualBox
+# Guest Control. The VM uses NAT with no forwarded inbound ports.
 rm -f /root/.bash_history /home/jcnode/.bash_history
 
 echo '[6/6] 正在启动节点并完成安全清理...'
