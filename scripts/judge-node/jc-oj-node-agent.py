@@ -17,12 +17,19 @@ try:
 except ImportError:
     websocket = None
 
-VERSION = "3.0.1"
+VERSION = "3.0.2"
 STATE_DIR = "/var/lib/jc-oj-node"
 PAIRING_FILE = "/etc/jc-oj-node/pairing.json"
 CONFIG_FILE = os.path.join(STATE_DIR, "credentials.json")
 JUDGE0_URL = "http://127.0.0.1:2358"
 MAX_RESPONSE_BYTES = 1536 * 1024
+# Cloudflare Browser Integrity Check rejects Python's default urllib signature
+# before the request can reach the authenticated Worker endpoint. Use a stable,
+# browser-compatible signature; the node and pull tokens remain the authority.
+AGENT_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 JC-OJ-Node/3"
+)
 # The website uses the current Judge0 CE language IDs, while the deliberately
 # pinned local Judge0 1.13.1 image exposes the older IDs below. Keep the public
 # IDs as the only accepted input and translate them locally; never accept an
@@ -63,7 +70,11 @@ def api_post(api_url, payload, timeout=20):
     request = urllib.request.Request(
         api_url.rstrip("/"),
         data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": AGENT_USER_AGENT,
+        },
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -328,7 +339,10 @@ def socket_worker():
             try:
                 ws = websocket.create_connection(
                     websocket_url(config["apiUrl"]),
-                    header=[f"Authorization: Bearer {config['pullToken']}"],
+                    header=[
+                        f"Authorization: Bearer {config['pullToken']}",
+                        f"User-Agent: {AGENT_USER_AGENT}",
+                    ],
                     timeout=75,
                     enable_multithread=True,
                     suppress_origin=True,
