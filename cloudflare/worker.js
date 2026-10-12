@@ -61,6 +61,9 @@ const JUDGE_NODE_OFFLINE_MS = 7 * 60 * 1000;
 const JUDGE_NODE_CLAIM_WAIT_MS = 50 * 1000;
 const JUDGE_NODE_QUEUE_WAIT_MS = 800;
 const JUDGE_NODE_EXECUTION_LEASE_MS = 25 * 1000;
+const JUDGE_NODE_SOCKET_MESSAGE_LIMIT = 2 * 1024 * 1024;
+const JUDGE_NODE_MAX_PENDING_JOBS = 256;
+const JUDGE_NODE_MAX_PENDING_BYTES = 8 * 1024 * 1024;
 const EXAM_MODE_CACHE_MS = 5000;
 let examModeCache = { value: false, expiresAt: 0 };
 
@@ -155,10 +158,19 @@ export class JudgeBroker {
   constructor(ctx) {
     this.ctx = ctx;
     this.pendingJobs = [];
+    this.pendingJobBytes = 0;
     this.waitingSlots = [];
     this.waitingSlotKeys = new Set();
     this.activeJobs = new Map();
     this.activeSlotKeys = new Set();
+    this.socketCursor = 0;
+    // Text ping/pong is answered while the Durable Object is hibernating, so an idle
+    // node does not wake the object or create periodic HTTP claim requests.
+    try {
+      this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    } catch {
+      // Older local runtimes may not expose the hibernation auto-response API.
+    }
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS node_config (
         node_id TEXT PRIMARY KEY,
@@ -172,6 +184,7 @@ export class JudgeBroker {
 
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    if (path === '/connect') return this.connectNode(request);
     let body;
     try {
       body = await request.json();
@@ -201,7 +214,10 @@ export class JudgeBroker {
         accepting_jobs = excluded.accepting_jobs,
         updated_at = excluded.updated_at
     `, nodeId, maxSlots, acceptingJobs, Date.now());
-    if (!acceptingJobs) this.cancelWaitingSlots(nodeId, 409, 'NODE_PAUSED');
+    if (!acceptingJobs) {
+      this.cancelWaitingSlots(nodeId, 409, 'NODE_PAUSED');
+      this.closeNodeSockets(nodeId, 4001, 'NODE_PAUSED');
+    }
     this.matchQueues();
     return Response.json({ success: true, maxSlots, acceptingJobs: Boolean(acceptingJobs) });
   }
@@ -217,6 +233,7 @@ export class JudgeBroker {
       ON CONFLICT(node_id) DO UPDATE SET accepting_jobs = 0, revoked = 1, updated_at = excluded.updated_at
     `, nodeId, Date.now());
     this.cancelWaitingSlots(nodeId, 401, 'NODE_REVOKED');
+    this.closeNodeSockets(nodeId, 4003, 'NODE_REVOKED');
     return Response.json({ success: true });
   }
 
@@ -235,6 +252,9 @@ export class JudgeBroker {
     }
     if (Number(config.accepting_jobs) !== 1) {
       return Response.json({ error: 'Node paused', code: 'NODE_PAUSED' }, { status: 409 });
+    }
+    if (this.ctx.getWebSockets(nodeId).some(socket => socket.readyState === 1)) {
+      return Response.json({ error: 'Node uses socket scheduling', code: 'NODE_SOCKET_ACTIVE' }, { status: 409 });
     }
     if (!Number.isInteger(slotId) || slotId < 0 || slotId >= Number(config.max_slots)) {
       return Response.json({ error: 'Slot disabled', code: 'SLOT_DISABLED', maxSlots: Number(config.max_slots) }, { status: 409 });
@@ -263,10 +283,25 @@ export class JudgeBroker {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       return Response.json({ error: 'Invalid judge payload' }, { status: 400 });
     }
+    // With no connected node, do not keep the DO awake for the old 800 ms wait.
+    // The caller immediately falls back to public Judge0.
+    const hasSocketNode = this.ctx.getWebSockets().some(socket => socket.readyState === 1);
+    if (!hasSocketNode && this.waitingSlots.length === 0) {
+      return Response.json({ error: 'No local node available', code: 'LOCAL_NODE_UNAVAILABLE' }, { status: 503 });
+    }
+    const payloadBytes = JSON.stringify(payload).length;
+    if (payloadBytes > JUDGE_NODE_SOCKET_MESSAGE_LIMIT) {
+      return Response.json({ error: 'Judge payload is too large', code: 'LOCAL_PAYLOAD_TOO_LARGE' }, { status: 413 });
+    }
+    if (this.pendingJobs.length >= JUDGE_NODE_MAX_PENDING_JOBS
+        || this.pendingJobBytes + payloadBytes > JUDGE_NODE_MAX_PENDING_BYTES) {
+      return Response.json({ error: 'Local judge queue is full', code: 'LOCAL_QUEUE_FULL' }, { status: 503 });
+    }
     return new Promise(resolve => {
       const job = {
         id: `jj_${crypto.randomUUID()}`,
         payload,
+        payloadBytes,
         resolve,
         timer: null,
         settled: false,
@@ -275,9 +310,11 @@ export class JudgeBroker {
         if (job.settled) return;
         job.settled = true;
         this.pendingJobs = this.pendingJobs.filter(item => item !== job);
+        this.pendingJobBytes = Math.max(0, this.pendingJobBytes - job.payloadBytes);
         resolve(Response.json({ error: 'No local slot available', code: 'LOCAL_SLOT_UNAVAILABLE' }, { status: 503 }));
       }, JUDGE_NODE_QUEUE_WAIT_MS);
       this.pendingJobs.push(job);
+      this.pendingJobBytes += payloadBytes;
       this.matchQueues();
     });
   }
@@ -300,9 +337,124 @@ export class JudgeBroker {
     return Response.json({ success: true });
   }
 
+  connectNode(request) {
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+      return Response.json({ error: 'WebSocket upgrade required' }, { status: 426 });
+    }
+    const nodeId = String(request.headers.get('X-Judge-Node-Id') || '');
+    const config = this.nodeConfig(nodeId);
+    if (!config || Number(config.revoked) === 1) {
+      return Response.json({ error: 'Node revoked or unknown' }, { status: 401 });
+    }
+    if (Number(config.accepting_jobs) !== 1) {
+      return Response.json({ error: 'Node paused' }, { status: 409 });
+    }
+
+    // Only one scheduling connection is allowed per computer. Replacing an old
+    // connection also releases its jobs, so stale sockets cannot keep slots occupied.
+    this.closeNodeSockets(nodeId, 4000, 'CONNECTION_REPLACED');
+    this.cancelWaitingSlots(nodeId, 409, 'NODE_SOCKET_ACTIVE');
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    const connectionId = `jc_${crypto.randomUUID()}`;
+    server.serializeAttachment({ nodeId, connectionId, freeSlots: 0, lastSequence: 0 });
+    this.ctx.acceptWebSocket(server, [nodeId]);
+    server.send(JSON.stringify({
+      type: 'connected',
+      connectionId,
+      maxSlots: Number(config.max_slots),
+      leaseMs: JUDGE_NODE_EXECUTION_LEASE_MS,
+    }));
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(socket, message) {
+    if (message === 'ping') return;
+    if (typeof message !== 'string' || message.length > JUDGE_NODE_SOCKET_MESSAGE_LIMIT) {
+      socket.close(1009, 'MESSAGE_TOO_LARGE');
+      return;
+    }
+    let body;
+    try {
+      body = JSON.parse(message);
+    } catch {
+      socket.close(1003, 'INVALID_JSON');
+      return;
+    }
+    const attachment = socket.deserializeAttachment();
+    if (!attachment?.nodeId || !attachment?.connectionId) {
+      socket.close(1011, 'INVALID_CONNECTION');
+      return;
+    }
+    const sequence = Math.trunc(Number(body.sequence));
+    if (!Number.isInteger(sequence) || sequence <= Number(attachment.lastSequence || 0)) {
+      socket.close(1008, 'INVALID_SEQUENCE');
+      return;
+    }
+    attachment.lastSequence = sequence;
+    socket.serializeAttachment(attachment);
+
+    if (body.type === 'capacity') {
+      this.updateSocketCapacity(socket, attachment, body);
+      return;
+    }
+    if (body.type === 'complete') {
+      this.completeSocketJob(socket, attachment, body);
+      return;
+    }
+    socket.close(1003, 'UNKNOWN_MESSAGE');
+  }
+
+  webSocketClose(socket) {
+    this.disconnectSocket(socket, 'LOCAL_NODE_DISCONNECTED');
+  }
+
+  webSocketError(socket) {
+    this.disconnectSocket(socket, 'LOCAL_NODE_CONNECTION_ERROR');
+  }
+
+  updateSocketCapacity(socket, attachment, body) {
+    const config = this.nodeConfig(attachment.nodeId);
+    if (!config || Number(config.revoked) === 1 || Number(config.accepting_jobs) !== 1) {
+      socket.close(4003, 'NODE_DISABLED');
+      return;
+    }
+    const activeCount = [...this.activeJobs.values()].filter(
+      item => item.nodeId === attachment.nodeId && item.connectionId === attachment.connectionId,
+    ).length;
+    const reported = Math.max(0, Math.trunc(Number(body.freeSlots) || 0));
+    attachment.freeSlots = Math.min(reported, Math.max(0, Number(config.max_slots) - activeCount));
+    socket.serializeAttachment(attachment);
+    this.matchQueues();
+  }
+
+  completeSocketJob(socket, attachment, body) {
+    const jobId = String(body.jobId || '');
+    const leaseToken = String(body.leaseToken || '');
+    const active = this.activeJobs.get(jobId);
+    if (!active || !leaseToken || leaseToken !== active.leaseToken
+        || active.nodeId !== attachment.nodeId
+        || active.connectionId !== attachment.connectionId
+        || Number(body.slotId) !== active.slotId) {
+      socket.send(JSON.stringify({ type: 'rejected', jobId, code: 'JOB_LEASE_EXPIRED' }));
+      return;
+    }
+    if (!body.result || typeof body.result !== 'object' || Array.isArray(body.result)) {
+      socket.send(JSON.stringify({ type: 'rejected', jobId, code: 'JOB_RESULT_INVALID' }));
+      return;
+    }
+    this.finishActiveJob(active);
+    const status = Number.isInteger(body.status) && body.status >= 200 && body.status <= 599
+      ? body.status : 200;
+    active.resolve(Response.json(body.result, { status }));
+    socket.send(JSON.stringify({ type: 'accepted', jobId }));
+  }
+
   matchQueues() {
+    this.matchSocketQueues();
     while (this.pendingJobs.length && this.waitingSlots.length) {
-      const job = this.pendingJobs.shift();
+      const job = this.shiftPendingJob();
       const slot = this.waitingSlots.shift();
       if (job.settled || slot.settled) continue;
       const config = this.nodeConfig(slot.nodeId);
@@ -312,7 +464,7 @@ export class JudgeBroker {
         clearTimeout(slot.timer);
         this.waitingSlotKeys.delete(slot.slotKey);
         slot.resolve(Response.json({ error: 'Slot disabled', code: 'SLOT_DISABLED' }, { status: 409 }));
-        this.pendingJobs.unshift(job);
+        this.unshiftPendingJob(job);
         continue;
       }
       job.settled = true;
@@ -346,6 +498,90 @@ export class JudgeBroker {
     }
   }
 
+  matchSocketQueues() {
+    if (!this.pendingJobs.length) return;
+    const sockets = this.ctx.getWebSockets().filter(socket => {
+      if (socket.readyState !== 1) return false;
+      const attachment = socket.deserializeAttachment();
+      if (!attachment?.nodeId || Number(attachment.freeSlots || 0) <= 0) return false;
+      const config = this.nodeConfig(attachment.nodeId);
+      return config && Number(config.revoked) !== 1 && Number(config.accepting_jobs) === 1;
+    });
+    if (!sockets.length) return;
+    this.socketCursor %= sockets.length;
+    let idlePasses = 0;
+    while (this.pendingJobs.length && sockets.length && idlePasses < sockets.length) {
+      const index = this.socketCursor % sockets.length;
+      this.socketCursor = (index + 1) % sockets.length;
+      const socket = sockets[index];
+      const attachment = socket.deserializeAttachment();
+      const config = this.nodeConfig(attachment.nodeId);
+      const slotId = config ? this.nextFreeSlot(attachment.nodeId, Number(config.max_slots)) : -1;
+      if (!config || Number(attachment.freeSlots || 0) <= 0 || slotId < 0) {
+        idlePasses += 1;
+        continue;
+      }
+      const job = this.shiftPendingJob();
+      if (!job || job.settled) continue;
+      idlePasses = 0;
+      job.settled = true;
+      clearTimeout(job.timer);
+      attachment.freeSlots = Math.max(0, Number(attachment.freeSlots) - 1);
+      socket.serializeAttachment(attachment);
+      const slotKey = `${attachment.nodeId}:${slotId}`;
+      this.activeSlotKeys.add(slotKey);
+      const active = {
+        jobId: job.id,
+        nodeId: attachment.nodeId,
+        connectionId: attachment.connectionId,
+        slotId,
+        slotKey,
+        leaseToken: randomUrlToken(32),
+        resolve: job.resolve,
+        timer: null,
+      };
+      active.timer = setTimeout(() => {
+        if (!this.activeJobs.has(active.jobId)) return;
+        this.finishActiveJob(active);
+        active.resolve(Response.json({ error: 'Local judge timed out', code: 'LOCAL_JUDGE_TIMEOUT' }, { status: 504 }));
+      }, JUDGE_NODE_EXECUTION_LEASE_MS);
+      this.activeJobs.set(active.jobId, active);
+      try {
+        socket.send(JSON.stringify({
+          type: 'job',
+          connectionId: attachment.connectionId,
+          slotId,
+          jobId: active.jobId,
+          leaseToken: active.leaseToken,
+          leaseExpiresAt: Date.now() + JUDGE_NODE_EXECUTION_LEASE_MS,
+          payload: job.payload,
+        }));
+      } catch {
+        this.finishActiveJob(active);
+        active.resolve(Response.json({ error: 'Local node disconnected', code: 'LOCAL_NODE_DISCONNECTED' }, { status: 502 }));
+        this.disconnectSocket(socket, 'LOCAL_NODE_DISCONNECTED');
+      }
+    }
+  }
+
+  nextFreeSlot(nodeId, maxSlots) {
+    for (let slotId = 0; slotId < maxSlots; slotId += 1) {
+      if (!this.activeSlotKeys.has(`${nodeId}:${slotId}`)) return slotId;
+    }
+    return -1;
+  }
+
+  shiftPendingJob() {
+    const job = this.pendingJobs.shift();
+    if (job) this.pendingJobBytes = Math.max(0, this.pendingJobBytes - job.payloadBytes);
+    return job;
+  }
+
+  unshiftPendingJob(job) {
+    this.pendingJobs.unshift(job);
+    this.pendingJobBytes += job.payloadBytes;
+  }
+
   finishActiveJob(active) {
     clearTimeout(active.timer);
     this.activeJobs.delete(active.jobId);
@@ -366,6 +602,27 @@ export class JudgeBroker {
     }
     this.waitingSlots = retained;
   }
+
+  disconnectSocket(socket, code) {
+    const attachment = socket.deserializeAttachment?.();
+    if (!attachment?.connectionId) return;
+    for (const active of [...this.activeJobs.values()]) {
+      if (active.connectionId !== attachment.connectionId) continue;
+      this.finishActiveJob(active);
+      active.resolve(Response.json({ error: 'Local node disconnected', code }, { status: 502 }));
+    }
+  }
+
+  closeNodeSockets(nodeId, closeCode, reason) {
+    for (const socket of this.ctx.getWebSockets(nodeId)) {
+      this.disconnectSocket(socket, reason);
+      try {
+        socket.close(closeCode, reason);
+      } catch {
+        // The socket may already be closing.
+      }
+    }
+  }
 }
 
 export default {
@@ -382,6 +639,14 @@ export default {
           'Cache-Control': 'public, max-age=86400',
         },
       });
+    }
+
+    // Judge nodes use one authenticated WebSocket per computer. This route is
+    // handled before browser Origin checks because the native node agent is not
+    // a web page; possession of the per-node pull token is still required.
+    if (requestUrl.pathname === '/judge-node/socket'
+        && request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
+      return await handleJudgeNodeSocket(request, env);
     }
 
     // 只允许正式主站网页跨域调用 API。没有 Origin 的服务端/命令行请求
@@ -1204,6 +1469,24 @@ async function authenticateJudgeNodePull(body, env) {
   const pullToken = String(body.pullToken || '');
   if (!/^jn_[A-Za-z0-9_-]{22}$/.test(nodeId) || !/^[A-Za-z0-9_-]{43}$/.test(pullToken)) return false;
   return secureTextEqual(pullToken, await judgeNodeGatewayToken(env, nodeId));
+}
+
+async function handleJudgeNodeSocket(request, env) {
+  const requestUrl = new URL(request.url);
+  const nodeId = String(requestUrl.searchParams.get('nodeId') || '');
+  const authorization = String(request.headers.get('Authorization') || '');
+  const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(authorization);
+  if (!match || !await authenticateJudgeNodePull({ nodeId, pullToken: match[1] }, env)) {
+    return jsonResponse({ error: '节点凭证无效或已撤销', code: 'NODE_AUTH_FAILED' }, 401);
+  }
+  const broker = judgeBrokerStub(env);
+  if (!broker) return jsonResponse({ error: '本地判题调度器尚未配置' }, 503);
+  return broker.fetch('https://judge-broker/connect', {
+    headers: {
+      'Upgrade': 'websocket',
+      'X-Judge-Node-Id': nodeId,
+    },
+  });
 }
 
 async function handleJudgeNodeClaim(body, env) {
@@ -4743,8 +5026,8 @@ async function acquireBackgroundJudgePermit(env) {
 }
 
 async function fetchJudge0Submission(payload, env, options = {}) {
-  // 本地节点槽主动长轮询 JudgeBroker；提交请求只进入一个 FIFO 队列，由单一 DO
-  // 顺序完成“任务 ↔ 空闲槽”配对。没有本地槽时立即安全回退公共 Judge0。
+  // 每台本地电脑用一条 WebSocket 向 JudgeBroker 上报空闲槽；提交请求只进入
+  // 一个 FIFO 队列，由单一 DO 原子完成配对。没有本地槽时安全回退公共 Judge0。
   const broker = judgeBrokerStub(env);
   if (broker) {
     try {

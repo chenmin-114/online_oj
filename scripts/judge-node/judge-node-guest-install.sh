@@ -25,7 +25,7 @@ os.chmod(path, 0o600)
 PY
 
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl unzip openssl docker.io docker-compose-v2 python3
+apt-get install -y --no-install-recommends ca-certificates curl unzip openssl docker.io docker-compose-v2 python3 python3-websocket
 
 # Judge0 1.13.1 currently requires cgroup v1. This applies only inside the dedicated VM.
 if ! grep -q 'systemd.unified_cgroup_hierarchy=0' /etc/default/grub; then
