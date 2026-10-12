@@ -179,7 +179,8 @@ try {
 
   Write-Host "正在创建隔离虚拟机，数据保存到：$installRoot"
   Invoke-VBox @('createvm', '--name', $vmName, '--ostype', 'Ubuntu22_LTS_64', '--basefolder', $installRoot, '--register')
-  Invoke-VBox @('modifyvm', $vmName, '--memory', "$vmMemory", '--cpus', "$vmCpus", '--ioapic', 'on', '--firmware', 'efi',
+  Invoke-VBox @('modifyvm', $vmName, '--memory', "$vmMemory", '--cpus', "$vmCpus", '--ioapic', 'on', '--firmware', 'bios',
+    '--graphicscontroller', 'vmsvga', '--vram', '16', '--boot1', 'dvd', '--boot2', 'disk', '--boot3', 'none', '--boot4', 'none',
     '--nic1', 'nat', '--cable-connected1', 'on', '--clipboard-mode', 'disabled', '--draganddrop', 'disabled',
     '--audio-enabled', 'off', '--usb', 'off', '--vrde', 'off', '--recording', 'off')
   $diskPath = Join-Path $installRoot "$vmName\judge-node.vdi"
