@@ -82,6 +82,7 @@ systemctl enable --now docker
 echo '[3/6] 正在下载并校验 Judge0...'
 JUDGE_ZIP=/tmp/judge0-v1.13.1.zip
 curl --fail --location --proto '=https' --tlsv1.2 \
+  --retry 5 --retry-all-errors --retry-delay 5 \
   'https://github.com/judge0/judge0/releases/download/v1.13.1/judge0-v1.13.1.zip' \
   --output "$JUDGE_ZIP"
 echo 'd83f002c98f2c3935fc4fec3abcb863191e7c863ffcd202401d03a8f7e1fa513  /tmp/judge0-v1.13.1.zip' | sha256sum --check --strict
@@ -122,7 +123,22 @@ chmod 600 judge0.conf
 sed -i 's/- "2358:2358"/- "127.0.0.1:2358:2358"/' docker-compose.yml
 sed -i 's/max-size: 100M/max-size: 20M/' docker-compose.yml
 echo '[4/6] 正在下载 Judge0 容器镜像，此阶段通常耗时最长...'
-docker compose pull
+pull_complete=false
+for attempt in 1 2 3 4 5; do
+  if docker compose pull; then
+    pull_complete=true
+    break
+  fi
+  if [[ "$attempt" -lt 5 ]]; then
+    delay=$((attempt * 15))
+    echo "容器镜像下载遇到网络中断，${delay}秒后进行第$((attempt + 1))/5次尝试；已完成的镜像层会复用。"
+    sleep "$delay"
+  fi
+done
+if [[ "$pull_complete" != true ]]; then
+  echo '容器镜像连续5次下载失败，首次启动服务稍后会进行有限次数的整体重试。' >&2
+  exit 1
+fi
 docker compose up -d db redis
 sleep 12
 docker compose up -d
@@ -130,6 +146,7 @@ docker compose up -d
 echo '[5/6] 正在安装并保护机创OJ节点代理...'
 NODE_AGENT=/tmp/jc-oj-node-agent.py
 curl --fail --location --proto '=https' --tlsv1.2 \
+  --retry 5 --retry-all-errors --retry-delay 5 \
   'https://jc-oj.online/downloads/jc-oj-node-agent.py' --output "$NODE_AGENT"
 echo '__NODE_AGENT_SHA256__  /tmp/jc-oj-node-agent.py' | sha256sum --check --strict
 install -m 700 "$NODE_AGENT" /usr/local/lib/jc-oj-node-agent.py

@@ -188,7 +188,7 @@ try {
   Invoke-VBox @('storagectl', $vmName, '--name', 'SATA', '--add', 'sata', '--controller', 'IntelAhci')
   Invoke-VBox @('storageattach', $vmName, '--storagectl', 'SATA', '--port', '0', '--device', '0', '--type', 'hdd', '--medium', $diskPath)
 
-  $postCommand = "curl -fsSL '$guestInstallUrl' -o /tmp/jc-install.sh && echo '$guestInstallSha256  /tmp/jc-install.sh' | sha256sum -c --strict && echo '$guestPassword' | sudo -S bash /tmp/jc-install.sh '$pairingB64' --defer"
+  $postCommand = "curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 '$guestInstallUrl' -o /tmp/jc-install.sh && echo '$guestInstallSha256  /tmp/jc-install.sh' | sha256sum -c --strict && echo '$guestPassword' | sudo -S bash /tmp/jc-install.sh '$pairingB64' --defer"
   Write-Host '正在生成 Ubuntu 自动安装配置...'
   Invoke-VBox @('unattended', 'install', $vmName, "--iso=$isoPath", '--user=jcnode', "--password=$guestPassword",
     '--full-user-name=JC OJ Node', '--hostname=jc-oj-node.local', '--locale=en_US', '--country=CN',
