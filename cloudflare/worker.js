@@ -2558,6 +2558,9 @@ function validateExamPaper(input) {
           ? [...new Set(rawPart.correctAnswers.map(answer => normalizeExamText(answer, 2000)).filter(Boolean))].slice(0, 50)
           : [];
         part.caseSensitive = rawPart.caseSensitive === true;
+        if (['hex', 'octal', 'binary'].includes(rawPart.answerFormat)) {
+          part.answerFormat = rawPart.answerFormat;
+        }
         if (!part.correctAnswers.length) return { error: `${titleText} 的填空题至少需要一个预设答案` };
       } else if (type === 'programming') {
         hasProgramming = true;
@@ -2590,6 +2593,7 @@ function publicExamPaper(paper) {
         delete publicPart.correctAnswers;
         delete publicPart.caseSensitive;
         delete publicPart.gradingGuide;
+        delete publicPart.answerFormat;
         return publicPart;
       }),
     })),
@@ -3185,6 +3189,27 @@ function sameChoiceAnswers(actual, expected) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function fillBlankAnswerMatches(part, answer) {
+  const actual = normalizedAnswer(answer, part.caseSensitive);
+  if (!actual) return false;
+  if (part.correctAnswers.some(expected => normalizedAnswer(expected, part.caseSensitive) === actual)) return true;
+  const radix = { hex: 16, octal: 8, binary: 2 }[part.answerFormat];
+  if (!radix) return false;
+  const clean = value => normalizedAnswer(value, false).replace(/[\s_]+/g, '').replace(
+    part.answerFormat === 'hex' ? /^0x/ : part.answerFormat === 'octal' ? /^0o/ : /^0b/,
+    '',
+  );
+  const digits = clean(actual);
+  const validPattern = part.answerFormat === 'hex' ? /^[0-9a-f]+$/
+    : part.answerFormat === 'octal' ? /^[0-7]+$/ : /^[01]+$/;
+  if (!validPattern.test(digits)) return false;
+  const value = Number.parseInt(digits, radix);
+  return part.correctAnswers.some(expected => {
+    const expectedDigits = clean(expected);
+    return validPattern.test(expectedDigits) && Number.parseInt(expectedDigits, radix) === value;
+  });
+}
+
 function calculateExamScores(paper, partResults) {
   const resultMap = new Map(partResults.map(result => [result.partId, result]));
   let autoScore = 0;
@@ -3238,8 +3263,7 @@ async function gradeExamAnswers(paper, answers, username, group, env, executionO
         result.status = correct ? 'correct' : 'incorrect';
         result.autoScore = correct ? part.points : 0;
       } else if (part.type === 'fill_blank') {
-        const actual = normalizedAnswer(answer, part.caseSensitive);
-        const correct = actual && part.correctAnswers.some(expected => normalizedAnswer(expected, part.caseSensitive) === actual);
+        const correct = fillBlankAnswerMatches(part, answer);
         if (correct) {
           result.status = 'correct';
           result.autoScore = part.points;
