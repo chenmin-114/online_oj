@@ -91,15 +91,6 @@ docker compose up -d db redis
 sleep 12
 docker compose up -d
 
-CLOUDFLARED_VERSION=2026.10.0
-CLOUDFLARED=/tmp/cloudflared
-curl --fail --location --proto '=https' --tlsv1.2 \
-  "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64" \
-  --output "$CLOUDFLARED"
-echo '77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2  /tmp/cloudflared' | sha256sum --check --strict
-install -m 755 "$CLOUDFLARED" /usr/local/bin/cloudflared
-rm -f "$CLOUDFLARED"
-
 NODE_AGENT=/tmp/jc-oj-node-agent.py
 curl --fail --location --proto '=https' --tlsv1.2 \
   'https://jc-oj.online/downloads/jc-oj-node-agent.py' --output "$NODE_AGENT"

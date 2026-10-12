@@ -58,10 +58,11 @@ const REJUDGE_RECOVERY_INTERVAL_MINUTES = 10;
 const BACKGROUND_JUDGE_REQUESTS_PER_MINUTE = 30;
 const JUDGE_NODE_PAIRING_TTL_MS = 2 * 60 * 60 * 1000;
 const JUDGE_NODE_OFFLINE_MS = 7 * 60 * 1000;
+const JUDGE_NODE_CLAIM_WAIT_MS = 50 * 1000;
+const JUDGE_NODE_QUEUE_WAIT_MS = 800;
+const JUDGE_NODE_EXECUTION_LEASE_MS = 25 * 1000;
 const EXAM_MODE_CACHE_MS = 5000;
 let examModeCache = { value: false, expiresAt: 0 };
-let judgeNodeTargetCache = { targets: [], expiresAt: 0 };
-let judgeNodeTargetCursor = 0;
 
 // 允许读取的数据文件白名单：查询参数不能直接拼进 GitHub 路径
 const DATA_FILES = {
@@ -144,6 +145,226 @@ export class Judge0RateGate {
     }
     this.ctx.storage.sql.exec('INSERT INTO judge_permits (used_at) VALUES (?)', now);
     return Response.json({ allowed: true, used: used + 1, retryAfterMs: 0 });
+  }
+}
+
+// 单一调度器把“等待执行的任务”和“空闲判题槽”按 FIFO 一对一配对。
+// 队列只存在于 Durable Object 内存中，避免每个测试点反复读取 D1；节点配置和撤销状态
+// 保存在 Durable Object 自身的 SQLite 中。对象重启时，正在等待的请求会失败并安全回退公共 Judge0。
+export class JudgeBroker {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.pendingJobs = [];
+    this.waitingSlots = [];
+    this.waitingSlotKeys = new Set();
+    this.activeJobs = new Map();
+    this.activeSlotKeys = new Set();
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS node_config (
+        node_id TEXT PRIMARY KEY,
+        max_slots INTEGER NOT NULL,
+        accepting_jobs INTEGER NOT NULL,
+        revoked INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+  }
+
+  async fetch(request) {
+    const path = new URL(request.url).pathname;
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return Response.json({ error: 'Invalid request' }, { status: 400 });
+    }
+    if (path === '/configure') return this.configureNode(body);
+    if (path === '/revoke') return this.revokeNode(body);
+    if (path === '/claim') return this.claimSlot(body);
+    if (path === '/complete') return this.completeJob(body);
+    if (path === '/execute') return this.enqueueJob(body);
+    return Response.json({ error: 'Not Found' }, { status: 404 });
+  }
+
+  configureNode(body) {
+    const nodeId = String(body.nodeId || '');
+    if (!/^jn_[A-Za-z0-9_-]{22}$/.test(nodeId)) {
+      return Response.json({ error: 'Invalid node' }, { status: 400 });
+    }
+    const maxSlots = Math.max(1, Math.min(16, Math.trunc(Number(body.maxSlots) || 1)));
+    const acceptingJobs = body.acceptingJobs === true ? 1 : 0;
+    this.ctx.storage.sql.exec(`
+      INSERT INTO node_config (node_id, max_slots, accepting_jobs, revoked, updated_at)
+      VALUES (?, ?, ?, 0, ?)
+      ON CONFLICT(node_id) DO UPDATE SET
+        max_slots = excluded.max_slots,
+        accepting_jobs = excluded.accepting_jobs,
+        updated_at = excluded.updated_at
+    `, nodeId, maxSlots, acceptingJobs, Date.now());
+    if (!acceptingJobs) this.cancelWaitingSlots(nodeId, 409, 'NODE_PAUSED');
+    this.matchQueues();
+    return Response.json({ success: true, maxSlots, acceptingJobs: Boolean(acceptingJobs) });
+  }
+
+  revokeNode(body) {
+    const nodeId = String(body.nodeId || '');
+    if (!/^jn_[A-Za-z0-9_-]{22}$/.test(nodeId)) {
+      return Response.json({ error: 'Invalid node' }, { status: 400 });
+    }
+    this.ctx.storage.sql.exec(`
+      INSERT INTO node_config (node_id, max_slots, accepting_jobs, revoked, updated_at)
+      VALUES (?, 1, 0, 1, ?)
+      ON CONFLICT(node_id) DO UPDATE SET accepting_jobs = 0, revoked = 1, updated_at = excluded.updated_at
+    `, nodeId, Date.now());
+    this.cancelWaitingSlots(nodeId, 401, 'NODE_REVOKED');
+    return Response.json({ success: true });
+  }
+
+  nodeConfig(nodeId) {
+    return [...this.ctx.storage.sql.exec(
+      'SELECT max_slots, accepting_jobs, revoked FROM node_config WHERE node_id = ?', nodeId,
+    )][0] || null;
+  }
+
+  claimSlot(body) {
+    const nodeId = String(body.nodeId || '');
+    const slotId = Math.trunc(Number(body.slotId));
+    const config = this.nodeConfig(nodeId);
+    if (!config || Number(config.revoked) === 1) {
+      return Response.json({ error: 'Node revoked or unknown', code: 'NODE_REVOKED' }, { status: 401 });
+    }
+    if (Number(config.accepting_jobs) !== 1) {
+      return Response.json({ error: 'Node paused', code: 'NODE_PAUSED' }, { status: 409 });
+    }
+    if (!Number.isInteger(slotId) || slotId < 0 || slotId >= Number(config.max_slots)) {
+      return Response.json({ error: 'Slot disabled', code: 'SLOT_DISABLED', maxSlots: Number(config.max_slots) }, { status: 409 });
+    }
+    const slotKey = `${nodeId}:${slotId}`;
+    if (this.waitingSlotKeys.has(slotKey) || this.activeSlotKeys.has(slotKey)) {
+      return Response.json({ error: 'Slot already active', code: 'SLOT_BUSY' }, { status: 409 });
+    }
+    return new Promise(resolve => {
+      const slot = { nodeId, slotId, slotKey, resolve, timer: null, settled: false };
+      slot.timer = setTimeout(() => {
+        if (slot.settled) return;
+        slot.settled = true;
+        this.waitingSlotKeys.delete(slotKey);
+        this.waitingSlots = this.waitingSlots.filter(item => item !== slot);
+        resolve(Response.json({ empty: true, retryAfterMs: 500 }));
+      }, JUDGE_NODE_CLAIM_WAIT_MS);
+      this.waitingSlotKeys.add(slotKey);
+      this.waitingSlots.push(slot);
+      this.matchQueues();
+    });
+  }
+
+  enqueueJob(body) {
+    const payload = body?.payload;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return Response.json({ error: 'Invalid judge payload' }, { status: 400 });
+    }
+    return new Promise(resolve => {
+      const job = {
+        id: `jj_${crypto.randomUUID()}`,
+        payload,
+        resolve,
+        timer: null,
+        settled: false,
+      };
+      job.timer = setTimeout(() => {
+        if (job.settled) return;
+        job.settled = true;
+        this.pendingJobs = this.pendingJobs.filter(item => item !== job);
+        resolve(Response.json({ error: 'No local slot available', code: 'LOCAL_SLOT_UNAVAILABLE' }, { status: 503 }));
+      }, JUDGE_NODE_QUEUE_WAIT_MS);
+      this.pendingJobs.push(job);
+      this.matchQueues();
+    });
+  }
+
+  completeJob(body) {
+    const jobId = String(body.jobId || '');
+    const leaseToken = String(body.leaseToken || '');
+    const active = this.activeJobs.get(jobId);
+    if (!active || !leaseToken || leaseToken !== active.leaseToken) {
+      return Response.json({ error: 'Job lease expired', code: 'JOB_LEASE_EXPIRED' }, { status: 409 });
+    }
+    if (String(body.nodeId || '') !== active.nodeId || Number(body.slotId) !== active.slotId) {
+      return Response.json({ error: 'Job owner mismatch', code: 'JOB_OWNER_MISMATCH' }, { status: 403 });
+    }
+    this.finishActiveJob(active);
+    const status = Number.isInteger(body.status) && body.status >= 200 && body.status <= 599 ? body.status : 200;
+    active.resolve(Response.json(body.result && typeof body.result === 'object'
+      ? body.result
+      : { error: 'Local node returned an invalid result' }, { status }));
+    return Response.json({ success: true });
+  }
+
+  matchQueues() {
+    while (this.pendingJobs.length && this.waitingSlots.length) {
+      const job = this.pendingJobs.shift();
+      const slot = this.waitingSlots.shift();
+      if (job.settled || slot.settled) continue;
+      const config = this.nodeConfig(slot.nodeId);
+      if (!config || Number(config.revoked) === 1 || Number(config.accepting_jobs) !== 1
+          || slot.slotId >= Number(config.max_slots)) {
+        slot.settled = true;
+        clearTimeout(slot.timer);
+        this.waitingSlotKeys.delete(slot.slotKey);
+        slot.resolve(Response.json({ error: 'Slot disabled', code: 'SLOT_DISABLED' }, { status: 409 }));
+        this.pendingJobs.unshift(job);
+        continue;
+      }
+      job.settled = true;
+      slot.settled = true;
+      clearTimeout(job.timer);
+      clearTimeout(slot.timer);
+      this.waitingSlotKeys.delete(slot.slotKey);
+      this.activeSlotKeys.add(slot.slotKey);
+      const active = {
+        jobId: job.id,
+        nodeId: slot.nodeId,
+        slotId: slot.slotId,
+        slotKey: slot.slotKey,
+        leaseToken: randomUrlToken(32),
+        resolve: job.resolve,
+        timer: null,
+      };
+      active.timer = setTimeout(() => {
+        if (!this.activeJobs.has(active.jobId)) return;
+        this.finishActiveJob(active);
+        active.resolve(Response.json({ error: 'Local judge timed out', code: 'LOCAL_JUDGE_TIMEOUT' }, { status: 504 }));
+      }, JUDGE_NODE_EXECUTION_LEASE_MS);
+      this.activeJobs.set(active.jobId, active);
+      slot.resolve(Response.json({
+        empty: false,
+        jobId: active.jobId,
+        leaseToken: active.leaseToken,
+        leaseExpiresAt: Date.now() + JUDGE_NODE_EXECUTION_LEASE_MS,
+        payload: job.payload,
+      }));
+    }
+  }
+
+  finishActiveJob(active) {
+    clearTimeout(active.timer);
+    this.activeJobs.delete(active.jobId);
+    this.activeSlotKeys.delete(active.slotKey);
+  }
+
+  cancelWaitingSlots(nodeId, status, code) {
+    const retained = [];
+    for (const slot of this.waitingSlots) {
+      if (slot.nodeId !== nodeId || slot.settled) {
+        retained.push(slot);
+        continue;
+      }
+      slot.settled = true;
+      clearTimeout(slot.timer);
+      this.waitingSlotKeys.delete(slot.slotKey);
+      slot.resolve(Response.json({ error: code, code }, { status }));
+    }
+    this.waitingSlots = retained;
   }
 }
 
@@ -268,12 +489,20 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminJudgeNodeRevoke(body, env);
+      } else if (body.type === 'admin_judge_node_update') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminJudgeNodeUpdate(body, env);
       } else if (body.type === 'judge_node_pair') {
         const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'judge-node-pair');
         if (rateLimitError) return rateLimitError;
         return await handleJudgeNodePair(body, env, request);
       } else if (body.type === 'judge_node_heartbeat') {
         return await handleJudgeNodeHeartbeat(body, env);
+      } else if (body.type === 'judge_node_claim') {
+        return await handleJudgeNodeClaim(body, env);
+      } else if (body.type === 'judge_node_complete') {
+        return await handleJudgeNodeComplete(body, env);
       } else if (body.type === 'admin_logout') {
         await revokeAdminSession(request, env);
         return jsonResponse({ success: true }, 200, {
@@ -930,11 +1159,13 @@ async function handleJudgeNodePair(body, env, request) {
     console.error('创建判题节点失败:', error);
     return jsonResponse({ error: '节点注册失败，请在管理端重新生成安装包' }, 503);
   }
+  const pullToken = await judgeNodeGatewayToken(env, nodeId);
   return jsonResponse({
     success: true,
     nodeId,
     nodeToken,
-    gatewayToken: await judgeNodeGatewayToken(env, nodeId),
+    pullToken,
+    gatewayToken: pullToken,
     heartbeatIntervalSeconds: 300,
     apiUrl: new URL(request.url).origin,
   });
@@ -946,10 +1177,76 @@ async function authenticateJudgeNode(body, env) {
   const nodeToken = String(body.nodeToken || '');
   if (!/^jn_[A-Za-z0-9_-]{22}$/.test(nodeId) || !/^[A-Za-z0-9_-]{43}$/.test(nodeToken)) return null;
   return await env.OJ_DB.prepare(`
-    SELECT id, name, status, revoked_at
+    SELECT id, name, status, max_slots, configured_slots, accepting_jobs, revoked_at
     FROM judge_nodes
     WHERE id = ?1 AND token_hash = ?2 AND revoked_at IS NULL
   `).bind(nodeId, await sha256Hex(nodeToken)).first();
+}
+
+function judgeBrokerStub(env) {
+  if (!env.JUDGE_BROKER) return null;
+  return env.JUDGE_BROKER.get(env.JUDGE_BROKER.idFromName('global-judge-broker'));
+}
+
+async function configureJudgeBrokerNode(env, nodeId, maxSlots, acceptingJobs) {
+  const broker = judgeBrokerStub(env);
+  if (!broker) return;
+  const response = await broker.fetch('https://judge-broker/configure', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nodeId, maxSlots, acceptingJobs }),
+  });
+  if (!response.ok) throw new Error('本地判题调度器配置失败');
+}
+
+async function authenticateJudgeNodePull(body, env) {
+  const nodeId = String(body.nodeId || '');
+  const pullToken = String(body.pullToken || '');
+  if (!/^jn_[A-Za-z0-9_-]{22}$/.test(nodeId) || !/^[A-Za-z0-9_-]{43}$/.test(pullToken)) return false;
+  return secureTextEqual(pullToken, await judgeNodeGatewayToken(env, nodeId));
+}
+
+async function handleJudgeNodeClaim(body, env) {
+  if (!await authenticateJudgeNodePull(body, env)) {
+    return jsonResponse({ error: '节点凭证无效或已撤销', code: 'NODE_AUTH_FAILED' }, 401);
+  }
+  const slotId = Math.trunc(Number(body.slotId));
+  if (!Number.isInteger(slotId) || slotId < 0 || slotId > 15) {
+    return jsonResponse({ error: '判题槽编号无效', code: 'SLOT_INVALID' }, 400);
+  }
+  const broker = judgeBrokerStub(env);
+  if (!broker) return jsonResponse({ error: '本地判题调度器尚未配置' }, 503);
+  return broker.fetch('https://judge-broker/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nodeId: body.nodeId, slotId }),
+  });
+}
+
+async function handleJudgeNodeComplete(body, env) {
+  if (!await authenticateJudgeNodePull(body, env)) {
+    return jsonResponse({ error: '节点凭证无效或已撤销', code: 'NODE_AUTH_FAILED' }, 401);
+  }
+  if (!/^jj_[0-9a-f-]{36}$/.test(String(body.jobId || ''))
+      || !/^[A-Za-z0-9_-]{43}$/.test(String(body.leaseToken || ''))
+      || !Number.isInteger(Number(body.slotId))
+      || !body.result || typeof body.result !== 'object' || Array.isArray(body.result)) {
+    return jsonResponse({ error: '判题结果格式不正确', code: 'JOB_RESULT_INVALID' }, 400);
+  }
+  const broker = judgeBrokerStub(env);
+  if (!broker) return jsonResponse({ error: '本地判题调度器尚未配置' }, 503);
+  return broker.fetch('https://judge-broker/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nodeId: body.nodeId,
+      slotId: Number(body.slotId),
+      jobId: body.jobId,
+      leaseToken: body.leaseToken,
+      status: Number(body.status) || 200,
+      result: body.result,
+    }),
+  });
 }
 
 async function handleJudgeNodeHeartbeat(body, env) {
@@ -987,15 +1284,34 @@ async function handleJudgeNodeHeartbeat(body, env) {
     String(body.lastError || '').trim().slice(0, 300),
     Date.now(),
   ).run();
-  return jsonResponse({ success: true, serverTime: Date.now(), nextHeartbeatSeconds: 300 });
+  const settings = await env.OJ_DB.prepare(`
+    SELECT max_slots, configured_slots, accepting_jobs, revoked_at
+    FROM judge_nodes WHERE id = ?1
+  `).bind(node.id).first();
+  const effectiveSlots = Math.max(1, Math.min(
+    maxSlots,
+    Math.trunc(Number(settings?.configured_slots) || maxSlots),
+  ));
+  const acceptingJobs = settings?.revoked_at == null
+    && Number(settings?.accepting_jobs ?? 1) === 1
+    && status === 'ready';
+  await configureJudgeBrokerNode(env, node.id, effectiveSlots, acceptingJobs);
+  return jsonResponse({
+    success: true,
+    serverTime: Date.now(),
+    nextHeartbeatSeconds: 300,
+    maxSlots: effectiveSlots,
+    acceptingJobs,
+  });
 }
 
 async function handleAdminJudgeNodesList(env) {
   if (!env.OJ_DB) return jsonResponse({ error: '节点数据库尚未配置' }, 503);
   const now = Date.now();
   const result = await env.OJ_DB.prepare(`
-    SELECT id, name, platform, agent_version, judge_version, endpoint_url, max_slots, busy_slots,
-           status, last_error, created_at, last_seen_at, revoked_at
+    SELECT id, name, platform, agent_version, judge_version, endpoint_url, max_slots,
+           configured_slots, accepting_jobs, busy_slots, status, last_error,
+           created_at, last_seen_at, revoked_at
     FROM judge_nodes
     ORDER BY created_at DESC
     LIMIT 100
@@ -1006,14 +1322,18 @@ async function handleAdminJudgeNodesList(env) {
     platform: node.platform,
     agentVersion: node.agent_version,
     judgeVersion: node.judge_version,
-    endpointReady: Boolean(node.endpoint_url),
-    maxSlots: Number(node.max_slots || 1),
+    endpointReady: true,
+    reportedSlots: Number(node.max_slots || 1),
+    maxSlots: Math.max(1, Math.min(Number(node.max_slots || 1), Number(node.configured_slots) || Number(node.max_slots || 1))),
+    acceptingJobs: Number(node.accepting_jobs ?? 1) === 1,
     busySlots: Number(node.busy_slots || 0),
     status: node.revoked_at != null
       ? 'revoked'
-      : now - Number(node.last_seen_at || 0) > JUDGE_NODE_OFFLINE_MS
+        : now - Number(node.last_seen_at || 0) > JUDGE_NODE_OFFLINE_MS
         ? 'offline'
-        : node.status,
+        : Number(node.accepting_jobs ?? 1) !== 1 && node.status === 'ready'
+          ? 'paused'
+          : node.status,
     lastError: node.last_error,
     createdAt: Number(node.created_at),
     lastSeenAt: Number(node.last_seen_at),
@@ -1033,7 +1353,37 @@ async function handleAdminJudgeNodeRevoke(body, env) {
     WHERE id = ?1 AND revoked_at IS NULL
   `).bind(nodeId, now).run();
   if (Number(result.meta?.changes || 0) !== 1) return jsonResponse({ error: '节点不存在或已撤销' }, 404);
+  const broker = judgeBrokerStub(env);
+  if (broker) {
+    await broker.fetch('https://judge-broker/revoke', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nodeId }),
+    });
+  }
   return jsonResponse({ success: true, nodeId, revokedAt: now });
+}
+
+async function handleAdminJudgeNodeUpdate(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '节点数据库尚未配置' }, 503);
+  const nodeId = String(body.nodeId || '');
+  if (!/^jn_[A-Za-z0-9_-]{22}$/.test(nodeId)) return jsonResponse({ error: '节点编号无效' }, 400);
+  const current = await env.OJ_DB.prepare(`
+    SELECT max_slots, status, revoked_at FROM judge_nodes WHERE id = ?1
+  `).bind(nodeId).first();
+  if (!current || current.revoked_at != null) return jsonResponse({ error: '节点不存在或已撤销' }, 404);
+  const reportedSlots = Math.max(1, Math.min(16, Number(current.max_slots) || 1));
+  const configuredSlots = Math.trunc(Number(body.maxSlots));
+  if (!Number.isInteger(configuredSlots) || configuredSlots < 1 || configuredSlots > reportedSlots) {
+    return jsonResponse({ error: `并行数必须在 1 到 ${reportedSlots} 之间` }, 400);
+  }
+  const acceptingJobs = body.acceptingJobs !== false;
+  await env.OJ_DB.prepare(`
+    UPDATE judge_nodes SET configured_slots = ?2, accepting_jobs = ?3 WHERE id = ?1 AND revoked_at IS NULL
+  `).bind(nodeId, configuredSlots, acceptingJobs ? 1 : 0).run();
+  await configureJudgeBrokerNode(
+    env, nodeId, configuredSlots,
+    acceptingJobs && current.status === 'ready',
+  );
+  return jsonResponse({ success: true, nodeId, maxSlots: configuredSlots, acceptingJobs });
 }
 
 function normalizeStudentUsername(value) {
@@ -4392,76 +4742,47 @@ async function acquireBackgroundJudgePermit(env) {
   return response.json();
 }
 
-async function availableJudgeNodeTargets(env) {
-  const now = Date.now();
-  if (!env.OJ_DB) return [];
-  if (judgeNodeTargetCache.expiresAt > now) return judgeNodeTargetCache.targets;
-  try {
-    const result = await env.OJ_DB.prepare(`
-      SELECT id, endpoint_url
-      FROM judge_nodes
-      WHERE status = 'ready' AND revoked_at IS NULL AND endpoint_url <> ''
-        AND last_seen_at >= ?1 AND busy_slots < max_slots
-      ORDER BY last_seen_at DESC
-      LIMIT 20
-    `).bind(now - JUDGE_NODE_OFFLINE_MS).all();
-    judgeNodeTargetCache = {
-      targets: (result.results || []).map(node => ({ id: node.id, baseUrl: node.endpoint_url, local: true })),
-      expiresAt: now + 15 * 1000,
-    };
-  } catch (error) {
-    console.error('读取本地判题节点失败，将使用备用服务:', error);
-    judgeNodeTargetCache = { targets: [], expiresAt: now + 5000 };
-  }
-  return judgeNodeTargetCache.targets;
-}
-
 async function fetchJudge0Submission(payload, env, options = {}) {
-  const localTargets = await availableJudgeNodeTargets(env);
-  const orderedLocalTargets = localTargets.length
-    ? localTargets.map((_, index) => localTargets[(judgeNodeTargetCursor + index) % localTargets.length])
-    : [];
-  if (localTargets.length) judgeNodeTargetCursor = (judgeNodeTargetCursor + 1) % localTargets.length;
-  const publicBaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
-  const targets = [...orderedLocalTargets, { id: 'public', baseUrl: publicBaseUrl, local: false }];
-  let lastNetworkError = null;
-
-  for (const target of targets) {
-    if (!target.local && options.backgroundRejudge === true) {
-      const permit = await acquireBackgroundJudgePermit(env);
-      if (!permit.allowed) {
-        return jsonResponse({
-          error: '后台判题已达到每分钟请求上限，将自动延迟重试',
-          code: 'BACKGROUND_JUDGE_RATE_LIMITED',
-          retryAfterMs: Number(permit.retryAfterMs || 60000),
-        }, 429);
-      }
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), target.local ? 15000 : JUDGE0_REQUEST_TIMEOUT_MS);
+  // 本地节点槽主动长轮询 JudgeBroker；提交请求只进入一个 FIFO 队列，由单一 DO
+  // 顺序完成“任务 ↔ 空闲槽”配对。没有本地槽时立即安全回退公共 Judge0。
+  const broker = judgeBrokerStub(env);
+  if (broker) {
     try {
-      const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-      if (target.local) headers['X-JCOJ-Node-Token'] = await judgeNodeGatewayToken(env, target.id);
-      const response = await fetch(
-        `${target.baseUrl}${target.local ? '/judge0' : ''}/submissions?base64_encoded=true&wait=true`,
-        { method: 'POST', headers, body: JSON.stringify(payload), signal: controller.signal },
-      );
-      // 节点离线、满载或凭证失效时尝试下一节点；Judge0本身的编译/运行结果正常返回。
-      if (target.local && (response.status === 401 || response.status === 403 || response.status === 404
-        || response.status === 429 || response.status >= 500)) {
-        lastNetworkError = new Error(`本地节点 ${target.id} 返回 ${response.status}`);
-        continue;
-      }
-      return response;
+      const localResponse = await broker.fetch('https://judge-broker/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload }),
+      });
+      if (localResponse.ok) return localResponse;
     } catch (error) {
-      lastNetworkError = error;
-      if (!target.local) throw error;
-    } finally {
-      clearTimeout(timeoutId);
+      console.error('本地判题调度失败，将使用公共服务:', error);
     }
   }
-  throw lastNetworkError || new Error('没有可用的代码执行服务');
+
+  if (options.backgroundRejudge === true) {
+    const permit = await acquireBackgroundJudgePermit(env);
+    if (!permit.allowed) {
+      return jsonResponse({
+        error: '后台判题已达到每分钟请求上限，将自动延迟重试',
+        code: 'BACKGROUND_JUDGE_RATE_LIMITED',
+        retryAfterMs: Number(permit.retryAfterMs || 60000),
+      }, 429);
+    }
+  }
+
+  const publicBaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), JUDGE0_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(`${publicBaseUrl}/submissions?base64_encoded=true&wait=true`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function handleExecute(body, env, options = {}) {

@@ -1,35 +1,26 @@
 #!/usr/bin/env python3
-"""Minimal trusted gateway between Cloudflare Worker and a local Judge0 instance."""
+"""Trusted pull worker between the JC OJ broker and a local Judge0 instance."""
 
 import base64
-import hmac
 import json
 import os
-import re
 import signal
-import subprocess
 import threading
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 STATE_DIR = "/var/lib/jc-oj-node"
 PAIRING_FILE = "/etc/jc-oj-node/pairing.json"
 CONFIG_FILE = os.path.join(STATE_DIR, "credentials.json")
 JUDGE0_URL = "http://127.0.0.1:2358"
-GATEWAY_HOST = "127.0.0.1"
-GATEWAY_PORT = 2359
-MAX_REQUEST_BYTES = 2 * 1024 * 1024
+MAX_RESPONSE_BYTES = 1536 * 1024
 ALLOWED_LANGUAGE_IDS = {92, 103, 105}
-TUNNEL_PATTERN = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com", re.I)
 
 state_lock = threading.Lock()
-state = {"busy": 0, "endpoint": "", "last_error": "", "stopping": False}
+state = {"busy": 0, "last_error": "", "stopping": False}
 config = {}
-slot_semaphore = None
 self_test = {"checked_at": 0.0, "ok": False, "error": "尚未完成实际编译自检"}
 
 
@@ -52,15 +43,23 @@ def api_post(api_url, payload, timeout=20):
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read(1024 * 1024).decode("utf-8"))
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise RuntimeError("server response is too large")
+        return json.loads(raw.decode("utf-8"))
 
 
 def load_or_pair():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r", encoding="utf-8") as handle:
             value = json.load(handle)
-        if value.get("format") != "jc-oj-judge-node-credentials-v1":
+        if value.get("format") not in {
+            "jc-oj-judge-node-credentials-v1",
+            "jc-oj-judge-node-credentials-v2",
+        }:
             raise RuntimeError("本地节点凭证格式不正确")
+        if not value.get("pullToken") and value.get("gatewayToken"):
+            value["pullToken"] = value["gatewayToken"]
         return value
     with open(PAIRING_FILE, "r", encoding="utf-8") as handle:
         pairing = json.load(handle)
@@ -75,11 +74,11 @@ def load_or_pair():
         "agentVersion": VERSION,
     })
     credentials = {
-        "format": "jc-oj-judge-node-credentials-v1",
+        "format": "jc-oj-judge-node-credentials-v2",
         "apiUrl": result["apiUrl"],
         "nodeId": result["nodeId"],
         "nodeToken": result["nodeToken"],
-        "gatewayToken": result["gatewayToken"],
+        "pullToken": result.get("pullToken") or result["gatewayToken"],
         "maxSlots": max(1, min(16, int(pairing.get("maxSlots") or 2))),
     }
     atomic_json_write(CONFIG_FILE, credentials)
@@ -98,6 +97,57 @@ def judge0_ready():
         return False
 
 
+def execute_judge0(payload):
+    if not isinstance(payload, dict) or payload.get("language_id") not in ALLOWED_LANGUAGE_IDS:
+        return 404, {"error": "Language is not enabled on this node"}
+    source = payload.get("source_code")
+    stdin = payload.get("stdin", "")
+    if not isinstance(source, str) or not isinstance(stdin, str) \
+            or len(source) > 1500000 or len(stdin) > 1500000:
+        return 400, {"error": "Invalid submission payload"}
+    try:
+        base64.b64decode(source, validate=True)
+        base64.b64decode(stdin, validate=True)
+    except Exception:
+        return 400, {"error": "Submission must use valid Base64"}
+    safe_payload = {
+        "source_code": source,
+        "stdin": stdin,
+        "language_id": payload["language_id"],
+        "cpu_time_limit": 3,
+        "wall_time_limit": 8,
+        "memory_limit": 262144,
+        "stack_limit": 131072,
+        "max_processes_and_or_threads": 16,
+        "max_file_size": 4096,
+        "enable_network": False,
+    }
+    request = urllib.request.Request(
+        f"{JUDGE0_URL}/submissions?base64_encoded=true&wait=true",
+        data=json.dumps(safe_payload, separators=(",", ":")).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=24) as response:
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(raw) > MAX_RESPONSE_BYTES:
+                return 200, {
+                    "stdout": None,
+                    "stderr": base64.b64encode("程序输出过多，已被安全终止".encode()).decode(),
+                    "exit_code": 153,
+                    "status": {"id": 11, "description": "Runtime Error"},
+                }
+            return response.status, json.loads(raw.decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        try:
+            return error.code, json.loads(error.read(MAX_RESPONSE_BYTES).decode("utf-8"))
+        except Exception:
+            return error.code, {"error": "Local Judge0 request failed"}
+    except Exception as error:
+        return 502, {"error": f"Local Judge0 unavailable: {error}"[:300]}
+
+
 def run_judge0_self_test(force=False):
     now = time.time()
     retry_interval = 3600 if self_test["ok"] else 30
@@ -106,172 +156,25 @@ def run_judge0_self_test(force=False):
     source = base64.b64encode(
         b'#include <stdio.h>\nint main(void){puts("JCOJ_OK");return 0;}\n'
     ).decode("ascii")
-    payload = {
-        "source_code": source,
-        "stdin": "",
-        "language_id": 103,
-        "cpu_time_limit": 2,
-        "wall_time_limit": 6,
-        "memory_limit": 131072,
-        "max_processes_and_or_threads": 8,
-        "max_file_size": 1024,
-        "enable_network": False,
-    }
-    request = urllib.request.Request(
-        f"{JUDGE0_URL}/submissions?base64_encoded=true&wait=true",
-        data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-        method="POST",
-    )
+    status, result = execute_judge0({"source_code": source, "stdin": "", "language_id": 103})
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            result = json.loads(response.read(MAX_REQUEST_BYTES).decode("utf-8"))
         stdout = base64.b64decode(result.get("stdout") or "").decode("utf-8", "replace").strip()
-        ok = result.get("status", {}).get("id") == 3 and stdout == "JCOJ_OK"
-        self_test.update({
-            "checked_at": now,
-            "ok": ok,
-            "error": "" if ok else "Judge0实际编译自检未通过",
-        })
-    except Exception as error:
-        self_test.update({"checked_at": now, "ok": False, "error": f"Judge0自检失败：{error}"[:300]})
-    return self_test["ok"]
-
-
-class GatewayHandler(BaseHTTPRequestHandler):
-    server_version = "JCOJNode/1"
-    sys_version = ""
-
-    def log_message(self, fmt, *args):
-        # Never write submitted source code or request bodies to logs.
-        print(f"gateway {self.client_address[0]} {fmt % args}", flush=True)
-
-    def send_json(self, status, value):
-        data = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        self.wfile.write(data)
-
-    def do_GET(self):
-        if self.path == "/health":
-            self.send_json(200, {"ready": judge0_ready(), "version": VERSION})
-        else:
-            self.send_json(404, {"error": "Not Found"})
-
-    def do_POST(self):
-        parsed = urllib.parse.urlsplit(self.path)
-        if parsed.path != "/judge0/submissions":
-            self.send_json(404, {"error": "Not Found"})
-            return
-        supplied_token = self.headers.get("X-JCOJ-Node-Token", "")
-        if not hmac.compare_digest(supplied_token, str(config.get("gatewayToken", ""))):
-            self.send_json(401, {"error": "Unauthorized"})
-            return
-        try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            content_length = 0
-        if content_length < 2 or content_length > MAX_REQUEST_BYTES:
-            self.send_json(413, {"error": "Request body too large"})
-            return
-        try:
-            body = json.loads(self.rfile.read(content_length).decode("utf-8"))
-        except Exception:
-            self.send_json(400, {"error": "Invalid JSON"})
-            return
-        language_id = body.get("language_id")
-        if language_id not in ALLOWED_LANGUAGE_IDS:
-            # Worker sees 404 as an unavailable local capability and safely uses its fallback.
-            self.send_json(404, {"error": "Language is not enabled on this node"})
-            return
-        source = body.get("source_code")
-        stdin = body.get("stdin", "")
-        if not isinstance(source, str) or not isinstance(stdin, str) or len(source) > 1500000 or len(stdin) > 1500000:
-            self.send_json(400, {"error": "Invalid submission payload"})
-            return
-        try:
-            base64.b64decode(source, validate=True)
-            base64.b64decode(stdin, validate=True)
-        except Exception:
-            self.send_json(400, {"error": "Submission must use valid Base64"})
-            return
-        if not slot_semaphore.acquire(blocking=False):
-            self.send_json(429, {"error": "Node is busy"})
-            return
-        with state_lock:
-            state["busy"] += 1
-        try:
-            safe_payload = {
-                "source_code": source,
-                "stdin": stdin,
-                "language_id": language_id,
-                "cpu_time_limit": 3,
-                "wall_time_limit": 8,
-                "memory_limit": 262144,
-                "stack_limit": 131072,
-                "max_processes_and_or_threads": 16,
-                "max_file_size": 4096,
-                "enable_network": False,
-            }
-            request = urllib.request.Request(
-                f"{JUDGE0_URL}/submissions?base64_encoded=true&wait=true",
-                data=json.dumps(safe_payload, separators=(",", ":")).encode("utf-8"),
-                headers={"Content-Type": "application/json", "Accept": "application/json"},
-                method="POST",
-            )
-            try:
-                with urllib.request.urlopen(request, timeout=30) as response:
-                    response_data = response.read(MAX_REQUEST_BYTES)
-                    self.send_response(response.status)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Content-Length", str(len(response_data)))
-                    self.send_header("Cache-Control", "no-store")
-                    self.end_headers()
-                    self.wfile.write(response_data)
-            except urllib.error.HTTPError as error:
-                response_data = error.read(MAX_REQUEST_BYTES)
-                self.send_response(error.code)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(response_data)))
-                self.end_headers()
-                self.wfile.write(response_data)
-            except Exception:
-                self.send_json(502, {"error": "Local Judge0 unavailable"})
-        finally:
-            with state_lock:
-                state["busy"] = max(0, state["busy"] - 1)
-            slot_semaphore.release()
-
-
-def tunnel_reader(process):
-    for line in iter(process.stderr.readline, ""):
-        match = TUNNEL_PATTERN.search(line)
-        if match:
-            with state_lock:
-                state["endpoint"] = match.group(0).lower()
-                state["last_error"] = ""
-
-
-def start_tunnel():
-    process = subprocess.Popen(
-        ["/usr/local/bin/cloudflared", "tunnel", "--no-autoupdate", "--protocol", "http2",
-         "--url", f"http://{GATEWAY_HOST}:{GATEWAY_PORT}"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, bufsize=1,
-    )
-    threading.Thread(target=tunnel_reader, args=(process,), daemon=True).start()
-    return process
+    except Exception:
+        stdout = ""
+    ok = status < 400 and result.get("status", {}).get("id") == 3 and stdout == "JCOJ_OK"
+    self_test.update({
+        "checked_at": now,
+        "ok": ok,
+        "error": "" if ok else "Judge0实际编译自检未通过",
+    })
+    return ok
 
 
 def heartbeat(status_override=None):
     with state_lock:
-        endpoint = state["endpoint"]
         busy = state["busy"]
         last_error = state["last_error"]
-    ready = judge0_ready() and run_judge0_self_test() and bool(endpoint)
+    ready = judge0_ready() and run_judge0_self_test()
     if not ready and not last_error:
         last_error = self_test["error"]
     status = status_override or ("ready" if ready else "installing")
@@ -282,12 +185,78 @@ def heartbeat(status_override=None):
         "platform": "Ubuntu 22.04 isolated VM",
         "agentVersion": VERSION,
         "judgeVersion": "1.13.1",
-        "endpointUrl": endpoint,
+        "endpointUrl": "",
         "maxSlots": config["maxSlots"],
         "busySlots": busy,
         "status": status,
         "lastError": last_error,
     })
+
+
+def complete_job(slot_id, job, status, result):
+    deadline = int(job.get("leaseExpiresAt") or 0) / 1000
+    payload = {
+        "type": "judge_node_complete",
+        "nodeId": config["nodeId"],
+        "pullToken": config["pullToken"],
+        "slotId": slot_id,
+        "jobId": job["jobId"],
+        "leaseToken": job["leaseToken"],
+        "status": status,
+        "result": result,
+    }
+    while not state["stopping"] and time.time() < deadline:
+        try:
+            api_post(config["apiUrl"], payload, timeout=15)
+            return
+        except urllib.error.HTTPError as error:
+            if error.code in {400, 401, 403, 409}:
+                return
+        except Exception:
+            pass
+        time.sleep(1)
+
+
+def slot_worker(slot_id):
+    backoff = 1
+    while True:
+        with state_lock:
+            if state["stopping"]:
+                return
+        try:
+            job = api_post(config["apiUrl"], {
+                "type": "judge_node_claim",
+                "nodeId": config["nodeId"],
+                "pullToken": config["pullToken"],
+                "slotId": slot_id,
+            }, timeout=60)
+            backoff = 1
+            if job.get("empty"):
+                time.sleep(max(0.1, min(2, float(job.get("retryAfterMs") or 500) / 1000)))
+                continue
+            if not job.get("jobId") or not job.get("leaseToken") or not isinstance(job.get("payload"), dict):
+                time.sleep(2)
+                continue
+            with state_lock:
+                state["busy"] += 1
+            try:
+                status, result = execute_judge0(job["payload"])
+                complete_job(slot_id, job, status, result)
+            finally:
+                with state_lock:
+                    state["busy"] = max(0, state["busy"] - 1)
+        except urllib.error.HTTPError as error:
+            if error.code == 401:
+                with state_lock:
+                    state["stopping"] = True
+                return
+            time.sleep(2 if error.code == 409 else backoff)
+            backoff = min(30, backoff * 2)
+        except Exception as error:
+            with state_lock:
+                state["last_error"] = str(error)[:300]
+            time.sleep(backoff)
+            backoff = min(30, backoff * 2)
 
 
 def stop_handler(_signum, _frame):
@@ -296,48 +265,51 @@ def stop_handler(_signum, _frame):
 
 
 def main():
-    global config, slot_semaphore
+    global config
     config = load_or_pair()
-    slot_semaphore = threading.BoundedSemaphore(config["maxSlots"])
     signal.signal(signal.SIGTERM, stop_handler)
     signal.signal(signal.SIGINT, stop_handler)
-    gateway = ThreadingHTTPServer((GATEWAY_HOST, GATEWAY_PORT), GatewayHandler)
-    gateway.daemon_threads = True
-    threading.Thread(target=gateway.serve_forever, daemon=True).start()
-    tunnel = start_tunnel()
-    next_heartbeat = 0
-    try:
-        while True:
-            with state_lock:
-                if state["stopping"]:
-                    break
-            if tunnel.poll() is not None:
-                with state_lock:
-                    state["endpoint"] = ""
-                    state["last_error"] = "安全隧道已断开，正在自动重连"
-                time.sleep(5)
-                tunnel = start_tunnel()
-            if time.time() >= next_heartbeat:
-                try:
-                    heartbeat()
-                    next_heartbeat = time.time() + (300 if self_test["ok"] else 30)
-                except urllib.error.HTTPError as error:
-                    if error.code == 401:
-                        # Revoked nodes stop exposing their gateway and do not repeatedly consume API resources.
-                        break
-                    next_heartbeat = time.time() + 60
-                except Exception as error:
-                    with state_lock:
-                        state["last_error"] = str(error)[:300]
-                    next_heartbeat = time.time() + 60
-            time.sleep(2)
-    finally:
-        gateway.shutdown()
-        tunnel.terminate()
+    # Register the node with the single broker before any slot starts claiming work.
+    # A failed first heartbeat is retried instead of letting an unregistered slot interpret 401 as revocation.
+    while True:
         try:
-            tunnel.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            tunnel.kill()
+            heartbeat()
+            break
+        except urllib.error.HTTPError as error:
+            if error.code == 401:
+                return
+        except Exception as error:
+            with state_lock:
+                state["last_error"] = str(error)[:300]
+        time.sleep(10)
+    threads = [
+        threading.Thread(target=slot_worker, args=(slot_id,), daemon=True)
+        for slot_id in range(config["maxSlots"])
+    ]
+    for thread in threads:
+        thread.start()
+    next_heartbeat = time.time() + (300 if self_test["ok"] else 30)
+    while True:
+        with state_lock:
+            if state["stopping"]:
+                break
+        if time.time() >= next_heartbeat:
+            try:
+                heartbeat()
+                with state_lock:
+                    state["last_error"] = ""
+                next_heartbeat = time.time() + (300 if self_test["ok"] else 30)
+            except urllib.error.HTTPError as error:
+                if error.code == 401:
+                    break
+                next_heartbeat = time.time() + 60
+            except Exception as error:
+                with state_lock:
+                    state["last_error"] = str(error)[:300]
+                next_heartbeat = time.time() + 60
+        time.sleep(1)
+    with state_lock:
+        state["stopping"] = True
 
 
 if __name__ == "__main__":

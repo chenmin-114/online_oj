@@ -49,9 +49,17 @@ max_concurrency = 6
 name = "JUDGE0_RATE_GATE"
 class_name = "Judge0RateGate"
 
+[[durable_objects.bindings]]
+name = "JUDGE_BROKER"
+class_name = "JudgeBroker"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Judge0RateGate"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["JudgeBroker"]
 
 [[ratelimits]]
 name = "ADMIN_LOGIN_RATE_LIMITER"

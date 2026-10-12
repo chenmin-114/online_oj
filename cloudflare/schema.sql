@@ -360,6 +360,8 @@ CREATE TABLE IF NOT EXISTS judge_nodes (
   judge_version TEXT NOT NULL DEFAULT '',
   endpoint_url TEXT NOT NULL DEFAULT '',
   max_slots INTEGER NOT NULL DEFAULT 1,
+  configured_slots INTEGER,
+  accepting_jobs INTEGER NOT NULL DEFAULT 1 CHECK (accepting_jobs IN (0, 1)),
   busy_slots INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'installing'
     CHECK (status IN ('installing', 'ready', 'paused', 'error', 'revoked')),

@@ -912,24 +912,47 @@ class OJAdmin {
       const revoke = node.status === 'revoked'
         ? ''
         : `<button type="button" class="table-link table-link-button warning" data-revoke-judge-node="${this.escape(node.id)}">撤销节点</button>`;
+      const controls = node.status === 'revoked' ? '' : `<div class="judge-node-controls">
+        <label>并行
+          <select class="admin-input" data-judge-node-slots="${this.escape(node.id)}">
+            ${Array.from({ length: Math.max(1, Number(node.reportedSlots || node.maxSlots || 1)) }, (_, index) => index + 1)
+              .map(value => `<option value="${value}"${value === Number(node.maxSlots) ? ' selected' : ''}>${value}</option>`).join('')}
+          </select>
+        </label>
+        <button type="button" class="table-link table-link-button" data-save-judge-node="${this.escape(node.id)}">保存</button>
+        <button type="button" class="table-link table-link-button" data-toggle-judge-node="${this.escape(node.id)}">${node.acceptingJobs ? '暂停' : '恢复'}</button>
+      </div>`;
       return `<div class="judge-node-item">
         <div class="judge-node-item-main"><strong>${this.escape(node.name)}</strong><small>${this.escape(details)} · 最近连接 ${this.escape(lastSeen)}</small>${error}</div>
-        <span class="judge-node-capacity">执行槽 ${this.escape(node.busySlots)}/${this.escape(node.maxSlots)}</span>
+        <span class="judge-node-capacity">执行槽 ${this.escape(node.busySlots)}/${this.escape(node.maxSlots)}（设备上限 ${this.escape(node.reportedSlots || node.maxSlots)}）</span>
+        ${controls}
         <div><span class="judge-node-state ${this.escape(node.status)}">${this.escape(statusLabels[node.status] || node.status)}</span>${revoke}</div>
       </div>`;
     }).join('');
   }
 
   async handleJudgeNodeAction(event) {
-    const button = event.target.closest('[data-revoke-judge-node]');
+    const button = event.target.closest('[data-revoke-judge-node], [data-save-judge-node], [data-toggle-judge-node]');
     if (!button) return;
-    const node = this.judgeNodes.find(item => item.id === button.dataset.revokeJudgeNode);
-    if (!node || !confirm(`确定撤销判题节点“${node.name}”吗？撤销后该电脑必须重新生成安装包才能接入。`)) return;
+    const nodeId = button.dataset.revokeJudgeNode || button.dataset.saveJudgeNode || button.dataset.toggleJudgeNode;
+    const node = this.judgeNodes.find(item => item.id === nodeId);
+    if (!node) return;
+    if (button.dataset.revokeJudgeNode
+        && !confirm(`确定撤销判题节点“${node.name}”吗？撤销后该电脑必须重新生成安装包才能接入。`)) return;
     button.disabled = true;
     try {
-      await this.adminRequest('admin_judge_node_revoke', { nodeId: node.id });
+      if (button.dataset.revokeJudgeNode) {
+        await this.adminRequest('admin_judge_node_revoke', { nodeId: node.id });
+      } else {
+        const slots = Number(document.querySelector(`[data-judge-node-slots="${CSS.escape(node.id)}"]`)?.value || node.maxSlots);
+        await this.adminRequest('admin_judge_node_update', {
+          nodeId: node.id,
+          maxSlots: slots,
+          acceptingJobs: button.dataset.toggleJudgeNode ? !node.acceptingJobs : node.acceptingJobs,
+        });
+      }
       await this.loadJudgeNodes();
-      this.toast('判题节点已撤销');
+      this.toast(button.dataset.revokeJudgeNode ? '判题节点已撤销' : '判题节点设置已保存');
     } catch (error) {
       this.toast(`撤销失败：${error.message}`);
       button.disabled = false;
@@ -951,7 +974,7 @@ class OJAdmin {
     status.textContent = '正在生成一次性安全配对信息并封装安装包...';
     try {
       const pairing = await this.adminRequest('admin_judge_node_pairing_create', { name });
-      const response = await fetch(`downloads/jc-oj-judge-node-installer.zip?v=20261012-01`, { cache: 'no-store' });
+      const response = await fetch(`downloads/jc-oj-judge-node-installer.zip?v=20261012-02`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`安装器下载失败 (${response.status})`);
       const zip = await window.JSZip.loadAsync(await response.arrayBuffer());
       zip.file('pairing.json', JSON.stringify({
