@@ -3,6 +3,7 @@ set -Eeuo pipefail
 umask 077
 
 PAIRING_B64URL="${1:-}"
+INSTALL_MODE="${2:-}"
 if [[ ! "$PAIRING_B64URL" =~ ^[A-Za-z0-9_-]+$ ]]; then
   echo "Invalid pairing payload" >&2
   exit 2
@@ -24,7 +25,40 @@ with open(path, 'wb') as handle:
 os.chmod(path, 0o600)
 PY
 
+if [[ "$INSTALL_MODE" == "--defer" ]]; then
+  echo '[准备阶段] 已写入安全配对信息，正在安排首次开机安装任务...'
+  install -m 700 "$0" /usr/local/sbin/jc-oj-node-bootstrap.sh
+  printf '%s\n' "$PAIRING_B64URL" >/etc/jc-oj-node/pairing.b64
+  chmod 600 /etc/jc-oj-node/pairing.b64
+  cat >/etc/systemd/system/jc-oj-node-bootstrap.service <<'UNIT'
+[Unit]
+Description=Install JC OJ local judge node on first boot
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=3600
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'exec /usr/local/sbin/jc-oj-node-bootstrap.sh "$(cat /etc/jc-oj-node/pairing.b64)" --install'
+StandardOutput=journal+console
+StandardError=journal+console
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  install -d -m 755 /etc/systemd/system/multi-user.target.wants
+  ln -sfn /etc/systemd/system/jc-oj-node-bootstrap.service \
+    /etc/systemd/system/multi-user.target.wants/jc-oj-node-bootstrap.service
+  echo '[准备完成] Ubuntu 首次启动后将继续安装 Docker、Judge0 和节点代理。'
+  exit 0
+fi
+
+echo '[1/6] 正在更新 Ubuntu 软件索引...'
 apt-get update
+echo '[2/6] 正在安装 Docker 和节点运行依赖...'
 apt-get install -y --no-install-recommends ca-certificates curl unzip openssl docker.io docker-compose-v2 python3 python3-websocket
 
 # Judge0 1.13.1 currently requires cgroup v1. This applies only inside the dedicated VM.
@@ -45,6 +79,7 @@ cat >/etc/docker/daemon.json <<'JSON'
 JSON
 systemctl enable --now docker
 
+echo '[3/6] 正在下载并校验 Judge0...'
 JUDGE_ZIP=/tmp/judge0-v1.13.1.zip
 curl --fail --location --proto '=https' --tlsv1.2 \
   'https://github.com/judge0/judge0/releases/download/v1.13.1/judge0-v1.13.1.zip' \
@@ -86,11 +121,13 @@ chmod 600 judge0.conf
 # Judge0 API is reachable only from localhost; the VM uses NAT and has no forwarded ports.
 sed -i 's/- "2358:2358"/- "127.0.0.1:2358:2358"/' docker-compose.yml
 sed -i 's/max-size: 100M/max-size: 20M/' docker-compose.yml
+echo '[4/6] 正在下载 Judge0 容器镜像，此阶段通常耗时最长...'
 docker compose pull
 docker compose up -d db redis
 sleep 12
 docker compose up -d
 
+echo '[5/6] 正在安装并保护机创OJ节点代理...'
 NODE_AGENT=/tmp/jc-oj-node-agent.py
 curl --fail --location --proto '=https' --tlsv1.2 \
   'https://jc-oj.online/downloads/jc-oj-node-agent.py' --output "$NODE_AGENT"
@@ -134,6 +171,12 @@ systemctl enable jc-oj-node.service
 passwd -l jcnode >/dev/null 2>&1 || true
 rm -f /root/.bash_history /home/jcnode/.bash_history
 
+echo '[6/6] 正在启动节点并完成安全清理...'
 systemctl start jc-oj-node.service || true
+systemctl disable jc-oj-node-bootstrap.service >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/jc-oj-node-bootstrap.service \
+  /etc/systemd/system/multi-user.target.wants/jc-oj-node-bootstrap.service \
+  /etc/jc-oj-node/pairing.b64 /usr/local/sbin/jc-oj-node-bootstrap.sh
+systemctl daemon-reload
 sync
 shutdown -r +1 'Finishing JC OJ judge node isolation setup'

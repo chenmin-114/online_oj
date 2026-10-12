@@ -974,7 +974,7 @@ class OJAdmin {
     status.textContent = '正在生成一次性安全配对信息并封装安装包...';
     try {
       const pairing = await this.adminRequest('admin_judge_node_pairing_create', { name });
-      const response = await fetch(`downloads/jc-oj-judge-node-installer.zip?v=20261012-08`, { cache: 'no-store' });
+      const response = await fetch(`downloads/jc-oj-judge-node-installer.zip?v=20261012-09`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`安装器下载失败 (${response.status})`);
       const zip = await window.JSZip.loadAsync(await response.arrayBuffer());
       zip.file('pairing.json', JSON.stringify({
