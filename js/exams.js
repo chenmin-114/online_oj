@@ -822,7 +822,7 @@ class ExamUI {
     const results = submission.grading?.partResults || [];
     container.innerHTML = `<div class="exam-result-card"><h3>当前得分：${this.escape(submission.totalScore)} / ${this.escape(this.paper.totalScore)}</h3><div class="exam-result-parts">${results.map(result => {
       const feedback = String(result.feedback || '').trim();
-      return `<div><span>${this.escape(result.partId)}</span><strong class="${result.status === 'correct' ? 'success' : result.status === 'pending' ? 'warning' : 'error'}">${this.escape({ correct: '正确', incorrect: '错误', pending: '待人工批改', graded: '已评分' }[result.status] || result.status)}</strong><b>${this.escape(result.effectiveScore || 0)} / ${this.escape(result.maxScore)}</b>${feedback ? `<p>${this.escape(feedback)}</p>` : ''}</div>`;
+      return `<div><span>${this.escape(result.partId)}</span><strong class="${result.status === 'correct' ? 'success' : ['pending', 'partial'].includes(result.status) ? 'warning' : 'error'}">${this.escape({ correct: '正确', partial: '部分得分', incorrect: '错误', pending: '待人工批改', graded: '已评分' }[result.status] || result.status)}</strong><b>${this.escape(result.effectiveScore || 0)} / ${this.escape(result.maxScore)}</b>${feedback ? `<p>${this.escape(feedback)}</p>` : ''}</div>`;
     }).join('')}</div></div>`;
   }
 

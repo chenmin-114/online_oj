@@ -2665,6 +2665,7 @@ async function enrichExamProgrammingParts(paper, env, group) {
     if (problem) {
       const publicProblem = { ...problem };
       delete publicProblem.testCases;
+      delete publicProblem.partialCredit;
       delete publicProblem.showTestDetails;
       part.problem = publicProblem;
     }
@@ -3136,6 +3137,7 @@ async function handleStudentExamProblemGet(body, env) {
   }
   const publicProblem = { ...problem };
   delete publicProblem.testCases;
+  delete publicProblem.partialCredit;
   delete publicProblem.showTestDetails;
   return jsonResponse({ problem: publicProblem, timing });
 }
@@ -3254,13 +3256,15 @@ async function gradeExamAnswers(paper, answers, username, group, env, executionO
               language,
               code,
             }, env, null, false, true, executionOptions);
-            result.status = judged.passed ? 'correct' : 'incorrect';
-            result.autoScore = judged.passed ? part.points : 0;
+            const partialScore = Math.min(Number(part.points || 0), Number(judged.partialScore || 0));
+            result.status = judged.passed ? 'correct' : partialScore > 0 ? 'partial' : 'incorrect';
+            result.autoScore = judged.passed ? part.points : partialScore;
             result.judge = {
               passed: judged.passed,
               passedTests: judged.passedTests,
               totalTests: judged.totalTests,
               totalTime: judged.totalTime,
+              partialScore,
             };
           } catch (error) {
             if (executionOptions.throwJudgeErrors === true) throw error;
@@ -4729,6 +4733,7 @@ async function handleData(request, env) {
       }
       // 学生只能读取公开题面，隐藏测试点只保存在 KV 中。
       delete problem.testCases;
+      delete problem.partialCredit;
     }
 
     problem.group = group;
@@ -5273,6 +5278,7 @@ async function handleCreateProblem(body, env) {
   await env.OJ_TESTS.put(`problem:${group}:${problem.id}`, JSON.stringify(problem));
   const publicProblem = { ...problem, group };
   delete publicProblem.testCases;
+  delete publicProblem.partialCredit;
 
   const createProblemRes = await fetch(problemUrl, {
     method: 'PUT',
@@ -5343,6 +5349,10 @@ async function handleUpdateProblem(body, env) {
   if (validation.error) return jsonResponse({ error: validation.error }, 400);
   const { problem, file } = validation;
   const previousHiddenProblem = await readHiddenProblem(problem.id, env, group);
+  // 管理端旧版编辑器还不了解降级判题配置；普通题面编辑不能意外抹掉它。
+  if (!problem.partialCredit && previousHiddenProblem?.partialCredit) {
+    problem.partialCredit = previousHiddenProblem.partialCredit;
+  }
   const testCasesChanged = JSON.stringify(previousHiddenProblem?.testCases || [])
     !== JSON.stringify(problem.testCases);
   const imageValidation = validateProblemImages(body.images, problem.id, group);
@@ -5416,6 +5426,7 @@ async function handleUpdateProblem(body, env) {
   await env.OJ_TESTS.put(`problem:${group}:${problem.id}`, JSON.stringify(problem));
   const publicProblem = { ...problem, group };
   delete publicProblem.testCases;
+  delete publicProblem.partialCredit;
 
   const updateProblemRes = await fetch(problemUrl, {
     method: 'PUT',
@@ -5934,14 +5945,15 @@ async function rejudgeExamSubmission(job, env) {
       }, env, null, false, true, { backgroundRejudge: true }) : null;
       const index = partResults.findIndex(result => result.partId === part.id);
       const existing = index >= 0 ? partResults[index] : {};
+      const partialScore = Math.min(Number(part.points || 0), Number(judged?.partialScore || 0));
       const updated = {
         ...existing,
         questionId: question.id,
         partId: part.id,
         type: 'programming',
         maxScore: Number(part.points || 0),
-        status: judged?.passed ? 'correct' : 'incorrect',
-        autoScore: judged?.passed ? Number(part.points || 0) : 0,
+        status: judged?.passed ? 'correct' : partialScore > 0 ? 'partial' : 'incorrect',
+        autoScore: judged?.passed ? Number(part.points || 0) : partialScore,
         manualScore: Number(existing.manualScore || 0),
         feedback: '',
         judge: judged ? {
@@ -5949,6 +5961,7 @@ async function rejudgeExamSubmission(job, env) {
           passedTests: judged.passedTests,
           totalTests: judged.totalTests,
           totalTime: judged.totalTime,
+          partialScore,
         } : null,
       };
       if (index >= 0) partResults[index] = updated;
@@ -6058,6 +6071,34 @@ function validateProblem(input, requestedFile) {
     'maze_path', 'integer_sequence', 'sensor_pipeline', 'last_integer', 'task_schedule',
   ].includes(input.outputChecker) ? input.outputChecker : 'exact';
 
+  let partialCredit = null;
+  if (input.partialCredit !== undefined && input.partialCredit !== null) {
+    const rule = input.partialCredit;
+    const maxScore = Number(rule?.maxScore);
+    if (!rule || typeof rule !== 'object' || Array.isArray(rule)
+      || !Number.isFinite(maxScore) || maxScore <= 0 || maxScore > 100) {
+      return { error: '降级方案分值不正确' };
+    }
+    if (rule.outputChecker !== 'digit_reverse') {
+      return { error: '降级方案判题方式不受支持' };
+    }
+    if (!Array.isArray(rule.testCases) || rule.testCases.length < 1 || rule.testCases.length > 10) {
+      return { error: '降级方案测试点数量必须在 1 到 10 之间' };
+    }
+    const partialTestCases = [];
+    for (const [index, testCase] of rule.testCases.entries()) {
+      if (!testCase || typeof testCase.input !== 'string' || typeof testCase.expectedOutput !== 'string') {
+        return { error: `降级方案测试点 ${index + 1} 格式不正确` };
+      }
+      partialTestCases.push({ input: testCase.input, expectedOutput: testCase.expectedOutput });
+    }
+    partialCredit = {
+      maxScore: Math.round(maxScore * 100) / 100,
+      outputChecker: rule.outputChecker,
+      testCases: partialTestCases,
+    };
+  }
+
   const problem = {
     id,
     title: input.title.trim().slice(0, 100),
@@ -6084,6 +6125,7 @@ function validateProblem(input, requestedFile) {
     ...(outputChecker !== 'exact' ? { outputChecker } : {}),
     ...(Object.keys(codeTemplates).length ? { codeTemplates } : {}),
     ...(pythonFunction ? { pythonFunction } : {}),
+    ...(partialCredit ? { partialCredit } : {}),
   };
 
   return { problem, file };
@@ -6509,11 +6551,17 @@ function studentRecordsOutputMatches(output, expectedOutput) {
   if (expectedLines.length < 5) return false;
   const normalized = String(output || '');
   const studentLines = expectedLines.slice(0, -2);
-  for (const line of studentLines) {
+  // 原题只要求输出先前输入的一个学生，并未要求再次输出结构体数组中的全部三人。
+  // 因此只校验至少一名学生的信息，以及三人成绩的总分和平均分。
+  const hasStudentInfo = studentLines.some(line => {
     const parts = line.trim().split(/\s+/);
     if (parts.length < 3 || !normalized.includes(parts[1])) return false;
-  }
-  return containsNumberSubsequence(judgeNumberList(normalized), judgeNumberList(expectedOutput), 0.011);
+    const studentNumbers = judgeNumberList(line);
+    return containsNumberSubsequence(judgeNumberList(normalized), studentNumbers, 0.011);
+  });
+  const summaryNumbers = judgeNumberList(expectedLines.slice(-2).join('\n'));
+  return hasStudentInfo
+    && containsNumberSubsequence(judgeNumberList(normalized), summaryNumbers, 0.011);
 }
 
 function wordReverseOutputMatches(output, expectedOutput) {
@@ -6536,6 +6584,21 @@ function wordReverseOutputMatches(output, expectedOutput) {
     || /(?:句子|字符串|数字)?是回文/.test(outputText) && !/不是回文/.test(outputText);
   const saysNo = /palindrome\s*[:：]?\s*no/i.test(outputText)
     || /不是回文/.test(outputText);
+  return palindromeExpected ? saysYes : saysNo;
+}
+
+function digitReverseOutputMatches(output, expectedOutput) {
+  const expected = String(expectedOutput || '');
+  const actual = String(output || '');
+  const expectedNumbers = judgeNumberList(expected);
+  if (expectedNumbers.length < 2
+    || !containsNumberSubsequence(judgeNumberList(actual), expectedNumbers.slice(0, 2))) return false;
+  const palindromeExpected = /(?:^|\s)(?:yes|是)(?:\s|$)/i.test(expected)
+    || /(?:数字|字符串)?是回文/.test(expected) && !/不是回文/.test(expected);
+  const saysYes = /(?:palindrome|回文)\s*[:：]?\s*yes/i.test(actual)
+    || /(?:数字|字符串)?是回文/.test(actual) && !/不是回文/.test(actual);
+  const saysNo = /(?:palindrome|回文)\s*[:：]?\s*no/i.test(actual)
+    || /不是回文/.test(actual);
   return palindromeExpected ? saysYes : saysNo;
 }
 
@@ -6639,6 +6702,7 @@ function judgeOutputMatches(problem, testCase, execution) {
     }
     case 'student_records': return studentRecordsOutputMatches(output, expected);
     case 'word_reverse': return wordReverseOutputMatches(output, expected);
+    case 'digit_reverse': return digitReverseOutputMatches(output, expected);
     case 'maze_path': return mazeOutputMatches(output, testCase.input);
     case 'integer_sequence': return containsNumberSubsequence(judgeNumberList(output), judgeNumberList(expected));
     case 'last_integer': return judgeNumberList(output).at(-1) === judgeNumberList(expected).at(-1);
@@ -6654,9 +6718,40 @@ function judgeInputVariants(problem, input) {
     if (parts.length === 2) return [...new Set([value, `${parts[0]}.${parts[1]}`, `${parts[0]}/${parts[1]}`])];
   }
   if (problem.outputChecker === 'student_records') {
-    return [...new Set([value, `3\n${value}`])];
+    const firstStudent = value.trim().split(/\r?\n/).find(Boolean) || '';
+    // 兼容两种忠于原题的实现：直接把三人数组的首项作为“一个学生”，或先单独
+    // 输入并输出一人，再读取三人数组。另保留旧模板曾使用的前置人数 N。
+    return [...new Set([
+      value,
+      `3\n${value}`,
+      ...(firstStudent ? [`${firstStudent}\n${value}`] : []),
+    ])];
   }
   return [value];
+}
+
+async function runPartialCreditJudge(problem, executionScript, languageId, env, executionOptions) {
+  const rule = problem?.partialCredit;
+  if (!rule || !Array.isArray(rule.testCases) || !rule.testCases.length) return null;
+  const partialProblem = { ...problem, outputChecker: rule.outputChecker };
+  let totalTime = 0;
+  for (const testCase of rule.testCases) {
+    const execution = await executeWithRetry({
+      script: executionScript,
+      stdin: testCase.input,
+      languageId,
+    }, env, null, executionOptions);
+    totalTime += Number.isFinite(Number(execution.time)) ? Number(execution.time) : 0;
+    if (execution.compileError || !judgeOutputMatches(partialProblem, testCase, execution)) {
+      return { passed: false, totalTime };
+    }
+  }
+  return {
+    passed: true,
+    score: Number(rule.maxScore || 0),
+    totalTests: rule.testCases.length,
+    totalTime,
+  };
 }
 
 async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allowDraft = false, executionOptions = {}) {
@@ -6667,6 +6762,7 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
   const results = [];
   let passedTests = 0;
   let totalTime = 0;
+  let compileFailed = false;
   const executionScript = language === 'python'
     && problem.pythonJudgeMode === 'function'
     && problem.pythonFunction
@@ -6695,6 +6791,7 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
         });
       }, executionOptions);
       passed = judgeOutputMatches(problem, testCase, execution);
+      if (execution.compileError) compileFailed = true;
       totalTime += Number.isFinite(Number(execution.time)) ? Number(execution.time) : 0;
       if (passed || execution.compileError) break;
     }
@@ -6730,6 +6827,10 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
   }
 
   const passed = passedTests === testCases.length;
+  const partialCredit = !passed && !compileFailed
+    ? await runPartialCreditJudge(problem, executionScript, languageId, env, executionOptions)
+    : null;
+  totalTime += Number(partialCredit?.totalTime || 0);
   const result = {
     problemId,
     group,
@@ -6738,6 +6839,8 @@ async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allo
     passedTests,
     totalTests: testCases.length,
     totalTime,
+    partialScore: partialCredit?.passed ? Number(partialCredit.score || 0) : 0,
+    partialPassed: partialCredit?.passed === true,
     results,
     timestamp: Date.now(),
   };

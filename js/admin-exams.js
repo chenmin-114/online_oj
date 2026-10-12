@@ -868,7 +868,7 @@ class ExamAdmin {
         examId: this.previewPaper.id,
         answers: this.collectPreviewAnswers(),
       });
-      resultNode.innerHTML = `<div class="preview-exam-result"><h3>预览得分：${this.escape(result.totalScore)} / ${this.escape(this.previewPaper.totalScore)}</h3><p>已自动批改 ${this.escape(result.gradedCount)}/${this.escape(result.totalParts)} 个小题；简答和未命中的填空仍显示待人工批改。</p>${result.grading.partResults.map(item => `<div><span>${this.escape(item.partId)}</span><strong class="${item.status === 'correct' ? 'success' : item.status === 'pending' ? 'warning' : 'error'}">${this.escape({ correct: '正确', incorrect: '错误', pending: '待人工批改', graded: '已评分' }[item.status] || item.status)}</strong><b>${this.escape(item.effectiveScore || 0)} / ${this.escape(item.maxScore)}</b>${item.judge ? `<small>测试点 ${this.escape(item.judge.passedTests)}/${this.escape(item.judge.totalTests)}</small>` : ''}</div>`).join('')}</div>`;
+      resultNode.innerHTML = `<div class="preview-exam-result"><h3>预览得分：${this.escape(result.totalScore)} / ${this.escape(this.previewPaper.totalScore)}</h3><p>已自动批改 ${this.escape(result.gradedCount)}/${this.escape(result.totalParts)} 个小题；简答和未命中的填空仍显示待人工批改。</p>${result.grading.partResults.map(item => `<div><span>${this.escape(item.partId)}</span><strong class="${item.status === 'correct' ? 'success' : ['pending', 'partial'].includes(item.status) ? 'warning' : 'error'}">${this.escape({ correct: '正确', partial: '部分得分', incorrect: '错误', pending: '待人工批改', graded: '已评分' }[item.status] || item.status)}</strong><b>${this.escape(item.effectiveScore || 0)} / ${this.escape(item.maxScore)}</b>${item.judge ? `<small>测试点 ${this.escape(item.judge.passedTests)}/${this.escape(item.judge.totalTests)}</small>` : ''}</div>`).join('')}</div>`;
     } catch (error) {
       resultNode.innerHTML = `<p class="empty-cell error">提交失败：${this.escape(error.message)}</p>`;
     } finally {
@@ -1504,7 +1504,7 @@ class ExamAdmin {
         ? '已人工评分（Claude 不会覆盖）'
         : result.aiAdopted
           ? (result.aiAdopted.automatic ? 'Claude 高置信度自动评分' : '已采纳 Claude 评分')
-          : ({ correct: '正确', incorrect: '错误', graded: '已人工评分', pending: '待人工批改' }[result.status] || result.status);
+          : ({ correct: '正确', partial: '部分得分', incorrect: '错误', graded: '已人工评分', pending: '待人工批改' }[result.status] || result.status);
       const aiSuggestion = result.aiSuggestion;
       const aiCanApply = aiSuggestion && (aiSuggestion.forceRegrade === true
         || (result.gradingSource !== 'manual'

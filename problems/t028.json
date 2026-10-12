@@ -3,7 +3,7 @@
   "title": "简易 FreeRTOS 风格任务调度器",
   "difficulty": "hard",
   "status": "draft",
-  "description": "阅读第 18 题资料，模拟 FreeRTOS 调度器思想，用 C 语言实现一个简单的任务调度器。\n\n1. 声明 `Task` 结构体，至少包含任务名、优先级、状态、阻塞剩余时间和任务函数指针。\n2. 实现创建任务函数，返回初始状态为 Ready、阻塞时间为 0 的结构体对象。\n3. 创建 task1、task2、task3、task4，优先级分别为 3、2、2、1，每个任务函数输出任务名。\n4. 实现 `schedule()`：选择优先级最高的 Ready 任务；同优先级任务轮流执行；运行一次后进入 Blocked，`blocktime=2`。\n5. 实现 `Tick()`：调用一次 `schedule()`，每个时间片结束时更新阻塞任务，阻塞时间减到 0 时恢复 Ready。\n6. 实现 `SuspendTask()` 和 `ResumeTask()`。\n7. 模拟 10 个时间片：运行 3 个 Tick 后挂起优先级为 3 的任务，运行 7 个 Tick 后恢复该任务。",
+  "description": "阅读文件夹第 18 题资料，模拟 FreeRTOS 调度器思想，用 C 语言实现一个简单的任务调度器，模拟以下功能：\n\n1. 声明一个任务结构体对象（结构体类名为 `Task`），至少包含：任务名 `char *name`、优先级 `int priority`、当前状态 `int state`（Ready=0、Running=1、Blocked=2、Suspended=3）、阻塞剩余时间 `int blocktime` 和任务函数指针 `void (*TaskFunc)()`。\n2. 实现创建任务函数 `struct Task createTask(char *name, int priority, void (*func)())`，返回结构体对象；初始状态为 Ready，阻塞时间为 0。\n3. 在主程序创建 task1、task2、task3、task4，优先级分别为 3、2、2、1；每个任务函数只输出任务名。\n4. 实现 `schedule()`：从所有 Ready 任务中选择优先级最高的运行并把状态设置为 Running；同优先级任务轮流执行；任务运行一次后自动进入 Blocked，`blocktime=2`。\n5. 实现 `Tick()`：先调用一次 `schedule()`；每个时间片结束时遍历任务，Blocked 任务的 `blocktime--`，减到 0 时恢复 Ready。\n6. 实现 `SuspendTask(Task *task)` 和 `ResumeTask(Task *task)`，分别把任务状态设置为 Suspended 和 Ready。\n7. 模拟运行 10 个时间片：运行 3 个 Tick 后挂起优先级为 3 的任务，运行 7 个 Tick 后恢复该任务，使其进入 Ready。",
   "inputFormat": "无输入。",
   "outputFormat": "输出 10 个时间片的任务调度结果。Word 原题未规定 `Tick` 前缀、挂起/恢复提示语等固定文本格式。",
   "constraints": "",
