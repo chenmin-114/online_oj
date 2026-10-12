@@ -1,6 +1,6 @@
 #Requires -RunAsAdministrator
 $ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
+$ProgressPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $vmName = 'JCOJ-Judge-Node'
@@ -26,15 +26,66 @@ function Get-Sha256([string]$path) {
   return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+function Format-FileSize([long]$bytes) {
+  if ($bytes -ge 1GB) { return ('{0:N2} GB' -f ($bytes / 1GB)) }
+  if ($bytes -ge 1MB) { return ('{0:N1} MB' -f ($bytes / 1MB)) }
+  if ($bytes -ge 1KB) { return ('{0:N1} KB' -f ($bytes / 1KB)) }
+  return "$bytes B"
+}
+
 function Download-Verified([string]$url, [string]$path, [string]$sha256) {
-  if ((Test-Path -LiteralPath $path) -and (Get-Sha256 $path) -eq $sha256) { return }
+  if ((Test-Path -LiteralPath $path) -and (Get-Sha256 $path) -eq $sha256) {
+    Write-Host "已复用校验通过的下载文件：$([IO.Path]::GetFileName($path))" -ForegroundColor Green
+    return
+  }
   if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+  $partialPath = "$path.part"
+  if (Test-Path -LiteralPath $partialPath) { Remove-Item -LiteralPath $partialPath -Force }
   Write-Host "正在安全下载：$url"
-  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $path
+  Add-Type -AssemblyName System.Net.Http
+  $handler = New-Object System.Net.Http.HttpClientHandler
+  $client = New-Object System.Net.Http.HttpClient($handler)
+  $client.Timeout = [TimeSpan]::FromHours(3)
+  $response = $null
+  $inputStream = $null
+  $outputStream = $null
+  try {
+    $response = $client.GetAsync($url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+    $response.EnsureSuccessStatusCode()
+    $totalBytes = if ($response.Content.Headers.ContentLength) { [long]$response.Content.Headers.ContentLength } else { 0L }
+    $inputStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+    $outputStream = [IO.File]::Open($partialPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    $buffer = New-Object byte[] (1MB)
+    $downloadedBytes = 0L
+    $lastProgressAt = [DateTime]::MinValue
+    while (($read = $inputStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+      $outputStream.Write($buffer, 0, $read)
+      $downloadedBytes += $read
+      if (((Get-Date) - $lastProgressAt).TotalMilliseconds -ge 250) {
+        if ($totalBytes -gt 0) {
+          $percent = [math]::Min(100, [math]::Floor($downloadedBytes * 100 / $totalBytes))
+          $status = "$(Format-FileSize $downloadedBytes) / $(Format-FileSize $totalBytes)（$percent%）"
+          Write-Progress -Activity "正在下载 $([IO.Path]::GetFileName($path))" -Status $status -PercentComplete $percent
+        } else {
+          Write-Progress -Activity "正在下载 $([IO.Path]::GetFileName($path))" -Status "已下载 $(Format-FileSize $downloadedBytes)" -PercentComplete 0
+        }
+        $lastProgressAt = Get-Date
+      }
+    }
+  } finally {
+    if ($outputStream) { $outputStream.Dispose() }
+    if ($inputStream) { $inputStream.Dispose() }
+    if ($response) { $response.Dispose() }
+    $client.Dispose()
+    $handler.Dispose()
+    Write-Progress -Activity "正在下载 $([IO.Path]::GetFileName($path))" -Completed
+  }
+  Move-Item -LiteralPath $partialPath -Destination $path
   if ((Get-Sha256 $path) -ne $sha256) {
     Remove-Item -LiteralPath $path -Force
     throw '下载文件的安全校验失败，已删除文件'
   }
+  Write-Host "下载完成并通过安全校验：$([IO.Path]::GetFileName($path))（$(Format-FileSize (Get-Item -LiteralPath $path).Length)）" -ForegroundColor Green
 }
 
 function Invoke-VBox([string[]]$arguments) {
@@ -77,10 +128,17 @@ try {
   $drive = Get-PSDrive -Name ([IO.Path]::GetPathRoot($selected).Substring(0,1))
   if (-not $drive -or $drive.Free -lt 25GB) { Stop-WithMessage '所选磁盘剩余空间不足25GB' }
   $installRoot = Join-Path $selected 'JCOJ-JudgeNode'
-  if (Test-Path -LiteralPath $installRoot) { Stop-WithMessage "目标目录已经存在：$installRoot；为防止覆盖数据，安装器不会继续" }
-  New-Item -ItemType Directory -Path $installRoot | Out-Null
+  if (Test-Path -LiteralPath $installRoot) {
+    $unexpectedEntries = @(Get-ChildItem -LiteralPath $installRoot -Force | Where-Object { $_.Name -ne 'downloads' })
+    if ($unexpectedEntries.Count -gt 0) {
+      Stop-WithMessage "目标目录已经包含安装数据：$installRoot；为防止覆盖数据，安装器不会继续"
+    }
+    Write-Host '发现上次未完成安装留下的安全下载缓存，将校验并继续安装。' -ForegroundColor Yellow
+  } else {
+    New-Item -ItemType Directory -Path $installRoot | Out-Null
+  }
   $cacheDirectory = Join-Path $installRoot 'downloads'
-  New-Item -ItemType Directory -Path $cacheDirectory | Out-Null
+  if (-not (Test-Path -LiteralPath $cacheDirectory)) { New-Item -ItemType Directory -Path $cacheDirectory | Out-Null }
 
   $script:vboxManage = Join-Path $env:ProgramFiles 'Oracle\VirtualBox\VBoxManage.exe'
   if (-not (Test-Path -LiteralPath $script:vboxManage)) {
@@ -107,7 +165,7 @@ try {
   $vmMemory = if ($ramGb -ge 30) { 10240 } elseif ($ramGb -ge 16) { 6144 } else { 4096 }
   $logicalProcessors = [int]$computer.NumberOfLogicalProcessors
   $vmCpus = [math]::Max(2, [math]::Min(10, [math]::Floor($logicalProcessors / 2)))
-  $pairing.maxSlots = $maxSlots
+  $pairing | Add-Member -NotePropertyName maxSlots -NotePropertyValue $maxSlots -Force
   $pairingJson = $pairing | ConvertTo-Json -Compress
   $pairingBytes = [Text.Encoding]::UTF8.GetBytes($pairingJson)
   $pairingB64 = [Convert]::ToBase64String($pairingBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
