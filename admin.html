@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20261009-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261010-03">
+  <link rel="stylesheet" href="css/admin.css?v=20261012-01">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -435,6 +435,18 @@
             <button id="save-exam-mode" type="button" class="admin-button primary">保存模式</button>
           </div>
         </article>
+        <article class="admin-card judge-node-card">
+          <div class="card-heading">
+            <div><h3>本地判题节点</h3><p>为可信 Windows 电脑生成一次性自动安装包；节点不保存管理员密钥，也不开放公网端口</p></div>
+            <button id="refresh-judge-nodes" type="button" class="admin-button secondary">刷新节点</button>
+          </div>
+          <div class="judge-node-create">
+            <label class="form-field"><span>节点名称</span><input id="judge-node-name" class="admin-input" maxlength="60" autocomplete="off" placeholder="例如：实验室电脑 1"></label>
+            <button id="download-judge-node-installer" type="button" class="admin-button primary">生成并下载自动安装包</button>
+          </div>
+          <p id="judge-node-install-status" class="account-import-status">安装时可以选择磁盘；首次运行需要 Windows 管理员授权，安装包两小时内有效且只能使用一次。</p>
+          <div id="judge-node-list" class="judge-node-list"><p class="empty-cell">正在读取节点...</p></div>
+        </article>
         <div class="status-grid">
           <article class="status-card"><span id="status-worker-dot" class="status-dot pending"></span><div><h3>Cloudflare Worker</h3><p id="status-worker">检查中...</p></div></article>
           <article class="status-card"><span id="status-github-dot" class="status-dot pending"></span><div><h3>GitHub 数据存储</h3><p id="status-github">检查中...</p></div></article>
@@ -463,6 +475,7 @@
   <section id="exam-problem-editor-modal" class="exam-problem-editor-modal" hidden aria-modal="true" role="dialog" aria-label="套卷编程题编辑器">
     <div id="exam-problem-editor-host" class="exam-problem-editor-host"></div>
   </section>
+  <script src="vendor/jszip/jszip.min.js?v=3.10.1"></script>
   <script src="vendor/xlsx/xlsx.full.min.js?v=0.20.3"></script>
   <script src="vendor/marked/marked.umd.js?v=18.0.13"></script>
   <script src="vendor/dompurify/purify.min.js?v=3.4.15"></script>
@@ -471,7 +484,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20261004-02"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
-  <script src="js/admin.js?v=20261010-05"></script>
+  <script src="js/admin.js?v=20261012-01"></script>
   <script src="js/admin-exams.js?v=20261010-06"></script>
 </body>
 </html>

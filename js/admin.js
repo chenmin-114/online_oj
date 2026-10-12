@@ -32,6 +32,7 @@ class OJAdmin {
     this.studentAccountExportName = '';
     this.systemMessages = [];
     this.timedExtensions = [];
+    this.judgeNodes = [];
     this.examMode = false;
     this.controlsBound = false;
   }
@@ -135,6 +136,7 @@ class OJAdmin {
           if (this.submissionKind === 'exam') this.loadExamSubmissionRecords();
         }
         if (button.dataset.panel === 'messages') this.loadAdminMessages();
+        if (button.dataset.panel === 'system') this.loadJudgeNodes();
         if (button.dataset.panel === 'accounts') {
           this.populateTimedExtensionResources(true);
           this.loadTimedExtensions();
@@ -193,6 +195,9 @@ class OJAdmin {
     document.getElementById('refresh-timed-extensions').addEventListener('click', () => this.loadTimedExtensions());
     document.getElementById('timed-extension-list').addEventListener('click', event => this.revokeTimedExtension(event));
     document.getElementById('save-exam-mode').addEventListener('click', () => this.saveExamMode());
+    document.getElementById('refresh-judge-nodes').addEventListener('click', () => this.loadJudgeNodes());
+    document.getElementById('download-judge-node-installer').addEventListener('click', () => this.downloadJudgeNodeInstaller());
+    document.getElementById('judge-node-list').addEventListener('click', event => this.handleJudgeNodeAction(event));
     document.getElementById('admin-message-audience').addEventListener('change', event => {
       const targeted = event.target.value === 'user';
       document.getElementById('admin-message-user-field').hidden = !targeted;
@@ -356,6 +361,9 @@ class OJAdmin {
     }
 
     this.renderAll();
+    if (document.getElementById('panel-system')?.classList.contains('active')) {
+      await this.loadJudgeNodes();
+    }
     if (this.submissionKind === 'exam' && document.getElementById('panel-submissions').classList.contains('active')) {
       await this.loadExamSubmissionRecords(true);
     }
@@ -867,6 +875,108 @@ class OJAdmin {
     } catch (error) {
       document.getElementById('exam-mode-enabled').checked = this.examMode;
       this.toast(`保存失败：${error.message}`);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async loadJudgeNodes() {
+    const container = document.getElementById('judge-node-list');
+    if (!container) return;
+    container.innerHTML = '<p class="empty-cell">正在读取节点...</p>';
+    try {
+      const result = await this.adminRequest('admin_judge_nodes_list');
+      this.judgeNodes = Array.isArray(result.nodes) ? result.nodes : [];
+      this.renderJudgeNodes();
+    } catch (error) {
+      container.innerHTML = `<p class="empty-cell">${this.escape(error.message || '节点读取失败')}</p>`;
+    }
+  }
+
+  renderJudgeNodes() {
+    const container = document.getElementById('judge-node-list');
+    if (!container) return;
+    if (!this.judgeNodes.length) {
+      container.innerHTML = '<p class="empty-cell">尚未添加本地判题节点</p>';
+      return;
+    }
+    const statusLabels = {
+      installing: '安装或自检中', ready: '在线可用', paused: '已暂停',
+      error: '节点异常', offline: '离线', revoked: '已撤销',
+    };
+    container.innerHTML = this.judgeNodes.map(node => {
+      const details = [node.platform, node.judgeVersion ? `Judge0 ${node.judgeVersion}` : '', node.agentVersion ? `助手 ${node.agentVersion}` : '']
+        .filter(Boolean).join(' · ') || '尚未上报运行环境';
+      const lastSeen = node.lastSeenAt ? this.formatDate(node.lastSeenAt) : '从未连接';
+      const error = node.lastError ? `<small class="error">${this.escape(node.lastError)}</small>` : '';
+      const revoke = node.status === 'revoked'
+        ? ''
+        : `<button type="button" class="table-link table-link-button warning" data-revoke-judge-node="${this.escape(node.id)}">撤销节点</button>`;
+      return `<div class="judge-node-item">
+        <div class="judge-node-item-main"><strong>${this.escape(node.name)}</strong><small>${this.escape(details)} · 最近连接 ${this.escape(lastSeen)}</small>${error}</div>
+        <span class="judge-node-capacity">执行槽 ${this.escape(node.busySlots)}/${this.escape(node.maxSlots)}</span>
+        <div><span class="judge-node-state ${this.escape(node.status)}">${this.escape(statusLabels[node.status] || node.status)}</span>${revoke}</div>
+      </div>`;
+    }).join('');
+  }
+
+  async handleJudgeNodeAction(event) {
+    const button = event.target.closest('[data-revoke-judge-node]');
+    if (!button) return;
+    const node = this.judgeNodes.find(item => item.id === button.dataset.revokeJudgeNode);
+    if (!node || !confirm(`确定撤销判题节点“${node.name}”吗？撤销后该电脑必须重新生成安装包才能接入。`)) return;
+    button.disabled = true;
+    try {
+      await this.adminRequest('admin_judge_node_revoke', { nodeId: node.id });
+      await this.loadJudgeNodes();
+      this.toast('判题节点已撤销');
+    } catch (error) {
+      this.toast(`撤销失败：${error.message}`);
+      button.disabled = false;
+    }
+  }
+
+  async downloadJudgeNodeInstaller() {
+    const button = document.getElementById('download-judge-node-installer');
+    const status = document.getElementById('judge-node-install-status');
+    const nameInput = document.getElementById('judge-node-name');
+    const name = nameInput.value.trim().normalize('NFC') || `判题电脑-${new Date().toLocaleDateString()}`;
+    if (!window.JSZip) {
+      status.className = 'account-import-status error';
+      status.textContent = '安装包组件没有加载，请刷新管理页面后重试。';
+      return;
+    }
+    button.disabled = true;
+    status.className = 'account-import-status';
+    status.textContent = '正在生成一次性安全配对信息并封装安装包...';
+    try {
+      const pairing = await this.adminRequest('admin_judge_node_pairing_create', { name });
+      const response = await fetch(`downloads/jc-oj-judge-node-installer.zip?v=20261012-01`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`安装器下载失败 (${response.status})`);
+      const zip = await window.JSZip.loadAsync(await response.arrayBuffer());
+      zip.file('pairing.json', JSON.stringify({
+        format: 'jc-oj-judge-node-pairing-v1',
+        apiUrl: pairing.apiUrl,
+        pairingCode: pairing.pairingCode,
+        requestedName: pairing.requestedName,
+        expiresAt: pairing.expiresAt,
+      }, null, 2));
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+      const safeName = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').slice(0, 40) || 'judge-node';
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `机创OJ判题节点-${safeName}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      status.className = 'account-import-status success';
+      status.textContent = `安装包已生成，有效期至 ${new Date(pairing.expiresAt).toLocaleString()}。请解压后双击“安装判题节点.cmd”。`;
+      nameInput.value = '';
+      await this.loadJudgeNodes();
+    } catch (error) {
+      status.className = 'account-import-status error';
+      status.textContent = error.message || '安装包生成失败';
     } finally {
       button.disabled = false;
     }

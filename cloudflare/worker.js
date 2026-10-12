@@ -9,6 +9,7 @@
  * 需要配置的环境变量/Secrets：
  * - GITHUB_TOKEN (Secret)
  * - ADMIN_PASSWORD (Secret)
+ * - JUDGE_NODE_GATEWAY_SECRET (Secret, 32 random bytes or more)
  * - GITHUB_REPO (Plaintext)
  * - JUDGE0_API_URL (Plaintext, 可选，默认使用公共 CE 实例)
  */
@@ -55,8 +56,12 @@ const REJUDGE_HEARTBEAT_MS = 60 * 1000;
 const REJUDGE_MAX_ATTEMPTS = 5;
 const REJUDGE_RECOVERY_INTERVAL_MINUTES = 10;
 const BACKGROUND_JUDGE_REQUESTS_PER_MINUTE = 30;
+const JUDGE_NODE_PAIRING_TTL_MS = 2 * 60 * 60 * 1000;
+const JUDGE_NODE_OFFLINE_MS = 7 * 60 * 1000;
 const EXAM_MODE_CACHE_MS = 5000;
 let examModeCache = { value: false, expiresAt: 0 };
+let judgeNodeTargetCache = { targets: [], expiresAt: 0 };
+let judgeNodeTargetCursor = 0;
 
 // 允许读取的数据文件白名单：查询参数不能直接拼进 GitHub 路径
 const DATA_FILES = {
@@ -251,6 +256,24 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return jsonResponse({ success: true });
+      } else if (body.type === 'admin_judge_node_pairing_create') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminJudgeNodePairingCreate(body, env, request);
+      } else if (body.type === 'admin_judge_nodes_list') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminJudgeNodesList(env);
+      } else if (body.type === 'admin_judge_node_revoke') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminJudgeNodeRevoke(body, env);
+      } else if (body.type === 'judge_node_pair') {
+        const rateLimitError = await enforceRateLimit(env.STUDENT_AUTH_RATE_LIMITER, request, 'judge-node-pair');
+        if (rateLimitError) return rateLimitError;
+        return await handleJudgeNodePair(body, env, request);
+      } else if (body.type === 'judge_node_heartbeat') {
+        return await handleJudgeNodeHeartbeat(body, env);
       } else if (body.type === 'admin_logout') {
         await revokeAdminSession(request, env);
         return jsonResponse({ success: true }, 200, {
@@ -795,6 +818,222 @@ function bytesToBase64Url(bytes) {
 async function sha256Hex(value) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function randomUrlToken(byteLength = 32) {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return bytesToBase64Url(bytes);
+}
+
+async function judgeNodeGatewayToken(env, nodeId) {
+  const secret = String(env.JUDGE_NODE_GATEWAY_SECRET || '');
+  if (!secret) throw new Error('判题节点网关密钥尚未配置');
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`judge-node-gateway:${nodeId}`));
+  return bytesToBase64Url(new Uint8Array(signature));
+}
+
+function normalizeJudgeNodeEndpoint(value) {
+  if (!value) return '';
+  try {
+    const url = new URL(String(value));
+    const allowedHost = /^[a-z0-9-]+\.trycloudflare\.com$/i.test(url.hostname)
+      || /^[a-z0-9-]+\.judge\.jc-oj\.online$/i.test(url.hostname);
+    if (url.protocol !== 'https:' || !allowedHost || url.username || url.password || url.port) return '';
+    return `https://${url.hostname}`;
+  } catch {
+    return '';
+  }
+}
+
+function normalizeJudgeNodeName(value) {
+  const name = String(value || '').trim().normalize('NFC').replace(/[\u0000-\u001f\u007f]/g, '');
+  return name.slice(0, 60) || '本地判题节点';
+}
+
+async function handleAdminJudgeNodePairingCreate(body, env, request) {
+  if (!env.OJ_DB) return jsonResponse({ error: '节点数据库尚未配置' }, 503);
+  if (!env.JUDGE_NODE_GATEWAY_SECRET) return jsonResponse({ error: '判题节点网关密钥尚未配置' }, 503);
+  const now = Date.now();
+  const pairingId = `jp_${randomUrlToken(16)}`;
+  const pairingCode = `JCN1_${randomUrlToken(32)}`;
+  const expiresAt = now + JUDGE_NODE_PAIRING_TTL_MS;
+  const requestedName = normalizeJudgeNodeName(body.name);
+  await env.OJ_DB.batch([
+    env.OJ_DB.prepare(`
+      DELETE FROM judge_node_pairings
+      WHERE expires_at <= ?1 OR (used_at IS NOT NULL AND used_at <= ?2)
+    `).bind(now, now - 24 * 60 * 60 * 1000),
+    env.OJ_DB.prepare(`
+      INSERT INTO judge_node_pairings
+        (id, code_hash, requested_name, created_at, expires_at, used_at, node_id)
+      VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL)
+    `).bind(pairingId, await sha256Hex(pairingCode), requestedName, now, expiresAt),
+  ]);
+  return jsonResponse({
+    success: true,
+    pairingCode,
+    requestedName,
+    expiresAt,
+    apiUrl: new URL(request.url).origin,
+  });
+}
+
+async function handleJudgeNodePair(body, env, request) {
+  if (!env.OJ_DB) return jsonResponse({ error: '节点数据库尚未配置' }, 503);
+  if (!env.JUDGE_NODE_GATEWAY_SECRET) return jsonResponse({ error: '判题节点网关尚未配置' }, 503);
+  const pairingCode = String(body.pairingCode || '');
+  if (!/^JCN1_[A-Za-z0-9_-]{43}$/.test(pairingCode)) {
+    return jsonResponse({ error: '配对码无效或已过期', code: 'PAIRING_INVALID' }, 403);
+  }
+  const now = Date.now();
+  const codeHash = await sha256Hex(pairingCode);
+  const pairing = await env.OJ_DB.prepare(`
+    SELECT id, requested_name, expires_at, used_at
+    FROM judge_node_pairings
+    WHERE code_hash = ?1
+  `).bind(codeHash).first();
+  if (!pairing || pairing.used_at != null || Number(pairing.expires_at) < now) {
+    return jsonResponse({ error: '配对码无效或已过期', code: 'PAIRING_INVALID' }, 403);
+  }
+
+  // 先以条件更新独占配对码；并发请求只有一个能把 changes 置为 1。
+  const claimed = await env.OJ_DB.prepare(`
+    UPDATE judge_node_pairings
+    SET used_at = ?2
+    WHERE id = ?1 AND used_at IS NULL AND expires_at >= ?2
+  `).bind(pairing.id, now).run();
+  if (Number(claimed.meta?.changes || 0) !== 1) {
+    return jsonResponse({ error: '配对码无效或已过期', code: 'PAIRING_INVALID' }, 403);
+  }
+
+  const nodeId = `jn_${randomUrlToken(16)}`;
+  const nodeToken = randomUrlToken(32);
+  const platform = String(body.platform || '').trim().slice(0, 80);
+  const agentVersion = String(body.agentVersion || '').trim().slice(0, 32);
+  try {
+    await env.OJ_DB.batch([
+      env.OJ_DB.prepare(`
+        INSERT INTO judge_nodes (
+          id, name, token_hash, platform, agent_version, judge_version, endpoint_url,
+          max_slots, busy_slots, status, last_error, created_at, last_seen_at, revoked_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, '', '', 1, 0, 'installing', '', ?6, ?6, NULL)
+      `).bind(nodeId, normalizeJudgeNodeName(pairing.requested_name), await sha256Hex(nodeToken), platform, agentVersion, now),
+      env.OJ_DB.prepare('UPDATE judge_node_pairings SET node_id = ?2 WHERE id = ?1')
+        .bind(pairing.id, nodeId),
+    ]);
+  } catch (error) {
+    // 不重新开放已经领取过的配对码，避免异常重放；管理员可安全生成新码。
+    console.error('创建判题节点失败:', error);
+    return jsonResponse({ error: '节点注册失败，请在管理端重新生成安装包' }, 503);
+  }
+  return jsonResponse({
+    success: true,
+    nodeId,
+    nodeToken,
+    gatewayToken: await judgeNodeGatewayToken(env, nodeId),
+    heartbeatIntervalSeconds: 300,
+    apiUrl: new URL(request.url).origin,
+  });
+}
+
+async function authenticateJudgeNode(body, env) {
+  if (!env.OJ_DB) return null;
+  const nodeId = String(body.nodeId || '');
+  const nodeToken = String(body.nodeToken || '');
+  if (!/^jn_[A-Za-z0-9_-]{22}$/.test(nodeId) || !/^[A-Za-z0-9_-]{43}$/.test(nodeToken)) return null;
+  return await env.OJ_DB.prepare(`
+    SELECT id, name, status, revoked_at
+    FROM judge_nodes
+    WHERE id = ?1 AND token_hash = ?2 AND revoked_at IS NULL
+  `).bind(nodeId, await sha256Hex(nodeToken)).first();
+}
+
+async function handleJudgeNodeHeartbeat(body, env) {
+  const node = await authenticateJudgeNode(body, env);
+  if (!node) return jsonResponse({ error: '节点凭证无效或已撤销', code: 'NODE_AUTH_FAILED' }, 401);
+  const allowedStatuses = new Set(['installing', 'ready', 'paused', 'error']);
+  const status = allowedStatuses.has(body.status) ? body.status : 'error';
+  const maxSlots = Math.max(1, Math.min(16, Math.trunc(Number(body.maxSlots) || 1)));
+  const busySlots = Math.max(0, Math.min(maxSlots, Math.trunc(Number(body.busySlots) || 0)));
+  const endpointUrl = normalizeJudgeNodeEndpoint(body.endpointUrl);
+  if (body.endpointUrl && !endpointUrl) {
+    return jsonResponse({ error: '节点网关地址不符合安全规则', code: 'NODE_ENDPOINT_INVALID' }, 400);
+  }
+  await env.OJ_DB.prepare(`
+    UPDATE judge_nodes SET
+      platform = ?2,
+      agent_version = ?3,
+      judge_version = ?4,
+      endpoint_url = ?5,
+      max_slots = ?6,
+      busy_slots = ?7,
+      status = ?8,
+      last_error = ?9,
+      last_seen_at = ?10
+    WHERE id = ?1 AND revoked_at IS NULL
+  `).bind(
+    node.id,
+    String(body.platform || '').trim().slice(0, 80),
+    String(body.agentVersion || '').trim().slice(0, 32),
+    String(body.judgeVersion || '').trim().slice(0, 32),
+    endpointUrl,
+    maxSlots,
+    busySlots,
+    status,
+    String(body.lastError || '').trim().slice(0, 300),
+    Date.now(),
+  ).run();
+  return jsonResponse({ success: true, serverTime: Date.now(), nextHeartbeatSeconds: 300 });
+}
+
+async function handleAdminJudgeNodesList(env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '节点数据库尚未配置' }, 503);
+  const now = Date.now();
+  const result = await env.OJ_DB.prepare(`
+    SELECT id, name, platform, agent_version, judge_version, endpoint_url, max_slots, busy_slots,
+           status, last_error, created_at, last_seen_at, revoked_at
+    FROM judge_nodes
+    ORDER BY created_at DESC
+    LIMIT 100
+  `).all();
+  const nodes = (result.results || []).map(node => ({
+    id: node.id,
+    name: node.name,
+    platform: node.platform,
+    agentVersion: node.agent_version,
+    judgeVersion: node.judge_version,
+    endpointReady: Boolean(node.endpoint_url),
+    maxSlots: Number(node.max_slots || 1),
+    busySlots: Number(node.busy_slots || 0),
+    status: node.revoked_at != null
+      ? 'revoked'
+      : now - Number(node.last_seen_at || 0) > JUDGE_NODE_OFFLINE_MS
+        ? 'offline'
+        : node.status,
+    lastError: node.last_error,
+    createdAt: Number(node.created_at),
+    lastSeenAt: Number(node.last_seen_at),
+    revokedAt: node.revoked_at == null ? null : Number(node.revoked_at),
+  }));
+  return jsonResponse({ success: true, nodes, offlineAfterSeconds: JUDGE_NODE_OFFLINE_MS / 1000 });
+}
+
+async function handleAdminJudgeNodeRevoke(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '节点数据库尚未配置' }, 503);
+  const nodeId = String(body.nodeId || '');
+  if (!/^jn_[A-Za-z0-9_-]{22}$/.test(nodeId)) return jsonResponse({ error: '节点编号无效' }, 400);
+  const now = Date.now();
+  const result = await env.OJ_DB.prepare(`
+    UPDATE judge_nodes
+    SET status = 'revoked', revoked_at = ?2, last_seen_at = ?2
+    WHERE id = ?1 AND revoked_at IS NULL
+  `).bind(nodeId, now).run();
+  if (Number(result.meta?.changes || 0) !== 1) return jsonResponse({ error: '节点不存在或已撤销' }, 404);
+  return jsonResponse({ success: true, nodeId, revokedAt: now });
 }
 
 function normalizeStudentUsername(value) {
@@ -4153,6 +4392,78 @@ async function acquireBackgroundJudgePermit(env) {
   return response.json();
 }
 
+async function availableJudgeNodeTargets(env) {
+  const now = Date.now();
+  if (!env.OJ_DB) return [];
+  if (judgeNodeTargetCache.expiresAt > now) return judgeNodeTargetCache.targets;
+  try {
+    const result = await env.OJ_DB.prepare(`
+      SELECT id, endpoint_url
+      FROM judge_nodes
+      WHERE status = 'ready' AND revoked_at IS NULL AND endpoint_url <> ''
+        AND last_seen_at >= ?1 AND busy_slots < max_slots
+      ORDER BY last_seen_at DESC
+      LIMIT 20
+    `).bind(now - JUDGE_NODE_OFFLINE_MS).all();
+    judgeNodeTargetCache = {
+      targets: (result.results || []).map(node => ({ id: node.id, baseUrl: node.endpoint_url, local: true })),
+      expiresAt: now + 15 * 1000,
+    };
+  } catch (error) {
+    console.error('读取本地判题节点失败，将使用备用服务:', error);
+    judgeNodeTargetCache = { targets: [], expiresAt: now + 5000 };
+  }
+  return judgeNodeTargetCache.targets;
+}
+
+async function fetchJudge0Submission(payload, env, options = {}) {
+  const localTargets = await availableJudgeNodeTargets(env);
+  const orderedLocalTargets = localTargets.length
+    ? localTargets.map((_, index) => localTargets[(judgeNodeTargetCursor + index) % localTargets.length])
+    : [];
+  if (localTargets.length) judgeNodeTargetCursor = (judgeNodeTargetCursor + 1) % localTargets.length;
+  const publicBaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
+  const targets = [...orderedLocalTargets, { id: 'public', baseUrl: publicBaseUrl, local: false }];
+  let lastNetworkError = null;
+
+  for (const target of targets) {
+    if (!target.local && options.backgroundRejudge === true) {
+      const permit = await acquireBackgroundJudgePermit(env);
+      if (!permit.allowed) {
+        return jsonResponse({
+          error: '后台判题已达到每分钟请求上限，将自动延迟重试',
+          code: 'BACKGROUND_JUDGE_RATE_LIMITED',
+          retryAfterMs: Number(permit.retryAfterMs || 60000),
+        }, 429);
+      }
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), target.local ? 15000 : JUDGE0_REQUEST_TIMEOUT_MS);
+    try {
+      const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+      if (target.local) headers['X-JCOJ-Node-Token'] = await judgeNodeGatewayToken(env, target.id);
+      const response = await fetch(
+        `${target.baseUrl}${target.local ? '/judge0' : ''}/submissions?base64_encoded=true&wait=true`,
+        { method: 'POST', headers, body: JSON.stringify(payload), signal: controller.signal },
+      );
+      // 节点离线、满载或凭证失效时尝试下一节点；Judge0本身的编译/运行结果正常返回。
+      if (target.local && (response.status === 401 || response.status === 403 || response.status === 404
+        || response.status === 429 || response.status >= 500)) {
+        lastNetworkError = new Error(`本地节点 ${target.id} 返回 ${response.status}`);
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastNetworkError = error;
+      if (!target.local) throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+  throw lastNetworkError || new Error('没有可用的代码执行服务');
+}
+
 async function handleExecute(body, env, options = {}) {
   const { script, stdin } = body;
   const languageId = Number.isInteger(body.languageId)
@@ -4168,34 +4479,13 @@ async function handleExecute(body, env, options = {}) {
     return jsonResponse({ error: 'Unsupported language' }, 400);
   }
 
-  const judge0BaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
-  if (options.backgroundRejudge === true) {
-    const permit = await acquireBackgroundJudgePermit(env);
-    if (!permit.allowed) {
-      return jsonResponse({
-        error: '后台判题已达到每分钟请求上限，将自动延迟重试',
-        code: 'BACKGROUND_JUDGE_RATE_LIMITED',
-        retryAfterMs: Number(permit.retryAfterMs || 60000),
-      }, 429);
-    }
-  }
   let judge0Res;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), JUDGE0_REQUEST_TIMEOUT_MS);
   try {
-    judge0Res = await fetch(`${judge0BaseUrl}/submissions?base64_encoded=true&wait=true`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        source_code: encodeBase64Utf8(script),
-        language_id: languageId,
-        stdin: encodeBase64Utf8(stdin || ''),
-      }),
-      signal: controller.signal,
-    });
+    judge0Res = await fetchJudge0Submission({
+      source_code: encodeBase64Utf8(script),
+      language_id: languageId,
+      stdin: encodeBase64Utf8(stdin || ''),
+    }, env, options);
   } catch (error) {
     if (error?.name === 'AbortError') {
       return jsonResponse({
@@ -4207,11 +4497,13 @@ async function handleExecute(body, env, options = {}) {
       error: '暂时无法连接代码执行服务，请稍后重试',
       code: 'JUDGE0_UNAVAILABLE',
     }, 502);
-  } finally {
-    clearTimeout(timeoutId);
   }
 
   const data = await parseJsonResponse(judge0Res);
+
+  if (data.code === 'BACKGROUND_JUDGE_RATE_LIMITED') {
+    return jsonResponse(data, 429);
+  }
 
   if (judge0Res.status === 429) {
     return jsonResponse({

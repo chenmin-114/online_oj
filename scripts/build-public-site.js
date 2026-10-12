@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const repositoryRoot = process.cwd();
 const outputDirectory = path.resolve(repositoryRoot, '.pages-site');
@@ -38,6 +39,7 @@ for (const directory of publicDirectories) {
 }
 
 buildClaudeHelperDownload();
+buildJudgeNodeInstallerDownload();
 
 function buildClaudeHelperDownload() {
   const downloadsDirectory = path.join(outputDirectory, 'downloads');
@@ -60,6 +62,43 @@ function buildClaudeHelperDownload() {
     path.join(downloadsDirectory, 'claude-grading-helper.zip'),
     createStoredZip(helperFiles),
   );
+}
+
+function buildJudgeNodeInstallerDownload() {
+  const downloadsDirectory = path.join(outputDirectory, 'downloads');
+  fs.mkdirSync(downloadsDirectory, { recursive: true });
+  const sourceDirectory = path.join(repositoryRoot, 'scripts', 'judge-node');
+  const read = name => {
+    const source = path.join(sourceDirectory, name);
+    if (!fs.existsSync(source)) throw new Error(`Judge node installer file is missing: ${name}`);
+    return fs.readFileSync(source);
+  };
+  const agent = read('jc-oj-node-agent.py');
+  const agentHash = crypto.createHash('sha256').update(agent).digest('hex');
+  const guestInstaller = Buffer.from(
+    read('judge-node-guest-install.sh').toString('utf8').replace('__NODE_AGENT_SHA256__', agentHash),
+    'utf8',
+  );
+  const guestInstallerHash = crypto.createHash('sha256').update(guestInstaller).digest('hex');
+  const windowsInstaller = withUtf8Bom(Buffer.from(
+    read('Install-JCOJJudgeNode.ps1').toString('utf8')
+      .replace('__GUEST_INSTALL_SHA256__', guestInstallerHash)
+      .replace(/\r?\n/g, '\r\n'),
+    'utf8',
+  ));
+  const files = [
+    { name: '安装判题节点.cmd', data: Buffer.from(read('安装判题节点.cmd').toString('utf8').replace(/\r?\n/g, '\r\n'), 'utf8') },
+    { name: 'Install-JCOJJudgeNode.ps1', data: windowsInstaller },
+    { name: 'Start-JCOJJudgeNode.ps1', data: withUtf8Bom(Buffer.from(read('Start-JCOJJudgeNode.ps1').toString('utf8').replace(/\r?\n/g, '\r\n'), 'utf8')) },
+    { name: 'README.txt', data: Buffer.from(read('README.txt').toString('utf8').replace(/\r?\n/g, '\r\n'), 'utf8') },
+  ];
+  fs.writeFileSync(path.join(downloadsDirectory, 'jc-oj-judge-node-installer.zip'), createStoredZip(files));
+  fs.writeFileSync(path.join(downloadsDirectory, 'jc-oj-node-agent.py'), agent);
+  fs.writeFileSync(path.join(downloadsDirectory, 'judge-node-guest-install.sh'), guestInstaller);
+}
+
+function withUtf8Bom(buffer) {
+  return Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), buffer]);
 }
 
 function createStoredZip(files) {
@@ -172,6 +211,9 @@ for (const requiredPath of [
   'css/style.css',
   'vendor/jszip/jszip.min.js',
   'downloads/claude-grading-helper.zip',
+  'downloads/jc-oj-judge-node-installer.zip',
+  'downloads/jc-oj-node-agent.py',
+  'downloads/judge-node-guest-install.sh',
   'problems/index.json',
   'problems/vision/index.json',
 ]) {
