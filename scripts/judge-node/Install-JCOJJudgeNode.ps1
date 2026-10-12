@@ -189,6 +189,7 @@ try {
   Invoke-VBox @('storageattach', $vmName, '--storagectl', 'SATA', '--port', '0', '--device', '0', '--type', 'hdd', '--medium', $diskPath)
 
   $postCommand = "curl -fsSL '$guestInstallUrl' -o /tmp/jc-install.sh && echo '$guestInstallSha256  /tmp/jc-install.sh' | sha256sum -c --strict && echo '$guestPassword' | sudo -S bash /tmp/jc-install.sh '$pairingB64'"
+  Write-Host '正在生成 Ubuntu 自动安装配置...'
   Invoke-VBox @('unattended', 'install', $vmName, "--iso=$isoPath", '--user=jcnode', "--password=$guestPassword",
     '--full-user-name=JC OJ Node', '--hostname=jc-oj-node.local', '--locale=en_US', '--country=CN',
     '--time-zone=Asia/Hong_Kong', '--install-additions', "--post-install-command=$postCommand")
@@ -199,11 +200,14 @@ try {
   $taskCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcherTarget`""
   & schtasks.exe /Create /SC ONLOGON /TN 'JCOJ Judge Node' /TR $taskCommand /F | Out-Null
 
-  Invoke-VBox @('startvm', $vmName, '--type', 'headless')
+  Write-Host '正在打开可视化安装窗口，请不要关闭该 VirtualBox 窗口...' -ForegroundColor Cyan
+  Invoke-VBox @('startvm', $vmName, '--type', 'gui')
   Remove-Item -LiteralPath $pairingPath -Force
-  Write-Host "`n机创OJ判题节点正在全自动安装。" -ForegroundColor Green
-  Write-Host 'Ubuntu、Docker和Judge0通常需要20～45分钟完成，电脑请保持开机和联网。'
-  Write-Host '安装成功后节点会自动出现在管理后台；在节点显示“在线可用”前，网站不会向它发送任务。'
+  Write-Host "`n机创OJ判题节点已进入可视化安装阶段。" -ForegroundColor Green
+  Write-Host '请在 VirtualBox 窗口查看 Ubuntu 安装、重启以及 Docker/Judge0 配置过程。'
+  Write-Host '整个过程通常需要20～45分钟，电脑请保持开机和联网，不要关闭 VirtualBox 窗口。'
+  Write-Host '节点在管理后台显示“在线可用”后才算全部完成；在此之前网站不会向它发送任务。'
+  Write-Host '本次安装完成后的日常开机启动仍会在后台运行，不会反复弹出窗口。'
   Write-Host "安装目录：$installRoot"
   Read-Host '按回车键关闭本窗口（后台安装不会停止）'
 } catch {
