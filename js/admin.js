@@ -33,6 +33,7 @@ class OJAdmin {
     this.systemMessages = [];
     this.timedExtensions = [];
     this.judgeNodes = [];
+    this.globalRejudgeTaskPage = 1;
     this.examMode = false;
     this.controlsBound = false;
   }
@@ -136,7 +137,10 @@ class OJAdmin {
           if (this.submissionKind === 'exam') this.loadExamSubmissionRecords();
         }
         if (button.dataset.panel === 'messages') this.loadAdminMessages();
-        if (button.dataset.panel === 'system') this.loadJudgeNodes();
+        if (button.dataset.panel === 'system') {
+          this.loadJudgeNodes();
+          this.loadGlobalRejudgeTasks(1);
+        }
         if (button.dataset.panel === 'accounts') {
           this.populateTimedExtensionResources(true);
           this.loadTimedExtensions();
@@ -196,6 +200,10 @@ class OJAdmin {
     document.getElementById('timed-extension-list').addEventListener('click', event => this.revokeTimedExtension(event));
     document.getElementById('save-exam-mode').addEventListener('click', () => this.saveExamMode());
     document.getElementById('refresh-judge-nodes').addEventListener('click', () => this.loadJudgeNodes());
+    document.getElementById('refresh-global-rejudge-tasks').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage));
+    document.getElementById('global-rejudge-task-prev').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage - 1));
+    document.getElementById('global-rejudge-task-next').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage + 1));
+    document.getElementById('global-rejudge-task-list').addEventListener('click', event => this.cancelGlobalRejudgeTask(event));
     document.getElementById('download-judge-node-installer').addEventListener('click', () => this.downloadJudgeNodeInstaller());
     document.getElementById('judge-node-list').addEventListener('click', event => this.handleJudgeNodeAction(event));
     document.getElementById('admin-message-audience').addEventListener('change', event => {
@@ -363,6 +371,7 @@ class OJAdmin {
     this.renderAll();
     if (document.getElementById('panel-system')?.classList.contains('active')) {
       await this.loadJudgeNodes();
+      await this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage);
     }
     if (this.submissionKind === 'exam' && document.getElementById('panel-submissions').classList.contains('active')) {
       await this.loadExamSubmissionRecords(true);
@@ -890,6 +899,57 @@ class OJAdmin {
       this.renderJudgeNodes();
     } catch (error) {
       container.innerHTML = `<p class="empty-cell">${this.escape(error.message || '节点读取失败')}</p>`;
+    }
+  }
+
+  async loadGlobalRejudgeTasks(page = 1) {
+    const list = document.getElementById('global-rejudge-task-list');
+    const summaryNode = document.getElementById('global-rejudge-task-summary');
+    if (!list || !summaryNode) return;
+    list.innerHTML = '<p class="empty-cell">正在读取判题任务...</p>';
+    try {
+      const result = await this.adminRequest('admin_rejudge_tasks_list', {
+        scope: 'all',
+        page: Math.max(1, Number(page) || 1),
+        pageSize: 50,
+      });
+      this.globalRejudgeTaskPage = Number(result.page || 1);
+      const summary = result.summary || {};
+      summaryNode.textContent = `等待 ${Number(summary.pending || 0)} · 执行中 ${Number(summary.processing || 0)} · 失败 ${Number(summary.failed || 0)} · 已取消 ${Number(summary.cancelled || 0)}`;
+      const statusLabels = { pending: '等待中', processing: '执行中', failed: '失败', cancelled: '已取消' };
+      list.innerHTML = result.tasks?.length ? result.tasks.map(task => {
+        const active = task.status === 'pending' || task.status === 'processing';
+        const scope = task.kind === 'exam' ? `套卷 ${task.examId || '—'}` : '普通题';
+        const detail = task.lastError
+          ? `<span title="${this.escape(task.lastError)}">${this.escape(task.lastError.slice(0, 36))}</span>`
+          : '<span>—</span>';
+        return `<div class="rejudge-task-row global"><strong>${this.escape(task.username || '未知用户')}</strong><span>${this.escape(scope)}</span><span>${this.escape(task.problemId)}</span><span class="rejudge-task-status ${this.escape(task.status)}">${this.escape(statusLabels[task.status] || task.status)}</span><span>尝试 ${this.escape(task.attempts)}</span><span>${this.escape(this.formatDate(task.updatedAt))}</span><div>${active ? `<button type="button" class="admin-button danger" data-cancel-global-rejudge-task="${this.escape(task.id)}" data-requested-at="${this.escape(task.requestedAt)}">取消</button>` : detail}</div></div>`;
+      }).join('') : '<p class="empty-cell">当前没有等待、执行中、失败或已取消的后台判题任务</p>';
+      const totalPages = Math.max(1, Math.ceil(Number(result.total || 0) / Number(result.pageSize || 50)));
+      document.getElementById('global-rejudge-task-page').textContent = `第 ${this.globalRejudgeTaskPage} / ${totalPages} 页`;
+      document.getElementById('global-rejudge-task-prev').disabled = this.globalRejudgeTaskPage <= 1;
+      document.getElementById('global-rejudge-task-next').disabled = this.globalRejudgeTaskPage >= totalPages;
+    } catch (error) {
+      list.innerHTML = `<p class="empty-cell">读取队列失败：${this.escape(error.message)}</p>`;
+    }
+  }
+
+  async cancelGlobalRejudgeTask(event) {
+    const button = event.target.closest('[data-cancel-global-rejudge-task]');
+    if (!button) return;
+    const username = button.closest('.rejudge-task-row')?.querySelector('strong')?.textContent || '该学生';
+    if (!confirm(`确定取消“${username}”的这个判题任务吗？\n\n已经发出的 Judge0 请求无法撤回，但结果不会在取消后写入成绩。`)) return;
+    button.disabled = true;
+    try {
+      await this.adminRequest('admin_rejudge_task_cancel', {
+        taskId: Number(button.dataset.cancelGlobalRejudgeTask),
+        requestedAt: Number(button.dataset.requestedAt),
+      });
+      this.toast('判题任务已取消');
+      await this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage);
+    } catch (error) {
+      this.toast(`取消失败：${error.message}`);
+      button.disabled = false;
     }
   }
 

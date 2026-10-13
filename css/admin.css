@@ -397,6 +397,7 @@ input.admin-input { min-width: 240px; }
 .rejudge-task-actions, .rejudge-task-pagination { display: flex; align-items: center; gap: 8px; }
 .rejudge-task-list { margin-top: 12px; overflow-x: auto; border: 1px solid var(--admin-border); border-radius: 9px; }
 .rejudge-task-row { min-width: 720px; padding: 11px 13px; display: grid; grid-template-columns: minmax(150px, 1.2fr) 90px 88px 72px minmax(145px, 1fr) auto; align-items: center; gap: 10px; border-top: 1px solid var(--admin-border); color: var(--admin-muted); font-size: 10px; }
+.rejudge-task-row.global { min-width: 900px; grid-template-columns: minmax(130px, 1.1fr) 105px 80px 78px 64px minmax(135px, .9fr) minmax(120px, 1fr); }
 .rejudge-task-row:first-child { border-top: 0; }
 .rejudge-task-row strong { color: var(--admin-text); font-size: 11px; }
 .rejudge-task-status { width: max-content; padding: 3px 7px; border-radius: 999px; background: rgba(91,140,255,.12); color: #a9c1ff; font-weight: 700; }

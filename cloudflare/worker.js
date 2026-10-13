@@ -4319,15 +4319,32 @@ async function persistAndDispatchRejudgeJobs(env, jobs, requestedAt = Date.now()
 async function handleAdminRejudgeTasksList(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '提交数据库尚未配置' }, 503);
   const examId = normalizeExamId(body.examId);
-  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  const globalScope = body.scope === 'all';
+  if (!globalScope && !examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
   const page = Math.max(1, Math.min(100000, Number.parseInt(body.page, 10) || 1));
   const pageSize = Math.max(10, Math.min(100, Number.parseInt(body.pageSize, 10) || 50));
   const offset = (page - 1) * pageSize;
-  const [rows, totals] = await env.OJ_DB.batch([
-    env.OJ_DB.prepare(`
-      SELECT q.id, q.submission_id, q.problem_id, q.status, q.attempts,
+  const taskRowsSql = globalScope ? `
+      SELECT q.id, q.submission_kind, q.submission_id, q.problem_id, q.status, q.attempts,
              q.requested_at, q.updated_at, q.last_error,
-             q.cancel_requested, q.cancelled_at, s.username
+             q.cancel_requested, q.cancelled_at,
+             CASE WHEN q.submission_kind = 'exam' THEN es.username ELSE ps.username END AS username,
+             CASE WHEN q.submission_kind = 'exam' THEN es.exam_id ELSE '' END AS exam_id
+      FROM rejudge_queue q
+      LEFT JOIN exam_submissions es
+        ON q.submission_kind = 'exam' AND es.id = q.submission_id AND es.is_preview = 0
+      LEFT JOIN submissions ps
+        ON q.submission_kind = 'problem' AND ps.id = q.submission_id
+      WHERE (q.submission_kind = 'exam' AND es.id IS NOT NULL)
+         OR (q.submission_kind = 'problem' AND ps.id IS NOT NULL)
+      ORDER BY q.cancel_requested ASC,
+               CASE q.status WHEN 'processing' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
+               q.requested_at DESC, q.id DESC
+      LIMIT ?1 OFFSET ?2
+  ` : `
+      SELECT q.id, q.submission_kind, q.submission_id, q.problem_id, q.status, q.attempts,
+             q.requested_at, q.updated_at, q.last_error,
+             q.cancel_requested, q.cancelled_at, s.username, s.exam_id
       FROM rejudge_queue q
       JOIN exam_submissions s ON q.submission_kind = 'exam' AND s.id = q.submission_id
       WHERE s.exam_id = ?1 AND s.is_preview = 0
@@ -4335,8 +4352,21 @@ async function handleAdminRejudgeTasksList(body, env) {
                CASE q.status WHEN 'processing' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
                q.requested_at DESC, q.id DESC
       LIMIT ?2 OFFSET ?3
-    `).bind(examId, pageSize, offset),
-    env.OJ_DB.prepare(`
+  `;
+  const totalsSql = globalScope ? `
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'pending' THEN 1 ELSE 0 END) AS pending,
+             SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'processing' THEN 1 ELSE 0 END) AS processing,
+             SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'failed' THEN 1 ELSE 0 END) AS failed,
+             SUM(CASE WHEN q.cancel_requested = 1 THEN 1 ELSE 0 END) AS cancelled
+      FROM rejudge_queue q
+      LEFT JOIN exam_submissions es
+        ON q.submission_kind = 'exam' AND es.id = q.submission_id AND es.is_preview = 0
+      LEFT JOIN submissions ps
+        ON q.submission_kind = 'problem' AND ps.id = q.submission_id
+      WHERE (q.submission_kind = 'exam' AND es.id IS NOT NULL)
+         OR (q.submission_kind = 'problem' AND ps.id IS NOT NULL)
+  ` : `
       SELECT COUNT(*) AS total,
              SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'pending' THEN 1 ELSE 0 END) AS pending,
              SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'processing' THEN 1 ELSE 0 END) AS processing,
@@ -4345,7 +4375,14 @@ async function handleAdminRejudgeTasksList(body, env) {
       FROM rejudge_queue q
       JOIN exam_submissions s ON q.submission_kind = 'exam' AND s.id = q.submission_id
       WHERE s.exam_id = ?1 AND s.is_preview = 0
-    `).bind(examId),
+  `;
+  const [rows, totals] = await env.OJ_DB.batch([
+    globalScope
+      ? env.OJ_DB.prepare(taskRowsSql).bind(pageSize, offset)
+      : env.OJ_DB.prepare(taskRowsSql).bind(examId, pageSize, offset),
+    globalScope
+      ? env.OJ_DB.prepare(totalsSql)
+      : env.OJ_DB.prepare(totalsSql).bind(examId),
   ]);
   const summary = totals.results?.[0] || {};
   return jsonResponse({
@@ -4353,6 +4390,8 @@ async function handleAdminRejudgeTasksList(body, env) {
       id: Number(row.id),
       submissionId: Number(row.submission_id),
       username: row.username,
+      kind: row.submission_kind,
+      examId: String(row.exam_id || ''),
       problemId: row.problem_id,
       status: Number(row.cancel_requested) === 1 ? 'cancelled' : row.status,
       attempts: Number(row.attempts || 0),

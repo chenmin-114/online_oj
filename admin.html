@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20261009-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261012-01">
+  <link rel="stylesheet" href="css/admin.css?v=20261013-01">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -454,6 +454,14 @@
           <p id="judge-node-install-status" class="account-import-status">安装时可以选择磁盘；首次运行需要 Windows 管理员授权，安装包两小时内有效且只能使用一次。</p>
           <div id="judge-node-list" class="judge-node-list"><p class="empty-cell">正在读取节点...</p></div>
         </article>
+        <article class="admin-card rejudge-task-panel">
+          <div class="card-heading">
+            <div><h3>后台判题队列</h3><p id="global-rejudge-task-summary">显示普通题和全部套卷的后台重判任务；进入本页或手动点击时刷新</p></div>
+            <button id="refresh-global-rejudge-tasks" type="button" class="admin-button secondary">刷新队列</button>
+          </div>
+          <div id="global-rejudge-task-list" class="rejudge-task-list"><p class="empty-cell">正在读取判题任务...</p></div>
+          <div class="rejudge-task-pagination"><button id="global-rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="global-rejudge-task-page">第 1 页</span><button id="global-rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
+        </article>
         <div class="status-grid">
           <article class="status-card"><span id="status-worker-dot" class="status-dot pending"></span><div><h3>Cloudflare Worker</h3><p id="status-worker">检查中...</p></div></article>
           <article class="status-card"><span id="status-github-dot" class="status-dot pending"></span><div><h3>GitHub 数据存储</h3><p id="status-github">检查中...</p></div></article>
@@ -491,7 +499,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20261004-02"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
-  <script src="js/admin.js?v=20261012-01"></script>
+  <script src="js/admin.js?v=20261013-01"></script>
   <script src="js/admin-exams.js?v=20261010-06"></script>
 </body>
 </html>
