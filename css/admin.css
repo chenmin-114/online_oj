@@ -392,6 +392,18 @@ input.admin-input { min-width: 240px; }
 .exam-problem-editor-host .problem-editor { margin: 0; box-shadow: 0 24px 70px rgba(0,0,0,.55); }
 .test-visibility-option.compact { padding: 9px 11px; }
 .exam-grading-controls { margin-bottom: 18px; }
+.rejudge-task-panel { margin-bottom: 18px; }
+.rejudge-task-panel[hidden] { display: none; }
+.rejudge-task-actions, .rejudge-task-pagination { display: flex; align-items: center; gap: 8px; }
+.rejudge-task-list { margin-top: 12px; overflow-x: auto; border: 1px solid var(--admin-border); border-radius: 9px; }
+.rejudge-task-row { min-width: 720px; padding: 11px 13px; display: grid; grid-template-columns: minmax(150px, 1.2fr) 90px 88px 72px minmax(145px, 1fr) auto; align-items: center; gap: 10px; border-top: 1px solid var(--admin-border); color: var(--admin-muted); font-size: 10px; }
+.rejudge-task-row:first-child { border-top: 0; }
+.rejudge-task-row strong { color: var(--admin-text); font-size: 11px; }
+.rejudge-task-status { width: max-content; padding: 3px 7px; border-radius: 999px; background: rgba(91,140,255,.12); color: #a9c1ff; font-weight: 700; }
+.rejudge-task-status.processing { background: rgba(34,197,94,.12); color: #86efac; }
+.rejudge-task-status.failed { background: rgba(239,68,68,.13); color: #fca5a5; }
+.rejudge-task-status.cancelled { background: rgba(148,163,184,.12); color: #cbd5e1; }
+.rejudge-task-pagination { margin-top: 10px; justify-content: flex-end; color: var(--admin-muted); font-size: 10px; }
 .exam-grading-layout { display: grid; grid-template-columns: minmax(240px, .35fr) minmax(0, 1fr); gap: 18px; }
 .grading-student-list { max-height: 720px; overflow-y: auto; }
 .card-heading #grading-student-sort { width: auto; min-width: 158px; padding-block: 7px; }

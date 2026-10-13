@@ -342,6 +342,8 @@
               <select id="grading-exam" class="admin-input"><option value="">选择试卷</option></select>
               <button id="view-grading-exam-submissions" type="button" class="admin-button secondary" disabled>查看提交记录</button>
               <button id="bulk-rejudge-exam-programming" type="button" class="admin-button secondary" disabled>全部编程题重新批改</button>
+              <button id="show-rejudge-tasks" type="button" class="admin-button secondary" disabled>判题任务</button>
+              <button id="cancel-exam-rejudge-tasks" type="button" class="admin-button danger" disabled>取消本卷全部任务</button>
               <select id="grading-mode" class="admin-input"><option value="student">按学生批改整卷</option><option value="part">按一道题连续批改</option></select>
               <select id="grading-part" class="admin-input" hidden><option value="">选择小题</option></select>
               <button id="run-ai-grading" type="button" class="admin-button primary" hidden>Claude 一键批改</button>
@@ -363,6 +365,11 @@
               <span id="claude-helper-status" class="filter-count">助手状态：未检测</span>
               <span id="ai-grading-status" class="filter-count"></span>
             </div>
+          </article>
+          <article id="rejudge-task-panel" class="admin-card rejudge-task-panel" hidden>
+            <div class="card-heading"><div><h3>判题任务</h3><p id="rejudge-task-summary">按需读取，不会定时刷新</p></div><div class="rejudge-task-actions"><button id="refresh-rejudge-tasks" type="button" class="admin-button secondary">刷新</button><button id="close-rejudge-tasks" type="button" class="admin-button secondary">收起</button></div></div>
+            <div id="rejudge-task-list" class="rejudge-task-list"><p class="empty-cell">请选择试卷后查看任务</p></div>
+            <div class="rejudge-task-pagination"><button id="rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="rejudge-task-page">第 1 页</span><button id="rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
           </article>
           <div class="exam-grading-layout">
             <article class="admin-card">

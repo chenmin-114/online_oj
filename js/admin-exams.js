@@ -16,6 +16,10 @@ class ExamAdmin {
     this.studentSort = 'submitted_asc';
     this.gradingCompletionFilter = 'all';
     this.gradingSearch = '';
+    this.rejudgeTaskPage = 1;
+    this.rejudgeTaskTotal = 0;
+    this.rejudgeTaskPageSize = 50;
+    this.rejudgeTasksOpen = false;
   }
 
   init() {
@@ -40,6 +44,10 @@ class ExamAdmin {
     document.getElementById('grading-exam').addEventListener('change', event => {
       document.getElementById('view-grading-exam-submissions').disabled = !event.target.value;
       document.getElementById('bulk-rejudge-exam-programming').disabled = !event.target.value;
+      document.getElementById('show-rejudge-tasks').disabled = !event.target.value;
+      document.getElementById('cancel-exam-rejudge-tasks').disabled = !event.target.value;
+      this.rejudgeTaskPage = 1;
+      if (this.rejudgeTasksOpen && event.target.value) this.loadRejudgeTasks(1);
       this.loadGrading(event.target.value);
     });
     document.getElementById('view-grading-exam-submissions').addEventListener('click', () => {
@@ -47,6 +55,16 @@ class ExamAdmin {
       if (examId) this.admin.openExamSubmissionRecords(examId);
     });
     document.getElementById('bulk-rejudge-exam-programming').addEventListener('click', () => this.rejudgeAllExamProgramming());
+    document.getElementById('show-rejudge-tasks').addEventListener('click', () => this.openRejudgeTasks());
+    document.getElementById('refresh-rejudge-tasks').addEventListener('click', () => this.loadRejudgeTasks(this.rejudgeTaskPage));
+    document.getElementById('close-rejudge-tasks').addEventListener('click', () => this.closeRejudgeTasks());
+    document.getElementById('cancel-exam-rejudge-tasks').addEventListener('click', () => this.cancelRejudgeScope(''));
+    document.getElementById('rejudge-task-prev').addEventListener('click', () => this.loadRejudgeTasks(this.rejudgeTaskPage - 1));
+    document.getElementById('rejudge-task-next').addEventListener('click', () => this.loadRejudgeTasks(this.rejudgeTaskPage + 1));
+    document.getElementById('rejudge-task-list').addEventListener('click', event => {
+      const button = event.target.closest('[data-cancel-rejudge-task]');
+      if (button) this.cancelRejudgeTask(button);
+    });
     document.getElementById('grading-mode').addEventListener('change', () => this.renderGrading());
     document.getElementById('grading-part').addEventListener('change', () => this.renderGrading());
     document.getElementById('run-ai-grading').addEventListener('click', () => this.runAiGrading());
@@ -887,6 +905,8 @@ class ExamAdmin {
     document.getElementById('exam-manage-view').hidden = true;
     document.getElementById('exam-grading-view').hidden = false;
     document.getElementById('view-grading-exam-submissions').disabled = !document.getElementById('grading-exam').value;
+    document.getElementById('show-rejudge-tasks').disabled = !document.getElementById('grading-exam').value;
+    document.getElementById('cancel-exam-rejudge-tasks').disabled = !document.getElementById('grading-exam').value;
   }
 
   async openGradingSubmission(examId, username = '') {
@@ -983,12 +1003,99 @@ class ExamAdmin {
     try {
       const result = await this.request('admin_exam_programming_bulk_rejudge', { examId });
       this.admin.toast(`已加入 ${result.jobs} 个编程判题任务，涉及 ${result.students} 名学生`);
+      await this.refreshRejudgeTasksIfOpen();
       await this.loadGrading(examId, { silent: true, preserveSelection: true });
     } catch (error) {
       this.admin.toast(`批量重新批改失败：${error.message}`);
     } finally {
       button.disabled = false;
       button.textContent = '全部编程题重新批改';
+    }
+  }
+
+  async openRejudgeTasks() {
+    if (!document.getElementById('grading-exam').value) return;
+    this.rejudgeTasksOpen = true;
+    document.getElementById('rejudge-task-panel').hidden = false;
+    await this.loadRejudgeTasks(1);
+  }
+
+  closeRejudgeTasks() {
+    this.rejudgeTasksOpen = false;
+    document.getElementById('rejudge-task-panel').hidden = true;
+  }
+
+  async refreshRejudgeTasksIfOpen() {
+    if (this.rejudgeTasksOpen) await this.loadRejudgeTasks(this.rejudgeTaskPage);
+  }
+
+  async loadRejudgeTasks(page = 1) {
+    const examId = document.getElementById('grading-exam').value;
+    if (!examId || !this.rejudgeTasksOpen) return;
+    const list = document.getElementById('rejudge-task-list');
+    const summaryNode = document.getElementById('rejudge-task-summary');
+    list.innerHTML = '<p class="empty-cell">正在读取判题任务...</p>';
+    try {
+      const result = await this.request('admin_rejudge_tasks_list', {
+        examId,
+        page: Math.max(1, Number(page) || 1),
+        pageSize: this.rejudgeTaskPageSize,
+      });
+      if (document.getElementById('grading-exam').value !== examId || !this.rejudgeTasksOpen) return;
+      this.rejudgeTaskPage = result.page;
+      this.rejudgeTaskTotal = result.total;
+      const statusLabels = { pending: '等待中', processing: '判题中', failed: '失败', cancelled: '已取消' };
+      summaryNode.textContent = `等待 ${result.summary.pending} · 判题中 ${result.summary.processing} · 失败 ${result.summary.failed} · 已取消 ${result.summary.cancelled}`;
+      list.innerHTML = result.tasks.length ? result.tasks.map(task => {
+        const active = task.status === 'pending' || task.status === 'processing';
+        const detail = task.lastError ? `<span title="${this.escape(task.lastError)}">${this.escape(task.lastError.slice(0, 36))}</span>` : '<span>—</span>';
+        return `<div class="rejudge-task-row"><strong>${this.escape(task.username)}</strong><span>${this.escape(task.problemId)}</span><span class="rejudge-task-status ${this.escape(task.status)}">${this.escape(statusLabels[task.status] || task.status)}</span><span>尝试 ${this.escape(task.attempts)}</span><span>${this.escape(new Date(task.updatedAt).toLocaleString())}</span><div>${active ? `<button type="button" class="admin-button danger" data-cancel-rejudge-task="${this.escape(task.id)}" data-requested-at="${this.escape(task.requestedAt)}">取消</button>` : detail}</div></div>`;
+      }).join('') : '<p class="empty-cell">这套卷目前没有等待、失败或已取消的判题任务</p>';
+      const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
+      document.getElementById('rejudge-task-page').textContent = `第 ${result.page} / ${totalPages} 页`;
+      document.getElementById('rejudge-task-prev').disabled = result.page <= 1;
+      document.getElementById('rejudge-task-next').disabled = result.page >= totalPages;
+    } catch (error) {
+      list.innerHTML = `<p class="empty-cell">读取任务失败：${this.escape(error.message)}</p>`;
+    }
+  }
+
+  async cancelRejudgeTask(button) {
+    const username = button.closest('.rejudge-task-row')?.querySelector('strong')?.textContent || '该学生';
+    if (!confirm(`确定取消“${username}”的这一个判题任务吗？\n\n已经发出的 Judge0 请求无法撤回，但结果不会在取消后写入成绩。`)) return;
+    button.disabled = true;
+    try {
+      await this.request('admin_rejudge_task_cancel', {
+        taskId: Number(button.dataset.cancelRejudgeTask),
+        requestedAt: Number(button.dataset.requestedAt),
+      });
+      this.admin.toast('判题任务已取消');
+      await this.loadRejudgeTasks(this.rejudgeTaskPage);
+    } catch (error) {
+      this.admin.toast(`取消失败：${error.message}`);
+      button.disabled = false;
+    }
+  }
+
+  async cancelRejudgeScope(problemId = '') {
+    const examId = document.getElementById('grading-exam').value;
+    if (!examId) return;
+    try {
+      const preview = await this.request('admin_rejudge_tasks_cancel_scope', {
+        examId, problemId, preview: true,
+      });
+      if (!preview.count) {
+        this.admin.toast(problemId ? `${problemId} 没有可取消的判题任务` : '本卷没有可取消的判题任务');
+        await this.refreshRejudgeTasksIfOpen();
+        return;
+      }
+      const scope = problemId ? `本卷 ${problemId}` : '本卷全部编程题';
+      if (!confirm(`确定取消${scope}的 ${preview.count} 个等待中或判题中任务吗？\n\n正在执行的请求可能已经消耗额度，但取消后的结果不会写入成绩。`)) return;
+      const result = await this.request('admin_rejudge_tasks_cancel_scope', { examId, problemId });
+      this.admin.toast(`已取消 ${result.cancelled} 个判题任务`);
+      await this.refreshRejudgeTasksIfOpen();
+    } catch (error) {
+      this.admin.toast(`批量取消失败：${error.message}`);
     }
   }
 
@@ -1491,7 +1598,7 @@ class ExamAdmin {
     const formalCount = this.submissions.filter(item => !item.preview).length;
     const bulkActions = selected?.part.type === 'programming' ? `<div class="grading-bulk-actions">
       <div><strong>批量处理本题 · ${this.escape(selected.part.problemId)}</strong><span>面向 ${formalCount} 名正式提交学生；重新判题将依次进入队列</span></div>
-      <div class="grading-bulk-buttons"><button type="button" class="admin-button secondary" data-bulk-rejudge-programming="${this.escape(selected.part.problemId)}">全部同学重新判题</button><button type="button" class="admin-button secondary" data-bulk-request-programming-resubmit="${this.escape(selected.part.problemId)}">全部同学需重新提交</button></div>
+      <div class="grading-bulk-buttons"><button type="button" class="admin-button secondary" data-bulk-rejudge-programming="${this.escape(selected.part.problemId)}">全部同学重新判题</button><button type="button" class="admin-button danger" data-cancel-part-rejudge="${this.escape(selected.part.problemId)}">取消本题全部判题</button><button type="button" class="admin-button secondary" data-bulk-request-programming-resubmit="${this.escape(selected.part.problemId)}">全部同学需重新提交</button></div>
     </div>` : '';
     workspace.innerHTML = bulkActions + `<div class="grading-score-summary"><strong>${submission.totalScore} / ${this.paper.totalScore} 分</strong><span>已批改 ${submission.gradedCount}/${submission.totalParts}</span><label><input type="checkbox" data-release-result ${!examMode && (submission.released || automaticallyVisible) ? 'checked' : ''} ${policyControlsVisibility ? 'disabled' : ''}> ${visibilityLabel}</label></div>` + results.map(result => {
       const found = this.findPart(result.partId);
@@ -1637,6 +1744,11 @@ class ExamAdmin {
     const requestResubmit = event.target.closest('[data-request-programming-resubmit]');
     const bulkRejudge = event.target.closest('[data-bulk-rejudge-programming]');
     const bulkRequestResubmit = event.target.closest('[data-bulk-request-programming-resubmit]');
+    const cancelPartRejudge = event.target.closest('[data-cancel-part-rejudge]');
+    if (cancelPartRejudge) {
+      await this.cancelRejudgeScope(cancelPartRejudge.dataset.cancelPartRejudge);
+      return;
+    }
     if (bulkRejudge || bulkRequestResubmit) {
       const isRejudge = Boolean(bulkRejudge);
       const button = bulkRejudge || bulkRequestResubmit;
@@ -1656,6 +1768,7 @@ class ExamAdmin {
         this.admin.toast(isRejudge
           ? `已将 ${result.count} 名学生的提交加入重判队列`
           : `已向 ${result.count} 名学生发送重新提交通知`);
+        if (isRejudge) await this.refreshRejudgeTasksIfOpen();
       } catch (error) {
         this.admin.toast(`批量操作失败：${error.message}`);
       } finally {
@@ -1677,6 +1790,7 @@ class ExamAdmin {
           problemId,
         });
         this.admin.toast(rejudge ? '该编程题已加入自动重判队列' : '已向该学生发送重新提交通知');
+        if (rejudge) await this.refreshRejudgeTasksIfOpen();
       } catch (error) {
         this.admin.toast(`操作失败：${error.message}`);
       } finally {

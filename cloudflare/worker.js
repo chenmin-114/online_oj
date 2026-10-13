@@ -889,6 +889,18 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamProgrammingBulkRejudge(body, env);
+      } else if (body.type === 'admin_rejudge_tasks_list') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminRejudgeTasksList(body, env);
+      } else if (body.type === 'admin_rejudge_task_cancel') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminRejudgeTaskCancel(body, env);
+      } else if (body.type === 'admin_rejudge_tasks_cancel_scope') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminRejudgeTasksCancelScope(body, env);
       } else if (body.type === 'admin_rejudge_submission') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -4247,12 +4259,128 @@ async function persistAndDispatchRejudgeJobs(env, jobs, requestedAt = Date.now()
     ON CONFLICT(submission_kind, submission_id, problem_id) DO UPDATE SET
       group_name = excluded.group_name, status = 'pending', attempts = 0,
       requested_at = excluded.requested_at, updated_at = excluded.updated_at,
-      last_error = ''
+      last_error = '', cancel_requested = 0, cancelled_at = 0
   `).bind(job.kind, Number(job.submissionId), normalizeGroup(job.group), job.problemId, requestedAt));
   for (let index = 0; index < statements.length; index += 100) {
     await env.OJ_DB.batch(statements.slice(index, index + 100));
   }
   await sendRejudgeQueueMessages(env, jobs, requestedAt);
+}
+
+async function handleAdminRejudgeTasksList(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '提交数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  const page = Math.max(1, Math.min(100000, Number.parseInt(body.page, 10) || 1));
+  const pageSize = Math.max(10, Math.min(100, Number.parseInt(body.pageSize, 10) || 50));
+  const offset = (page - 1) * pageSize;
+  const [rows, totals] = await env.OJ_DB.batch([
+    env.OJ_DB.prepare(`
+      SELECT q.id, q.submission_id, q.problem_id, q.status, q.attempts,
+             q.requested_at, q.updated_at, q.last_error,
+             q.cancel_requested, q.cancelled_at, s.username
+      FROM rejudge_queue q
+      JOIN exam_submissions s ON q.submission_kind = 'exam' AND s.id = q.submission_id
+      WHERE s.exam_id = ?1 AND s.is_preview = 0
+      ORDER BY q.cancel_requested ASC,
+               CASE q.status WHEN 'processing' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
+               q.requested_at DESC, q.id DESC
+      LIMIT ?2 OFFSET ?3
+    `).bind(examId, pageSize, offset),
+    env.OJ_DB.prepare(`
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'pending' THEN 1 ELSE 0 END) AS pending,
+             SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'processing' THEN 1 ELSE 0 END) AS processing,
+             SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'failed' THEN 1 ELSE 0 END) AS failed,
+             SUM(CASE WHEN q.cancel_requested = 1 THEN 1 ELSE 0 END) AS cancelled
+      FROM rejudge_queue q
+      JOIN exam_submissions s ON q.submission_kind = 'exam' AND s.id = q.submission_id
+      WHERE s.exam_id = ?1 AND s.is_preview = 0
+    `).bind(examId),
+  ]);
+  const summary = totals.results?.[0] || {};
+  return jsonResponse({
+    tasks: (rows.results || []).map(row => ({
+      id: Number(row.id),
+      submissionId: Number(row.submission_id),
+      username: row.username,
+      problemId: row.problem_id,
+      status: Number(row.cancel_requested) === 1 ? 'cancelled' : row.status,
+      attempts: Number(row.attempts || 0),
+      requestedAt: Number(row.requested_at),
+      updatedAt: Number(row.updated_at),
+      cancelledAt: Number(row.cancelled_at || 0),
+      lastError: String(row.last_error || ''),
+    })),
+    page,
+    pageSize,
+    total: Number(summary.total || 0),
+    summary: {
+      pending: Number(summary.pending || 0),
+      processing: Number(summary.processing || 0),
+      failed: Number(summary.failed || 0),
+      cancelled: Number(summary.cancelled || 0),
+    },
+  });
+}
+
+async function handleAdminRejudgeTaskCancel(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '提交数据库尚未配置' }, 503);
+  const taskId = Number(body.taskId);
+  const requestedAt = Number(body.requestedAt);
+  if (!Number.isInteger(taskId) || taskId < 1 || !Number.isFinite(requestedAt) || requestedAt < 1) {
+    return jsonResponse({ error: '判题任务标记不正确' }, 400);
+  }
+  const now = Date.now();
+  const result = await env.OJ_DB.prepare(`
+    UPDATE rejudge_queue
+    SET cancel_requested = 1, cancelled_at = ?3, updated_at = ?3,
+        last_error = '管理员取消'
+    WHERE id = ?1 AND requested_at = ?2 AND cancel_requested = 0
+      AND status IN ('pending', 'processing')
+  `).bind(taskId, requestedAt, now).run();
+  if (Number(result.meta?.changes || 0) < 1) {
+    return jsonResponse({ error: '任务已完成、已取消或已被新版任务替代' }, 409);
+  }
+  return jsonResponse({ success: true, cancelled: 1 });
+}
+
+async function handleAdminRejudgeTasksCancelScope(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '提交数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  const problemId = body.problemId ? String(body.problemId).trim().toUpperCase() : '';
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  if (problemId && !/^(?:P\d{3,6}|T\d{3})$/.test(problemId)) {
+    return jsonResponse({ error: '关联题号不正确' }, 400);
+  }
+  if (body.preview === true) {
+    const row = await env.OJ_DB.prepare(`
+      SELECT COUNT(*) AS count
+      FROM rejudge_queue q
+      WHERE q.submission_kind = 'exam' AND q.cancel_requested = 0
+        AND q.status IN ('pending', 'processing')
+        AND (?2 = '' OR q.problem_id = ?2)
+        AND EXISTS (
+          SELECT 1 FROM exam_submissions s
+          WHERE s.id = q.submission_id AND s.exam_id = ?1 AND s.is_preview = 0
+        )
+    `).bind(examId, problemId).first();
+    return jsonResponse({ success: true, count: Number(row?.count || 0) });
+  }
+  const now = Date.now();
+  const result = await env.OJ_DB.prepare(`
+    UPDATE rejudge_queue AS q
+    SET cancel_requested = 1, cancelled_at = ?3, updated_at = ?3,
+        last_error = '管理员批量取消'
+    WHERE q.submission_kind = 'exam' AND q.cancel_requested = 0
+      AND q.status IN ('pending', 'processing')
+      AND (?2 = '' OR q.problem_id = ?2)
+      AND EXISTS (
+        SELECT 1 FROM exam_submissions s
+        WHERE s.id = q.submission_id AND s.exam_id = ?1 AND s.is_preview = 0
+      )
+  `).bind(examId, problemId, now).run();
+  return jsonResponse({ success: true, cancelled: Number(result.meta?.changes || 0) });
 }
 
 async function handleAdminExamPartBulkAction(body, env) {
@@ -5557,7 +5685,7 @@ async function claimRejudgeQueueJob(body, env) {
     SET status = 'processing', attempts = attempts + 1, updated_at = ?6
     WHERE submission_kind = ?1 AND submission_id = ?2
       AND group_name = ?3 AND problem_id = ?4 AND requested_at = ?5
-      AND status = 'pending' AND attempts < ?7
+      AND status = 'pending' AND cancel_requested = 0 AND attempts < ?7
     RETURNING *
   `).bind(
     body.kind, body.submissionId, body.group, body.problemId,
@@ -5573,11 +5701,12 @@ async function processRejudgeQueueMessage(rawBody, env) {
   if (!job) {
     // 只在领取冲突或崩溃重投时额外读取一次状态；正常消息没有这次查询。
     const current = await env.OJ_DB.prepare(`
-      SELECT status, attempts, requested_at, updated_at FROM rejudge_queue
+      SELECT status, attempts, requested_at, updated_at, cancel_requested FROM rejudge_queue
       WHERE submission_kind = ?1 AND submission_id = ?2 AND problem_id = ?3
     `).bind(body.kind, body.submissionId, body.problemId).first();
     // 任务已完成、失败，或管理员后来创建了新版本任务：旧消息直接确认。
-    if (!current || Number(current.requested_at) !== body.requestedAt || current.status === 'failed') {
+    if (!current || Number(current.requested_at) !== body.requestedAt
+      || current.status === 'failed' || Number(current.cancel_requested) === 1) {
       return { success: true };
     }
     if (Number(current.attempts || 0) >= REJUDGE_MAX_ATTEMPTS) {
@@ -5604,32 +5733,36 @@ async function processRejudgeQueueMessage(rawBody, env) {
   const heartbeat = setInterval(() => {
     env.OJ_DB.prepare(`
       UPDATE rejudge_queue SET updated_at = ?2
-      WHERE id = ?1 AND requested_at = ?3 AND status = 'processing'
+      WHERE id = ?1 AND requested_at = ?3 AND status = 'processing' AND cancel_requested = 0
     `).bind(Number(job.id), Date.now(), Number(job.requested_at)).run().catch(() => {});
   }, REJUDGE_HEARTBEAT_MS);
   try {
-    if (job.submission_kind === 'problem') await rejudgeProblemSubmission(job, env);
-    else if (job.submission_kind === 'exam') await rejudgeExamSubmission(job, env);
+    let applied = false;
+    if (job.submission_kind === 'problem') applied = await rejudgeProblemSubmission(job, env);
+    else if (job.submission_kind === 'exam') applied = await rejudgeExamSubmission(job, env);
     else throw new Error('未知重判任务类型');
+    // 任务执行期间被取消时，判题结果不会写回；保留取消记录供管理员查看。
+    if (!applied) return { success: true, cancelled: true };
     await env.OJ_DB.prepare(`
       DELETE FROM rejudge_queue
-      WHERE id = ?1 AND requested_at = ?2 AND status = 'processing'
+      WHERE id = ?1 AND requested_at = ?2 AND status = 'processing' AND cancel_requested = 0
     `).bind(Number(job.id), Number(job.requested_at)).run();
     return { success: true };
   } catch (error) {
     const attempts = Number(job.attempts || 0);
     const rateLimited = error?.code === 'BACKGROUND_JUDGE_RATE_LIMITED';
     const failed = !rateLimited && attempts >= REJUDGE_MAX_ATTEMPTS;
-    await env.OJ_DB.prepare(`
+    const resetResult = await env.OJ_DB.prepare(`
       UPDATE rejudge_queue
       SET status = ?2,
           attempts = CASE WHEN ?3 = 1 THEN MAX(attempts - 1, 0) ELSE attempts END,
           updated_at = ?4, last_error = ?5
-      WHERE id = ?1 AND requested_at = ?6 AND status = 'processing'
+      WHERE id = ?1 AND requested_at = ?6 AND status = 'processing' AND cancel_requested = 0
     `).bind(
       Number(job.id), failed ? 'failed' : 'pending', rateLimited ? 1 : 0, Date.now(),
       String(error?.message || error || '重判失败').slice(0, 500), Number(job.requested_at),
     ).run();
+    if (Number(resetResult.meta?.changes || 0) < 1) return { success: true, cancelled: true };
     console.error(`自动重判任务 ${job.id} 失败:`, error);
     if (failed) return { success: false, failed: true };
     const retryAfterMs = rateLimited
@@ -5659,13 +5792,13 @@ async function recoverPendingRejudgeJobs(env, limit = 100) {
           WHEN attempts >= 5 AND last_error = '' THEN '重判任务多次超时'
           ELSE last_error
         END
-    WHERE status = 'processing' AND updated_at < ?2
+    WHERE status = 'processing' AND cancel_requested = 0 AND updated_at < ?2
   `).bind(now, staleBefore).run();
   const pending = await env.OJ_DB.prepare(`
     SELECT submission_kind AS kind, submission_id AS submissionId,
            group_name AS "group", problem_id AS problemId, requested_at AS requestedAt
     FROM rejudge_queue
-    WHERE status = 'pending' AND attempts < ?1
+    WHERE status = 'pending' AND cancel_requested = 0 AND attempts < ?1
     ORDER BY requested_at ASC, id ASC
     LIMIT ?2
   `).bind(REJUDGE_MAX_ATTEMPTS, Math.max(1, Math.min(100, Number(limit) || 100))).all();
@@ -5910,7 +6043,7 @@ async function rejudgeProblemSubmission(job, env) {
     SELECT id, username, language, code, passed
     FROM submissions WHERE id = ?1
   `).bind(Number(job.submission_id)).first();
-  if (!row) return;
+  if (!row) return true;
   const judged = await runJudgeSubmission({
     username: row.username,
     problemId: job.problem_id,
@@ -5923,10 +6056,14 @@ async function rejudgeProblemSubmission(job, env) {
   const statements = [env.OJ_DB.prepare(`
       UPDATE submissions
       SET passed = ?2, passed_tests = ?3, total_tests = ?4, total_time = ?5
-      WHERE id = ?1
+      WHERE id = ?1 AND EXISTS (
+        SELECT 1 FROM rejudge_queue q
+        WHERE q.id = ?6 AND q.requested_at = ?7
+          AND q.status = 'processing' AND q.cancel_requested = 0
+      )
     `).bind(
       Number(row.id), judged.passed ? 1 : 0, judged.passedTests,
-      judged.totalTests, judged.totalTime,
+      judged.totalTests, judged.totalTime, Number(job.id), Number(job.requested_at),
     )];
   if (acceptedDelta !== 0) {
     statements.push(env.OJ_DB.prepare(`
@@ -5934,10 +6071,18 @@ async function rejudgeProblemSubmission(job, env) {
       SET accepted_submissions = MIN(total_submissions,
             MAX(0, accepted_submissions + ?2)),
           updated_at = ?3
-      WHERE problem_id = ?1
-    `).bind(storedProblemId(job.group_name, job.problem_id), acceptedDelta, now));
+      WHERE problem_id = ?1 AND EXISTS (
+        SELECT 1 FROM rejudge_queue q
+        WHERE q.id = ?4 AND q.requested_at = ?5
+          AND q.status = 'processing' AND q.cancel_requested = 0
+      )
+    `).bind(
+      storedProblemId(job.group_name, job.problem_id), acceptedDelta, now,
+      Number(job.id), Number(job.requested_at),
+    ));
   }
-  await env.OJ_DB.batch(statements);
+  const results = await env.OJ_DB.batch(statements);
+  return Number(results[0]?.meta?.changes || 0) > 0;
 }
 
 async function rejudgeExamSubmission(job, env) {
@@ -5948,7 +6093,7 @@ async function rejudgeExamSubmission(job, env) {
     JOIN exam_papers p ON p.id = s.exam_id
     WHERE s.id = ?1 AND s.is_preview = 0 AND s.is_final = 1
   `).bind(Number(job.submission_id)).first();
-  if (!row) return;
+  if (!row) return true;
   const paper = JSON.parse(row.structure_json);
   const answers = JSON.parse(row.answers_json);
   const grading = JSON.parse(row.grading_json);
@@ -5992,27 +6137,33 @@ async function rejudgeExamSubmission(job, env) {
       else partResults.push(updated);
     }
   }
-  if (!matched) return;
+  if (!matched) return true;
   const scores = calculateExamScores(paper, partResults);
   const now = Date.now();
-  const statements = [env.OJ_DB.prepare(`
+  const updateResult = await env.OJ_DB.prepare(`
     UPDATE exam_submissions
     SET grading_json = ?2, auto_score = ?3, manual_score = ?4,
         total_score = ?5, graded_count = ?6, total_parts = ?7,
         grading_status = ?8, updated_at = ?9
-    WHERE id = ?1
+    WHERE id = ?1 AND EXISTS (
+      SELECT 1 FROM rejudge_queue q
+      WHERE q.id = ?10 AND q.requested_at = ?11
+        AND q.status = 'processing' AND q.cancel_requested = 0
+    )
   `).bind(
     Number(row.id), JSON.stringify({ ...grading, partResults }),
     scores.autoScore, scores.manualScore, scores.totalScore,
     scores.gradedCount, scores.totalParts, scores.gradingStatus, now,
-  )];
+    Number(job.id), Number(job.requested_at),
+  ).run();
+  if (Number(updateResult.meta?.changes || 0) < 1) return false;
   const completionMessage = examCompletionMessageStatement(env, {
     examId: row.exam_id, username: row.username, title: row.title,
     group: row.group_name, resultPolicy: row.result_policy,
     gradingStatus: scores.gradingStatus, createdAt: now, submissionId: Number(row.id),
   });
-  if (completionMessage) statements.push(completionMessage);
-  await env.OJ_DB.batch(statements);
+  if (completionMessage) await completionMessage.run();
+  return true;
 }
 
 function validateProblem(input, requestedFile) {
