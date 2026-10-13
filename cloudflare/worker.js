@@ -945,6 +945,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminExamSubmissions(body, env);
+      } else if (body.type === 'admin_exam_grades_export') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminExamGradesExport(body, env);
       } else if (body.type === 'admin_exam_submission_records') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -3969,6 +3973,76 @@ async function handleAdminExamSubmissions(body, env) {
     submittedAt: Number(row.submitted_at),
     updatedAt: Number(row.updated_at),
   })));
+}
+
+async function handleAdminExamGradesExport(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '试卷数据库尚未配置' }, 503);
+  const examId = normalizeExamId(body.examId);
+  if (!examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+
+  const paperRow = await readExamRecord(env, examId);
+  if (!paperRow) return jsonResponse({ error: '试卷不存在' }, 404);
+
+  let paper;
+  try {
+    paper = parseExamRecord(paperRow);
+  } catch {
+    return jsonResponse({ error: '试卷数据损坏，暂时无法导出' }, 500);
+  }
+
+  const result = await env.OJ_DB.prepare(`
+    SELECT id, username, attempt_no, auto_score, manual_score, total_score,
+           graded_count, total_parts, grading_status, released, submitted_at,
+           updated_at, grading_json
+    FROM exam_submissions
+    WHERE exam_id = ?1 AND is_final = 1 AND is_preview = 0
+    ORDER BY submitted_at ASC
+  `).bind(examId).all();
+
+  const submissions = (result.results || []).map(row => {
+    let grading = {};
+    try {
+      grading = JSON.parse(row.grading_json || '{}');
+    } catch {
+      grading = {};
+    }
+    const partScores = (Array.isArray(grading.partResults) ? grading.partResults : []).map(item => ({
+      partId: String(item.partId || ''),
+      effectiveScore: Number(item.effectiveScore || 0),
+    }));
+    return {
+      id: Number(row.id),
+      username: row.username,
+      attemptNo: Number(row.attempt_no),
+      autoScore: Number(row.auto_score),
+      manualScore: Number(row.manual_score),
+      totalScore: Number(row.total_score),
+      gradedCount: Number(row.graded_count),
+      totalParts: Number(row.total_parts),
+      gradingStatus: row.grading_status,
+      released: Number(row.released) === 1,
+      submittedAt: Number(row.submitted_at),
+      updatedAt: Number(row.updated_at),
+      partScores,
+    };
+  });
+
+  return jsonResponse({
+    paper: {
+      id: paper.id || examId,
+      title: paper.title || examId,
+      totalScore: Number(paper.totalScore || 0),
+      questions: Array.isArray(paper.questions) ? paper.questions.map(question => ({
+        title: question.title || '',
+        parts: Array.isArray(question.parts) ? question.parts.map(part => ({
+          id: part.id,
+          prompt: part.prompt || '',
+          score: Number(part.score || 0),
+        })) : [],
+      })) : [],
+    },
+    submissions,
+  });
 }
 
 async function handleAdminExamSubmissionRecords(body, env) {

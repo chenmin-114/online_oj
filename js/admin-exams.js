@@ -44,6 +44,7 @@ class ExamAdmin {
     document.getElementById('back-to-exams').addEventListener('click', () => this.showManager());
     document.getElementById('grading-exam').addEventListener('change', event => {
       document.getElementById('view-grading-exam-submissions').disabled = !event.target.value;
+      document.getElementById('export-exam-grades').disabled = !event.target.value;
       document.getElementById('bulk-rejudge-exam-programming').disabled = !event.target.value;
       document.getElementById('show-rejudge-tasks').disabled = !event.target.value;
       document.getElementById('cancel-exam-rejudge-tasks').disabled = !event.target.value;
@@ -56,6 +57,7 @@ class ExamAdmin {
       const examId = document.getElementById('grading-exam').value;
       if (examId) this.admin.openExamSubmissionRecords(examId);
     });
+    document.getElementById('export-exam-grades').addEventListener('click', () => this.exportExamGrades());
     document.getElementById('bulk-rejudge-exam-programming').addEventListener('click', () => this.rejudgeAllExamProgramming());
     document.getElementById('show-rejudge-tasks').addEventListener('click', () => this.openRejudgeTasks());
     document.getElementById('refresh-rejudge-tasks').addEventListener('click', () => this.loadRejudgeTasks(this.rejudgeTaskPage));
@@ -827,6 +829,7 @@ class ExamAdmin {
       await this.showGrading();
       document.getElementById('grading-exam').value = grade.dataset.gradeExam;
       document.getElementById('view-grading-exam-submissions').disabled = false;
+      document.getElementById('export-exam-grades').disabled = false;
       document.getElementById('bulk-rejudge-exam-programming').disabled = false;
       document.getElementById('show-rejudge-tasks').disabled = false;
       document.getElementById('cancel-exam-rejudge-tasks').disabled = false;
@@ -919,6 +922,7 @@ class ExamAdmin {
     document.getElementById('exam-manage-view').hidden = true;
     document.getElementById('exam-grading-view').hidden = false;
     document.getElementById('view-grading-exam-submissions').disabled = !document.getElementById('grading-exam').value;
+    document.getElementById('export-exam-grades').disabled = !document.getElementById('grading-exam').value;
     document.getElementById('show-rejudge-tasks').disabled = !document.getElementById('grading-exam').value;
     document.getElementById('cancel-exam-rejudge-tasks').disabled = !document.getElementById('grading-exam').value;
   }
@@ -929,6 +933,7 @@ class ExamAdmin {
     await this.showGrading();
     document.getElementById('grading-exam').value = examId;
     document.getElementById('view-grading-exam-submissions').disabled = false;
+    document.getElementById('export-exam-grades').disabled = false;
     document.getElementById('bulk-rejudge-exam-programming').disabled = false;
     document.getElementById('show-rejudge-tasks').disabled = false;
     document.getElementById('cancel-exam-rejudge-tasks').disabled = false;
@@ -1007,6 +1012,100 @@ class ExamAdmin {
     } catch (error) {
       if (!silent) workspace.innerHTML = `<p class="empty-cell">${this.escape(error.message)}</p>`;
     }
+  }
+
+  async exportExamGrades() {
+    const examId = document.getElementById('grading-exam').value;
+    const button = document.getElementById('export-exam-grades');
+    if (!examId || button.disabled) return;
+    if (!window.XLSX) {
+      alert('Excel 组件加载失败，请刷新管理页面后重试');
+      return;
+    }
+
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = '正在导出...';
+    try {
+      const result = await this.request('admin_exam_grades_export', { examId });
+      const paper = result.paper || this.paper;
+      const submissions = Array.isArray(result.submissions) ? result.submissions : [];
+      if (!paper) throw new Error('未读取到试卷信息');
+      if (!submissions.length) throw new Error('这套试卷还没有学生正式提交');
+
+      const parts = (paper.questions || []).flatMap((question, questionIndex) =>
+        (question.parts || []).map((part, partIndex) => ({
+          id: part.id,
+          title: `${questionIndex + 1}.${partIndex + 1} ${question.title || '未命名题目'}${part.prompt ? ` · ${part.prompt}` : ''}`,
+          score: Number(part.score || 0),
+        }))
+      );
+      const ranked = [...submissions].sort((left, right) =>
+        Number(right.totalScore || 0) - Number(left.totalScore || 0)
+        || String(left.username || '').localeCompare(String(right.username || ''), 'zh-CN')
+      );
+      let previousScore = null;
+      let previousRank = 0;
+      const summaryRows = ranked.map((submission, index) => {
+        const totalScore = Number(submission.totalScore || 0);
+        const rank = previousScore === totalScore ? previousRank : index + 1;
+        previousScore = totalScore;
+        previousRank = rank;
+        return {
+          排名: rank,
+          学生账号: submission.username,
+          总分: totalScore,
+          试卷满分: Number(paper.totalScore || 0),
+          自动评分: Number(submission.autoScore || 0),
+          人工评分: Number(submission.manualScore || 0),
+          批改状态: submission.gradingStatus === 'completed' ? '已改完' : '未改完',
+          批改进度: `${submission.gradedCount}/${submission.totalParts}`,
+          提交次数: Number(submission.attemptNo || 0),
+          提交时间: this.formatExportDate(submission.submittedAt),
+          最后更新: this.formatExportDate(submission.updatedAt),
+          成绩已发布: submission.released ? '是' : '否',
+        };
+      });
+      const detailRows = ranked.map(submission => {
+        const scoreMap = new Map((submission.partScores || []).map(item => [item.partId, item]));
+        const row = {
+          学生账号: submission.username,
+          总分: Number(submission.totalScore || 0),
+        };
+        parts.forEach(part => {
+          const resultPart = scoreMap.get(part.id);
+          row[`${part.title}（${part.score}分）`] = resultPart ? Number(resultPart.effectiveScore || 0) : '';
+        });
+        return row;
+      });
+
+      const workbook = XLSX.utils.book_new();
+      const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+      const detailSheet = XLSX.utils.json_to_sheet(detailRows);
+      summarySheet['!cols'] = [
+        { wch: 8 }, { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+        { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 22 }, { wch: 22 }, { wch: 12 },
+      ];
+      detailSheet['!cols'] = [{ wch: 20 }, { wch: 10 }, ...parts.map(() => ({ wch: 26 }))];
+      summarySheet['!autofilter'] = { ref: summarySheet['!ref'] };
+      detailSheet['!autofilter'] = { ref: detailSheet['!ref'] };
+      XLSX.utils.book_append_sheet(workbook, summarySheet, '成绩汇总');
+      XLSX.utils.book_append_sheet(workbook, detailSheet, '各小题得分');
+
+      const safeTitle = String(paper.title || examId).replace(/[\\/:*?"<>|\[\]]/g, '_').slice(0, 80);
+      XLSX.writeFile(workbook, `${safeTitle}-成绩.xlsx`, { compression: true });
+    } catch (error) {
+      alert(`导出失败：${error.message || '未知错误'}`);
+    } finally {
+      button.disabled = !document.getElementById('grading-exam').value;
+      button.textContent = originalText;
+    }
+  }
+
+  formatExportDate(timestamp) {
+    const value = Number(timestamp);
+    if (!Number.isFinite(value) || value <= 0) return '';
+    return new Date(value).toLocaleString('zh-CN', { hour12: false });
   }
 
   async rejudgeAllExamProgramming() {
