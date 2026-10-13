@@ -1764,12 +1764,12 @@ const CLOUDFLARE_FREE_LIMITS = Object.freeze({
   workerRequests: 100000,
   d1RowsRead: 5000000,
   d1RowsWritten: 100000,
-  d1StorageBytes: 5 * 1024 * 1024 * 1024,
+  d1StorageBytes: 5 * 1000 * 1000 * 1000,
   kvReads: 100000,
   kvWrites: 1000,
   kvDeletes: 1000,
   kvLists: 1000,
-  kvStorageBytes: 1024 * 1024 * 1024,
+  kvStorageBytes: 1000 * 1000 * 1000,
   queueOperations: 10000,
 });
 

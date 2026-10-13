@@ -970,9 +970,9 @@ class OJAdmin {
   formatCloudflareMetric(value, unit) {
     const number = Math.max(0, Number(value) || 0);
     if (unit === 'bytes') {
-      if (number >= 1024 ** 3) return `${(number / 1024 ** 3).toFixed(2)} GB`;
-      if (number >= 1024 ** 2) return `${(number / 1024 ** 2).toFixed(1)} MB`;
-      if (number >= 1024) return `${(number / 1024).toFixed(1)} KB`;
+      if (number >= 1000 ** 3) return `${(number / 1000 ** 3).toFixed(2)} GB`;
+      if (number >= 1000 ** 2) return `${(number / 1000 ** 2).toFixed(1)} MB`;
+      if (number >= 1000) return `${(number / 1000).toFixed(1)} KB`;
       return `${Math.round(number)} B`;
     }
     return `${Math.round(number).toLocaleString('zh-CN')} ${unit || ''}`.trim();
