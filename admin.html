@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20261009-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261013-03">
+  <link rel="stylesheet" href="css/admin.css?v=20261013-04">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -453,8 +453,8 @@
         </article>
         <article class="admin-card judge-node-card">
           <div class="card-heading">
-            <div><h3>本地判题节点</h3><p>多个可信节点的空闲执行槽会主动领取任务；本地优先、公共 Judge0 自动兜底，不开放公网端口</p></div>
-            <button id="refresh-judge-nodes" type="button" class="admin-button secondary">刷新节点</button>
+            <div><h3>节点管理</h3><p>查看公共 Judge0 当前状态并管理本地判题节点；本地优先、公共服务自动兜底</p></div>
+            <button id="refresh-judge-nodes" type="button" class="admin-button secondary">刷新状态</button>
           </div>
           <div class="judge-node-create">
             <label class="form-field"><span>节点名称</span><input id="judge-node-name" class="admin-input" maxlength="60" autocomplete="off" placeholder="例如：实验室电脑 1"></label>
@@ -516,7 +516,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20261004-02"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
-  <script src="js/admin.js?v=20261013-03"></script>
+  <script src="js/admin.js?v=20261013-04"></script>
   <script src="js/admin-exams.js?v=20261013-01"></script>
 </body>
 </html>

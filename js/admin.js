@@ -911,6 +911,7 @@ class OJAdmin {
     container.innerHTML = '<p class="empty-cell">正在读取节点...</p>';
     try {
       const result = await this.adminRequest('admin_judge_nodes_list');
+      this.publicJudge = result.publicJudge || null;
       this.judgeNodes = Array.isArray(result.nodes) ? result.nodes : [];
       this.renderJudgeNodes();
     } catch (error) {
@@ -1022,15 +1023,27 @@ class OJAdmin {
   renderJudgeNodes() {
     const container = document.getElementById('judge-node-list');
     if (!container) return;
-    if (!this.judgeNodes.length) {
-      container.innerHTML = '<p class="empty-cell">尚未添加本地判题节点</p>';
-      return;
-    }
     const statusLabels = {
       installing: '安装或自检中', ready: '在线可用', paused: '已暂停',
-      error: '节点异常', offline: '离线', revoked: '已撤销',
+      limited: '暂时限流', error: '节点异常', offline: '离线', revoked: '已撤销',
     };
-    container.innerHTML = this.judgeNodes.map(node => {
+    const publicJudge = this.publicJudge || {};
+    const publicStatus = statusLabels[publicJudge.status] || '尚未检测';
+    const publicCurrent = publicJudge.trackingAvailable
+      ? `当前判题 ${Number(publicJudge.active || 0)} 份（学生 ${Number(publicJudge.student || 0)} / 后台 ${Number(publicJudge.background || 0)}）`
+      : '当前任务统计暂不可用';
+    const publicCheck = publicJudge.checkedAt
+      ? `手动检测 ${Number(publicJudge.latencyMs || 0)}ms · ${this.formatDate(publicJudge.checkedAt)}`
+      : '等待检测';
+    const publicMessage = publicJudge.message
+      ? `<small class="error" title="${this.escape(publicJudge.message)}">${this.escape(publicJudge.message)}</small>` : '';
+    const publicCard = `<div class="judge-node-item public-judge-node">
+      <div class="judge-node-item-main"><strong>公共 Judge0</strong><small>${this.escape(publicJudge.endpoint || 'ce.judge0.com')} · 本地节点不可用时自动兜底</small>${publicMessage}</div>
+      <span class="judge-node-capacity">${this.escape(publicCurrent)}</span>
+      <span class="judge-node-check">${this.escape(publicCheck)}</span>
+      <div class="judge-node-status-actions"><span class="judge-node-state ${this.escape(publicJudge.status || 'unknown')}">${this.escape(publicStatus)}</span></div>
+    </div>`;
+    const localCards = this.judgeNodes.map(node => {
       const details = [node.platform, node.judgeVersion ? `Judge0 ${node.judgeVersion}` : '', node.agentVersion ? `助手 ${node.agentVersion}` : '']
         .filter(Boolean).join(' · ') || '尚未上报运行环境';
       const lastSeen = node.lastSeenAt ? this.formatDate(node.lastSeenAt) : '从未连接';
@@ -1057,9 +1070,11 @@ class OJAdmin {
         <div class="judge-node-item-main"><strong>${this.escape(node.name)}</strong><small>${this.escape(details)} · 最近连接 ${this.escape(lastSeen)}</small>${scheduler}${error}</div>
         <span class="judge-node-capacity">执行槽 ${this.escape(node.busySlots)}/${this.escape(node.maxSlots)}（设备上限 ${this.escape(node.reportedSlots || node.maxSlots)}）</span>
         ${controls}
-        <div><span class="judge-node-state ${this.escape(node.status)}">${this.escape(statusLabels[node.status] || node.status)}</span>${revoke}</div>
+        <div class="judge-node-status-actions"><span class="judge-node-state ${this.escape(node.status)}">${this.escape(statusLabels[node.status] || node.status)}</span>${revoke}</div>
       </div>`;
     }).join('');
+    const emptyLocal = '<p class="judge-node-empty">尚未添加本地判题节点</p>';
+    container.innerHTML = publicCard + (localCards || emptyLocal);
   }
 
   async handleJudgeNodeAction(event) {

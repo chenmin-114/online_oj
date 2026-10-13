@@ -56,6 +56,8 @@ const REJUDGE_HEARTBEAT_MS = 60 * 1000;
 const REJUDGE_MAX_ATTEMPTS = 5;
 const REJUDGE_RECOVERY_INTERVAL_MINUTES = 10;
 const BACKGROUND_JUDGE_REQUESTS_PER_MINUTE = 30;
+const PUBLIC_JUDGE_SESSION_TTL_MS = 3 * 60 * 1000;
+const PUBLIC_JUDGE_SESSION_HEARTBEAT_MS = 60 * 1000;
 const JUDGE_NODE_PAIRING_TTL_MS = 2 * 60 * 60 * 1000;
 const JUDGE_NODE_OFFLINE_MS = 7 * 60 * 1000;
 const JUDGE_NODE_CLAIM_WAIT_MS = 50 * 1000;
@@ -127,6 +129,9 @@ const SUBMISSION_LANGUAGE_IDS = {
 export class Judge0RateGate {
   constructor(ctx) {
     this.ctx = ctx;
+    // 只记录当前正在借助公共 Judge0 判题的整份提交，不写入持久化存储。
+    // Durable Object 重启时计数安全归零；它只用于管理端观察，不参与判题正确性。
+    this.activeSessions = new Map();
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS judge_permits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,8 +141,60 @@ export class Judge0RateGate {
     `);
   }
 
-  async fetch() {
+  cleanupActiveSessions(now = Date.now()) {
+    for (const [id, session] of this.activeSessions) {
+      if (Number(session.expiresAt || 0) <= now) this.activeSessions.delete(id);
+    }
+  }
+
+  async readSessionRequest(request) {
+    try {
+      const body = await request.json();
+      const id = String(body?.id || '');
+      const category = body?.category === 'background' ? 'background' : 'student';
+      return /^[A-Za-z0-9_-]{20,80}$/.test(id) ? { id, category } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  registerSession(session, now = Date.now()) {
+    if (!session) return false;
+    this.cleanupActiveSessions(now);
+    this.activeSessions.set(session.id, {
+      category: session.category,
+      expiresAt: now + PUBLIC_JUDGE_SESSION_TTL_MS,
+    });
+    return true;
+  }
+
+  async fetch(request) {
+    const path = new URL(request.url).pathname;
     const now = Date.now();
+    if (path === '/status') {
+      this.cleanupActiveSessions(now);
+      let student = 0;
+      let background = 0;
+      for (const session of this.activeSessions.values()) {
+        if (session.category === 'background') background += 1;
+        else student += 1;
+      }
+      return Response.json({ active: student + background, student, background });
+    }
+    if (path === '/start' || path === '/touch') {
+      const session = await this.readSessionRequest(request);
+      if (!session) return Response.json({ error: 'Invalid session' }, { status: 400 });
+      this.registerSession(session, now);
+      return Response.json({ success: true });
+    }
+    if (path === '/finish') {
+      const session = await this.readSessionRequest(request);
+      if (!session) return Response.json({ error: 'Invalid session' }, { status: 400 });
+      this.activeSessions.delete(session.id);
+      return Response.json({ success: true });
+    }
+    if (path !== '/acquire') return Response.json({ error: 'Not Found' }, { status: 404 });
+    const session = await this.readSessionRequest(request);
     const cutoff = now - 60 * 1000;
     this.ctx.storage.sql.exec('DELETE FROM judge_permits WHERE used_at <= ?', cutoff);
     const countRow = [...this.ctx.storage.sql.exec('SELECT COUNT(*) AS count FROM judge_permits')][0];
@@ -148,7 +205,8 @@ export class Judge0RateGate {
       return Response.json({ allowed: false, used, retryAfterMs });
     }
     this.ctx.storage.sql.exec('INSERT INTO judge_permits (used_at) VALUES (?)', now);
-    return Response.json({ allowed: true, used: used + 1, retryAfterMs: 0 });
+    const sessionStarted = this.registerSession(session, now);
+    return Response.json({ allowed: true, used: used + 1, retryAfterMs: 0, sessionStarted });
   }
 }
 
@@ -1639,6 +1697,7 @@ async function handleJudgeNodeHeartbeat(body, env) {
 async function handleAdminJudgeNodesList(env) {
   if (!env.OJ_DB) return jsonResponse({ error: '节点数据库尚未配置' }, 503);
   const now = Date.now();
+  const publicJudgePromise = readCurrentPublicJudgeStatus(env);
   const result = await env.OJ_DB.prepare(`
     SELECT id, name, platform, agent_version, judge_version, endpoint_url, max_slots,
            configured_slots, accepting_jobs, busy_slots, status, last_error,
@@ -1687,7 +1746,65 @@ async function handleAdminJudgeNodesList(env) {
     lastSeenAt: Number(node.last_seen_at),
     revokedAt: node.revoked_at == null ? null : Number(node.revoked_at),
   }));
-  return jsonResponse({ success: true, nodes, offlineAfterSeconds: JUDGE_NODE_OFFLINE_MS / 1000 });
+  return jsonResponse({
+    success: true,
+    publicJudge: await publicJudgePromise,
+    nodes,
+    offlineAfterSeconds: JUDGE_NODE_OFFLINE_MS / 1000,
+  });
+}
+
+async function readCurrentPublicJudgeStatus(env) {
+  const checkedAt = Date.now();
+  const publicBaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
+  let endpoint = 'Judge0 CE';
+  try { endpoint = new URL(publicBaseUrl).hostname; } catch { /* keep safe label */ }
+  let active = 0;
+  let student = 0;
+  let background = 0;
+  let trackingAvailable = false;
+  const gate = publicJudgeRateGate(env);
+  if (gate) {
+    try {
+      const response = await gate.fetch('https://judge-rate-gate/status');
+      if (response.ok) {
+        const current = await response.json();
+        active = Math.max(0, Number(current.active || 0));
+        student = Math.max(0, Number(current.student || 0));
+        background = Math.max(0, Number(current.background || 0));
+        trackingAvailable = true;
+      }
+    } catch (error) {
+      console.error('读取公共 Judge0 当前任务失败:', error);
+    }
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(`${publicBaseUrl}/about`, {
+      method: 'GET', headers: { 'Accept': 'application/json' }, signal: controller.signal,
+    });
+    return {
+      endpoint,
+      status: response.ok ? 'ready' : response.status === 429 ? 'limited' : 'error',
+      active, student, background, trackingAvailable,
+      latencyMs: Date.now() - startedAt,
+      checkedAt,
+      message: response.ok ? '' : `健康检查返回 HTTP ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      endpoint,
+      status: 'error', active, student, background, trackingAvailable,
+      latencyMs: Date.now() - startedAt,
+      checkedAt,
+      message: error?.name === 'AbortError' ? '健康检查超时' : '暂时无法连接公共判题服务',
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function handleAdminJudgeNodeRevoke(body, env) {
@@ -5320,16 +5437,76 @@ function calculateRanking(submissions) {
 /**
  * 处理代码执行请求（代理 Judge0 CE API）
  */
-async function acquireBackgroundJudgePermit(env) {
+function publicJudgeRateGate(env) {
+  if (!env.JUDGE0_RATE_GATE) return null;
+  return env.JUDGE0_RATE_GATE.get(env.JUDGE0_RATE_GATE.idFromName('judge0-background-global'));
+}
+
+function publicJudgeSessionBody(options = {}) {
+  const session = options.publicJudgeSession;
+  return session ? { id: session.id, category: session.category } : null;
+}
+
+function markPublicJudgeSessionStarted(env, options = {}) {
+  const session = options.publicJudgeSession;
+  if (!session || session.started) return;
+  session.started = true;
+  // 学生的一份提交只登记一次，超过一分钟时才低频续期；后台每个测试点原本
+  // 就会访问限速器，因此无需额外心跳。
+  if (session.category !== 'student') return;
+  session.heartbeat = setInterval(() => {
+    const gate = publicJudgeRateGate(env);
+    if (!gate) return;
+    gate.fetch('https://judge-rate-gate/touch', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: session.id, category: session.category }),
+    }).catch(() => {});
+  }, PUBLIC_JUDGE_SESSION_HEARTBEAT_MS);
+}
+
+async function startPublicJudgeSession(env, options = {}) {
+  const session = options.publicJudgeSession;
+  if (!session || session.started) return;
+  const gate = publicJudgeRateGate(env);
+  if (!gate) return;
+  try {
+    const response = await gate.fetch('https://judge-rate-gate/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: session.id, category: session.category }),
+    });
+    if (response.ok) markPublicJudgeSessionStarted(env, options);
+  } catch (error) {
+    console.error('登记公共 Judge0 当前任务失败:', error);
+  }
+}
+
+async function finishPublicJudgeSession(env, session) {
+  if (session?.heartbeat) clearInterval(session.heartbeat);
+  if (!session?.started) return;
+  const gate = publicJudgeRateGate(env);
+  if (!gate) return;
+  try {
+    await gate.fetch('https://judge-rate-gate/finish', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: session.id, category: session.category }),
+    });
+  } catch (error) {
+    console.error('释放公共 Judge0 当前任务失败:', error);
+  }
+}
+
+async function acquireBackgroundJudgePermit(env, options = {}) {
   if (!env.JUDGE0_RATE_GATE) {
     throw judgeError('后台判题限速器尚未配置', 503, 'JUDGE_RATE_GATE_UNAVAILABLE');
   }
-  const id = env.JUDGE0_RATE_GATE.idFromName('judge0-background-global');
-  const response = await env.JUDGE0_RATE_GATE.get(id).fetch('https://judge-rate-gate/acquire', {
-    method: 'POST',
+  const response = await publicJudgeRateGate(env).fetch('https://judge-rate-gate/acquire', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(publicJudgeSessionBody(options) || {}),
   });
   if (!response.ok) throw judgeError('后台判题限速器暂时不可用', 503, 'JUDGE_RATE_GATE_UNAVAILABLE');
-  return response.json();
+  const permit = await response.json();
+  if (permit.sessionStarted) markPublicJudgeSessionStarted(env, options);
+  return permit;
 }
 
 async function fetchJudge0Submission(payload, env, options = {}) {
@@ -5358,7 +5535,7 @@ async function fetchJudge0Submission(payload, env, options = {}) {
   }
 
   if (options.backgroundRejudge === true) {
-    const permit = await acquireBackgroundJudgePermit(env);
+    const permit = await acquireBackgroundJudgePermit(env, options);
     if (!permit.allowed) {
       return jsonResponse({
         error: '后台判题已达到每分钟请求上限，将自动延迟重试',
@@ -5366,6 +5543,8 @@ async function fetchJudge0Submission(payload, env, options = {}) {
         retryAfterMs: Number(permit.retryAfterMs || 60000),
       }, 429);
     }
+  } else {
+    await startPublicJudgeSession(env, options);
   }
 
   const publicBaseUrl = (env.JUDGE0_API_URL || 'https://ce.judge0.com').replace(/\/$/, '');
@@ -5391,6 +5570,18 @@ async function fetchJudge0Submission(payload, env, options = {}) {
 }
 
 async function handleExecute(body, env, options = {}) {
+  if (options.publicJudgeSession) return handleExecuteInternal(body, env, options);
+  const publicJudgeSession = {
+    id: randomUrlToken(24), category: 'student', started: false, heartbeat: null,
+  };
+  try {
+    return await handleExecuteInternal(body, env, { ...options, publicJudgeSession });
+  } finally {
+    await finishPublicJudgeSession(env, publicJudgeSession);
+  }
+}
+
+async function handleExecuteInternal(body, env, options = {}) {
   const { script, stdin } = body;
   const languageId = Number.isInteger(body.languageId)
     ? body.languageId
@@ -7097,6 +7288,23 @@ async function runPartialCreditJudge(problem, executionScript, languageId, env, 
 }
 
 async function runJudgeSubmission(body, env, onEvent, shouldPersist = true, allowDraft = false, executionOptions = {}) {
+  const publicJudgeSession = {
+    id: randomUrlToken(24),
+    category: executionOptions.backgroundRejudge === true ? 'background' : 'student',
+    started: false,
+    heartbeat: null,
+  };
+  const trackedOptions = { ...executionOptions, publicJudgeSession };
+  try {
+    return await runJudgeSubmissionInternal(
+      body, env, onEvent, shouldPersist, allowDraft, trackedOptions,
+    );
+  } finally {
+    await finishPublicJudgeSession(env, publicJudgeSession);
+  }
+}
+
+async function runJudgeSubmissionInternal(body, env, onEvent, shouldPersist = true, allowDraft = false, executionOptions = {}) {
   const prepared = await prepareJudgeSubmission(body, env, allowDraft);
   const { username, problemId, group, language, script, languageId, problem, testCases } = prepared;
   if (onEvent) await onEvent({ type: 'start', totalTests: testCases.length });
