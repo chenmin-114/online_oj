@@ -34,6 +34,7 @@ class OJAdmin {
     this.timedExtensions = [];
     this.judgeNodes = [];
     this.globalRejudgeTaskPage = 1;
+    this.globalFailedRejudgeTaskPage = 1;
     this.examMode = false;
     this.controlsBound = false;
   }
@@ -204,6 +205,10 @@ class OJAdmin {
     document.getElementById('global-rejudge-task-prev').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage - 1));
     document.getElementById('global-rejudge-task-next').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage + 1));
     document.getElementById('global-rejudge-task-list').addEventListener('click', event => this.cancelGlobalRejudgeTask(event));
+    document.getElementById('global-failed-rejudge-task-prev').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage, this.globalFailedRejudgeTaskPage - 1));
+    document.getElementById('global-failed-rejudge-task-next').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage, this.globalFailedRejudgeTaskPage + 1));
+    document.getElementById('global-failed-rejudge-task-list').addEventListener('click', event => this.handleGlobalFailedRejudgeAction(event));
+    document.getElementById('delete-global-failed-rejudge-tasks').addEventListener('click', () => this.deleteGlobalFailedRejudgeTasks());
     document.getElementById('download-judge-node-installer').addEventListener('click', () => this.downloadJudgeNodeInstaller());
     document.getElementById('judge-node-list').addEventListener('click', event => this.handleJudgeNodeAction(event));
     document.getElementById('admin-message-audience').addEventListener('change', event => {
@@ -902,35 +907,52 @@ class OJAdmin {
     }
   }
 
-  async loadGlobalRejudgeTasks(page = 1) {
+  async loadGlobalRejudgeTasks(page = 1, failedPage = this.globalFailedRejudgeTaskPage) {
     const list = document.getElementById('global-rejudge-task-list');
+    const failedList = document.getElementById('global-failed-rejudge-task-list');
     const summaryNode = document.getElementById('global-rejudge-task-summary');
-    if (!list || !summaryNode) return;
+    const failedSummaryNode = document.getElementById('global-failed-rejudge-task-summary');
+    if (!list || !failedList || !summaryNode || !failedSummaryNode) return;
     list.innerHTML = '<p class="empty-cell">正在读取判题任务...</p>';
+    failedList.innerHTML = '<p class="empty-cell">正在读取失败任务...</p>';
     try {
-      const result = await this.adminRequest('admin_rejudge_tasks_list', {
-        scope: 'all',
-        page: Math.max(1, Number(page) || 1),
-        pageSize: 50,
-      });
+      const [result, failedResult] = await Promise.all([
+        this.adminRequest('admin_rejudge_tasks_list', {
+          scope: 'all', taskFilter: 'active',
+          page: Math.max(1, Number(page) || 1), pageSize: 50,
+        }),
+        this.adminRequest('admin_rejudge_tasks_list', {
+          scope: 'all', taskFilter: 'failed',
+          page: Math.max(1, Number(failedPage) || 1), pageSize: 50,
+        }),
+      ]);
       this.globalRejudgeTaskPage = Number(result.page || 1);
+      this.globalFailedRejudgeTaskPage = Number(failedResult.page || 1);
       const summary = result.summary || {};
-      summaryNode.textContent = `等待 ${Number(summary.pending || 0)} · 执行中 ${Number(summary.processing || 0)} · 失败 ${Number(summary.failed || 0)} · 已取消 ${Number(summary.cancelled || 0)}`;
-      const statusLabels = { pending: '等待中', processing: '执行中', failed: '失败', cancelled: '已取消' };
+      summaryNode.textContent = `等待 ${Number(summary.pending || 0)} · 执行中 ${Number(summary.processing || 0)}`;
+      const statusLabels = { pending: '等待中', processing: '执行中' };
       list.innerHTML = result.tasks?.length ? result.tasks.map(task => {
-        const active = task.status === 'pending' || task.status === 'processing';
         const scope = task.kind === 'exam' ? `套卷 ${task.examId || '—'}` : '普通题';
-        const detail = task.lastError
-          ? `<span title="${this.escape(task.lastError)}">${this.escape(task.lastError.slice(0, 36))}</span>`
-          : '<span>—</span>';
-        return `<div class="rejudge-task-row global"><strong>${this.escape(task.username || '未知用户')}</strong><span>${this.escape(scope)}</span><span>${this.escape(task.problemId)}</span><span class="rejudge-task-status ${this.escape(task.status)}">${this.escape(statusLabels[task.status] || task.status)}</span><span>尝试 ${this.escape(task.attempts)}</span><span>${this.escape(this.formatDate(task.updatedAt))}</span><div>${active ? `<button type="button" class="admin-button danger" data-cancel-global-rejudge-task="${this.escape(task.id)}" data-requested-at="${this.escape(task.requestedAt)}">取消</button>` : detail}</div></div>`;
-      }).join('') : '<p class="empty-cell">当前没有等待、执行中、失败或已取消的后台判题任务</p>';
+        return `<div class="rejudge-task-row global"><strong>${this.escape(task.username || '未知用户')}</strong><span>${this.escape(scope)}</span><span>${this.escape(task.problemId)}</span><span class="rejudge-task-status ${this.escape(task.status)}">${this.escape(statusLabels[task.status] || task.status)}</span><span>尝试 ${this.escape(task.attempts)}</span><span>${this.escape(this.formatDate(task.updatedAt))}</span><div><button type="button" class="admin-button danger" data-cancel-global-rejudge-task="${this.escape(task.id)}" data-requested-at="${this.escape(task.requestedAt)}">取消</button></div></div>`;
+      }).join('') : '<p class="empty-cell">当前没有等待中或执行中的后台判题任务</p>';
       const totalPages = Math.max(1, Math.ceil(Number(result.total || 0) / Number(result.pageSize || 50)));
       document.getElementById('global-rejudge-task-page').textContent = `第 ${this.globalRejudgeTaskPage} / ${totalPages} 页`;
       document.getElementById('global-rejudge-task-prev').disabled = this.globalRejudgeTaskPage <= 1;
       document.getElementById('global-rejudge-task-next').disabled = this.globalRejudgeTaskPage >= totalPages;
+      failedSummaryNode.textContent = `${Number(failedResult.total || 0)} 条失败记录，不会继续排队或消耗判题额度`;
+      failedList.innerHTML = failedResult.tasks?.length ? failedResult.tasks.map(task => {
+        const scope = task.kind === 'exam' ? `套卷 ${task.examId || '—'}` : '普通题';
+        const error = task.lastError || '未记录错误原因';
+        return `<div class="rejudge-task-row global failed"><strong>${this.escape(task.username || '未知用户')}</strong><span>${this.escape(scope)}</span><span>${this.escape(task.problemId)}</span><span class="rejudge-task-status failed">失败</span><span>尝试 ${this.escape(task.attempts)}</span><span title="${this.escape(error)}">${this.escape(error.slice(0, 36))}</span><div class="rejudge-task-row-actions"><button type="button" class="admin-button secondary" data-retry-global-failed-task="${this.escape(task.id)}" data-requested-at="${this.escape(task.requestedAt)}">重新判题</button><button type="button" class="admin-button danger" data-delete-global-failed-task="${this.escape(task.id)}" data-requested-at="${this.escape(task.requestedAt)}">删除</button></div></div>`;
+      }).join('') : '<p class="empty-cell">当前没有失败任务</p>';
+      const failedTotalPages = Math.max(1, Math.ceil(Number(failedResult.total || 0) / Number(failedResult.pageSize || 50)));
+      document.getElementById('global-failed-rejudge-task-page').textContent = `第 ${this.globalFailedRejudgeTaskPage} / ${failedTotalPages} 页`;
+      document.getElementById('global-failed-rejudge-task-prev').disabled = this.globalFailedRejudgeTaskPage <= 1;
+      document.getElementById('global-failed-rejudge-task-next').disabled = this.globalFailedRejudgeTaskPage >= failedTotalPages;
+      document.getElementById('delete-global-failed-rejudge-tasks').disabled = Number(failedResult.total || 0) < 1;
     } catch (error) {
       list.innerHTML = `<p class="empty-cell">读取队列失败：${this.escape(error.message)}</p>`;
+      failedList.innerHTML = `<p class="empty-cell">读取失败任务失败：${this.escape(error.message)}</p>`;
     }
   }
 
@@ -950,6 +972,39 @@ class OJAdmin {
     } catch (error) {
       this.toast(`取消失败：${error.message}`);
       button.disabled = false;
+    }
+  }
+
+  async handleGlobalFailedRejudgeAction(event) {
+    const retry = event.target.closest('[data-retry-global-failed-task]');
+    const remove = event.target.closest('[data-delete-global-failed-task]');
+    const button = retry || remove;
+    if (!button) return;
+    const action = retry ? 'retry' : 'delete';
+    if (action === 'delete' && !confirm('确定删除这条失败任务记录吗？此操作不会删除学生的提交和代码。')) return;
+    button.disabled = true;
+    try {
+      await this.adminRequest('admin_rejudge_failed_action', {
+        action,
+        taskId: Number(button.dataset[retry ? 'retryGlobalFailedTask' : 'deleteGlobalFailedTask']),
+        requestedAt: Number(button.dataset.requestedAt),
+      });
+      this.toast(action === 'retry' ? '失败任务已重新加入判题队列' : '失败任务记录已删除');
+      await this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage, this.globalFailedRejudgeTaskPage);
+    } catch (error) {
+      this.toast(`${action === 'retry' ? '重新判题' : '删除'}失败：${error.message}`);
+      button.disabled = false;
+    }
+  }
+
+  async deleteGlobalFailedRejudgeTasks() {
+    if (!confirm('确定批量删除全部失败任务记录吗？此操作不会删除学生的提交、代码或成绩。')) return;
+    try {
+      const result = await this.adminRequest('admin_rejudge_failed_action', { action: 'delete_scope', scope: 'all' });
+      this.toast(`已删除 ${result.deleted} 条失败任务记录`);
+      await this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage, 1);
+    } catch (error) {
+      this.toast(`批量删除失败：${error.message}`);
     }
   }
 

@@ -929,6 +929,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminRejudgeTaskCancel(body, env);
+      } else if (body.type === 'admin_rejudge_failed_action') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminRejudgeFailedAction(body, env);
       } else if (body.type === 'admin_rejudge_tasks_cancel_scope') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -4320,6 +4324,10 @@ async function handleAdminRejudgeTasksList(body, env) {
   if (!env.OJ_DB) return jsonResponse({ error: '提交数据库尚未配置' }, 503);
   const examId = normalizeExamId(body.examId);
   const globalScope = body.scope === 'all';
+  const taskFilter = body.taskFilter === 'failed' ? 'failed' : 'active';
+  const rowFilterSql = taskFilter === 'failed'
+    ? "q.cancel_requested = 0 AND q.status = 'failed'"
+    : "q.cancel_requested = 0 AND q.status IN ('pending', 'processing')";
   if (!globalScope && !examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
   const page = Math.max(1, Math.min(100000, Number.parseInt(body.page, 10) || 1));
   const pageSize = Math.max(10, Math.min(100, Number.parseInt(body.pageSize, 10) || 50));
@@ -4335,8 +4343,9 @@ async function handleAdminRejudgeTasksList(body, env) {
         ON q.submission_kind = 'exam' AND es.id = q.submission_id AND es.is_preview = 0
       LEFT JOIN submissions ps
         ON q.submission_kind = 'problem' AND ps.id = q.submission_id
-      WHERE (q.submission_kind = 'exam' AND es.id IS NOT NULL)
-         OR (q.submission_kind = 'problem' AND ps.id IS NOT NULL)
+      WHERE ((q.submission_kind = 'exam' AND es.id IS NOT NULL)
+         OR (q.submission_kind = 'problem' AND ps.id IS NOT NULL))
+        AND ${rowFilterSql}
       ORDER BY q.cancel_requested ASC,
                CASE q.status WHEN 'processing' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
                q.requested_at DESC, q.id DESC
@@ -4347,14 +4356,14 @@ async function handleAdminRejudgeTasksList(body, env) {
              q.cancel_requested, q.cancelled_at, s.username, s.exam_id
       FROM rejudge_queue q
       JOIN exam_submissions s ON q.submission_kind = 'exam' AND s.id = q.submission_id
-      WHERE s.exam_id = ?1 AND s.is_preview = 0
+      WHERE s.exam_id = ?1 AND s.is_preview = 0 AND ${rowFilterSql}
       ORDER BY q.cancel_requested ASC,
                CASE q.status WHEN 'processing' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
                q.requested_at DESC, q.id DESC
       LIMIT ?2 OFFSET ?3
   `;
   const totalsSql = globalScope ? `
-      SELECT COUNT(*) AS total,
+      SELECT SUM(CASE WHEN ${rowFilterSql} THEN 1 ELSE 0 END) AS total,
              SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'pending' THEN 1 ELSE 0 END) AS pending,
              SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'processing' THEN 1 ELSE 0 END) AS processing,
              SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'failed' THEN 1 ELSE 0 END) AS failed,
@@ -4367,7 +4376,7 @@ async function handleAdminRejudgeTasksList(body, env) {
       WHERE (q.submission_kind = 'exam' AND es.id IS NOT NULL)
          OR (q.submission_kind = 'problem' AND ps.id IS NOT NULL)
   ` : `
-      SELECT COUNT(*) AS total,
+      SELECT SUM(CASE WHEN ${rowFilterSql} THEN 1 ELSE 0 END) AS total,
              SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'pending' THEN 1 ELSE 0 END) AS pending,
              SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'processing' THEN 1 ELSE 0 END) AS processing,
              SUM(CASE WHEN q.cancel_requested = 0 AND q.status = 'failed' THEN 1 ELSE 0 END) AS failed,
@@ -4403,6 +4412,7 @@ async function handleAdminRejudgeTasksList(body, env) {
     page,
     pageSize,
     total: Number(summary.total || 0),
+    taskFilter,
     summary: {
       pending: Number(summary.pending || 0),
       processing: Number(summary.processing || 0),
@@ -4431,6 +4441,58 @@ async function handleAdminRejudgeTaskCancel(body, env) {
     return jsonResponse({ error: '任务已完成、已取消或已被新版任务替代' }, 409);
   }
   return jsonResponse({ success: true, cancelled: 1 });
+}
+
+async function handleAdminRejudgeFailedAction(body, env) {
+  if (!env.OJ_DB) return jsonResponse({ error: '提交数据库尚未配置' }, 503);
+  const action = String(body.action || '');
+  const taskId = Number(body.taskId);
+  const requestedAt = Number(body.requestedAt);
+  if (action === 'retry' || action === 'delete') {
+    if (!Number.isInteger(taskId) || taskId < 1 || !Number.isFinite(requestedAt) || requestedAt < 1) {
+      return jsonResponse({ error: '失败任务标记不正确' }, 400);
+    }
+    if (action === 'delete') {
+      const result = await env.OJ_DB.prepare(`
+        DELETE FROM rejudge_queue
+        WHERE id = ?1 AND requested_at = ?2 AND status = 'failed' AND cancel_requested = 0
+      `).bind(taskId, requestedAt).run();
+      if (Number(result.meta?.changes || 0) < 1) {
+        return jsonResponse({ error: '失败任务已变化或已经删除' }, 409);
+      }
+      return jsonResponse({ success: true, deleted: 1 });
+    }
+    const now = Date.now();
+    const job = await env.OJ_DB.prepare(`
+      UPDATE rejudge_queue
+      SET status = 'pending', attempts = 0, requested_at = ?3, updated_at = ?3,
+          last_error = '', cancel_requested = 0, cancelled_at = 0
+      WHERE id = ?1 AND requested_at = ?2 AND status = 'failed' AND cancel_requested = 0
+      RETURNING submission_kind AS kind, submission_id AS submissionId,
+                group_name AS "group", problem_id AS problemId, requested_at AS requestedAt
+    `).bind(taskId, requestedAt, now).first();
+    if (!job) return jsonResponse({ error: '失败任务已变化或已经被重新判题' }, 409);
+    await sendRejudgeQueueMessages(env, [job]);
+    return jsonResponse({ success: true, retried: 1 });
+  }
+  if (action !== 'delete_scope') return jsonResponse({ error: '失败任务操作不正确' }, 400);
+  const examId = normalizeExamId(body.examId);
+  const globalScope = body.scope === 'all';
+  if (!globalScope && !examId) return jsonResponse({ error: '试卷编号不正确' }, 400);
+  const result = globalScope
+    ? await env.OJ_DB.prepare(`
+        DELETE FROM rejudge_queue WHERE status = 'failed' AND cancel_requested = 0
+      `).run()
+    : await env.OJ_DB.prepare(`
+        DELETE FROM rejudge_queue AS q
+        WHERE q.status = 'failed' AND q.cancel_requested = 0
+          AND q.submission_kind = 'exam'
+          AND EXISTS (
+            SELECT 1 FROM exam_submissions s
+            WHERE s.id = q.submission_id AND s.exam_id = ?1 AND s.is_preview = 0
+          )
+      `).bind(examId).run();
+  return jsonResponse({ success: true, deleted: Number(result.meta?.changes || 0) });
 }
 
 async function handleAdminRejudgeTasksCancelScope(body, env) {
