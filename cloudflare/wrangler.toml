@@ -11,6 +11,8 @@ crons = ["* * * * *"]
 GITHUB_REPO = "chenmin-114/online_oj"
 # 可替换为自托管 Judge0 地址
 JUDGE0_API_URL = "https://ce.judge0.com"
+# Cloudflare Analytics API 使用的账户 ID（不是密钥）。
+CF_ACCOUNT_ID = "e85625d0873195dc7bd103cb8981d5c6"
 
 [[kv_namespaces]]
 binding = "OJ_TESTS"

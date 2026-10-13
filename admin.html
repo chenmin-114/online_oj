@@ -451,6 +451,14 @@
             <button id="save-exam-mode" type="button" class="admin-button primary">保存模式</button>
           </div>
         </article>
+        <article class="admin-card cloudflare-usage-card">
+          <div class="card-heading">
+            <div><h3>Cloudflare 资源</h3><p>按需读取账户今日用量；Analytics 数据可能有几分钟延迟，剩余量为估算值</p></div>
+            <button id="refresh-cloudflare-usage" type="button" class="admin-button secondary">查看剩余资源</button>
+          </div>
+          <p id="cloudflare-usage-status" class="cloudflare-usage-status">不会自动查询，点击按钮后读取</p>
+          <div id="cloudflare-usage-list" class="cloudflare-usage-list" hidden></div>
+        </article>
         <article class="admin-card judge-node-card">
           <div class="card-heading">
             <div><h3>节点管理</h3><p>查看公共 Judge0 当前状态并管理本地判题节点；本地优先、公共服务自动兜底</p></div>
@@ -516,7 +524,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20261004-02"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
-  <script src="js/admin.js?v=20261013-04"></script>
+  <script src="js/admin.js?v=20261013-05"></script>
   <script src="js/admin-exams.js?v=20261013-01"></script>
 </body>
 </html>

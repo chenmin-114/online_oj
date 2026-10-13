@@ -10,7 +10,9 @@
  * - GITHUB_TOKEN (Secret)
  * - ADMIN_PASSWORD (Secret)
  * - JUDGE_NODE_GATEWAY_SECRET (Secret, 32 random bytes or more)
+ * - CLOUDFLARE_ANALYTICS_TOKEN (Secret, 仅需 Account Analytics: Read)
  * - GITHUB_REPO (Plaintext)
+ * - CF_ACCOUNT_ID (Plaintext)
  * - JUDGE0_API_URL (Plaintext, 可选，默认使用公共 CE 实例)
  */
 
@@ -840,6 +842,10 @@ export default {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
         return await handleAdminJudgeNodesList(env);
+      } else if (body.type === 'admin_cloudflare_usage') {
+        const authError = await requireAdmin(request, env);
+        if (authError) return authError;
+        return await handleAdminCloudflareUsage(env);
       } else if (body.type === 'admin_judge_node_revoke') {
         const authError = await requireAdmin(request, env);
         if (authError) return authError;
@@ -1751,6 +1757,153 @@ async function handleAdminJudgeNodesList(env) {
     publicJudge: await publicJudgePromise,
     nodes,
     offlineAfterSeconds: JUDGE_NODE_OFFLINE_MS / 1000,
+  });
+}
+
+const CLOUDFLARE_FREE_LIMITS = Object.freeze({
+  workerRequests: 100000,
+  d1RowsRead: 5000000,
+  d1RowsWritten: 100000,
+  d1StorageBytes: 5 * 1024 * 1024 * 1024,
+  kvReads: 100000,
+  kvWrites: 1000,
+  kvDeletes: 1000,
+  kvLists: 1000,
+  kvStorageBytes: 1024 * 1024 * 1024,
+  queueOperations: 10000,
+});
+
+function sumAnalyticsRows(rows, field, section = 'sum') {
+  return (Array.isArray(rows) ? rows : []).reduce((total, row) => {
+    const value = Number(row?.[section]?.[field] || 0);
+    return total + (Number.isFinite(value) && value > 0 ? value : 0);
+  }, 0);
+}
+
+function buildCloudflareUsageMetric(key, label, used, limit, unit, period = 'daily') {
+  const safeUsed = Math.max(0, Math.round(Number(used) || 0));
+  const safeLimit = Math.max(0, Math.round(Number(limit) || 0));
+  return {
+    key,
+    label,
+    used: safeUsed,
+    limit: safeLimit,
+    remaining: Math.max(0, safeLimit - safeUsed),
+    percent: safeLimit > 0 ? Math.min(100, (safeUsed / safeLimit) * 100) : 0,
+    unit,
+    period,
+  };
+}
+
+async function handleAdminCloudflareUsage(env) {
+  if (!env.CF_ACCOUNT_ID || !env.CLOUDFLARE_ANALYTICS_TOKEN) {
+    return jsonResponse({
+      success: true,
+      configured: false,
+      message: '尚未配置 Cloudflare Analytics 只读凭据',
+    });
+  }
+
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const start = `${date}T00:00:00.000Z`;
+  const end = now.toISOString();
+  const resetAt = Date.parse(`${date}T00:00:00.000Z`) + 24 * 60 * 60 * 1000;
+  const query = `query AccountResourceUsage($accountTag: string!, $date: Date!, $start: Time!, $end: Time!) {
+    viewer {
+      accounts(filter: { accountTag: $accountTag }) {
+        workers: workersInvocationsAdaptive(limit: 100, filter: { datetime_geq: $start, datetime_leq: $end }) {
+          sum { requests }
+        }
+        d1: d1AnalyticsAdaptiveGroups(limit: 10000, filter: { date_geq: $date, date_leq: $date }) {
+          sum { rowsRead rowsWritten }
+        }
+        d1Storage: d1StorageAdaptiveGroups(limit: 10000, filter: { date_geq: $date, date_leq: $date }) {
+          max { databaseSizeBytes }
+          dimensions { databaseId }
+        }
+        kv: kvOperationsAdaptiveGroups(limit: 10000, filter: { date_geq: $date, date_leq: $date }) {
+          sum { requests }
+          dimensions { actionType }
+        }
+        kvStorage: kvStorageAdaptiveGroups(limit: 10000, filter: { date_geq: $date, date_leq: $date }) {
+          max { byteCount }
+          dimensions { namespaceId }
+        }
+        queues: queueMessageOperationsAdaptiveGroups(limit: 10000, filter: { datetime_geq: $start, datetime_leq: $end }) {
+          sum { billableOperations }
+        }
+      }
+    }
+  }`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  let response;
+  try {
+    response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.CLOUDFLARE_ANALYTICS_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        variables: { accountTag: env.CF_ACCOUNT_ID, date, start, end },
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const message = error?.name === 'AbortError' ? 'Cloudflare Analytics 查询超时' : '无法连接 Cloudflare Analytics';
+    return jsonResponse({ error: message }, 502);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload) {
+    return jsonResponse({ error: `Cloudflare Analytics 查询失败 (${response.status})` }, 502);
+  }
+  const account = payload.data?.viewer?.accounts?.[0];
+  if (!account) {
+    const authFailure = (payload.errors || []).some(item => /auth|permission|access/i.test(item?.message || ''));
+    return jsonResponse({
+      error: authFailure ? 'Analytics Token 权限不足或账户 ID 不匹配' : 'Cloudflare Analytics 暂未返回账户数据',
+    }, 502);
+  }
+
+  const kvOperations = { read: 0, write: 0, delete: 0, list: 0 };
+  for (const row of Array.isArray(account.kv) ? account.kv : []) {
+    const action = String(row?.dimensions?.actionType || '').toLowerCase();
+    const requests = Math.max(0, Number(row?.sum?.requests || 0));
+    if (action.includes('read') || action === 'get') kvOperations.read += requests;
+    else if (action.includes('write') || action === 'put') kvOperations.write += requests;
+    else if (action.includes('delete')) kvOperations.delete += requests;
+    else if (action.includes('list')) kvOperations.list += requests;
+  }
+
+  const metrics = [
+    buildCloudflareUsageMetric('workerRequests', 'Worker 请求', sumAnalyticsRows(account.workers, 'requests'), CLOUDFLARE_FREE_LIMITS.workerRequests, '次'),
+    buildCloudflareUsageMetric('d1RowsRead', 'D1 读取', sumAnalyticsRows(account.d1, 'rowsRead'), CLOUDFLARE_FREE_LIMITS.d1RowsRead, '行'),
+    buildCloudflareUsageMetric('d1RowsWritten', 'D1 写入', sumAnalyticsRows(account.d1, 'rowsWritten'), CLOUDFLARE_FREE_LIMITS.d1RowsWritten, '行'),
+    buildCloudflareUsageMetric('kvReads', 'KV 读取', kvOperations.read, CLOUDFLARE_FREE_LIMITS.kvReads, '次'),
+    buildCloudflareUsageMetric('kvWrites', 'KV 写入', kvOperations.write, CLOUDFLARE_FREE_LIMITS.kvWrites, '次'),
+    buildCloudflareUsageMetric('kvDeletes', 'KV 删除', kvOperations.delete, CLOUDFLARE_FREE_LIMITS.kvDeletes, '次'),
+    buildCloudflareUsageMetric('kvLists', 'KV 列表', kvOperations.list, CLOUDFLARE_FREE_LIMITS.kvLists, '次'),
+    buildCloudflareUsageMetric('queueOperations', 'Queue 操作', sumAnalyticsRows(account.queues, 'billableOperations'), CLOUDFLARE_FREE_LIMITS.queueOperations, '次'),
+    buildCloudflareUsageMetric('d1StorageBytes', 'D1 存储', sumAnalyticsRows(account.d1Storage, 'databaseSizeBytes', 'max'), CLOUDFLARE_FREE_LIMITS.d1StorageBytes, 'bytes', 'storage'),
+    buildCloudflareUsageMetric('kvStorageBytes', 'KV 存储', sumAnalyticsRows(account.kvStorage, 'byteCount', 'max'), CLOUDFLARE_FREE_LIMITS.kvStorageBytes, 'bytes', 'storage'),
+  ];
+  const warnings = (payload.errors || []).map(item => String(item?.message || '').slice(0, 180)).filter(Boolean);
+  return jsonResponse({
+    success: true,
+    configured: true,
+    approximate: true,
+    checkedAt: Date.now(),
+    resetAt,
+    metrics,
+    warnings,
   });
 }
 

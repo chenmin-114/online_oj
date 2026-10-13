@@ -200,6 +200,7 @@ class OJAdmin {
     document.getElementById('refresh-timed-extensions').addEventListener('click', () => this.loadTimedExtensions());
     document.getElementById('timed-extension-list').addEventListener('click', event => this.revokeTimedExtension(event));
     document.getElementById('save-exam-mode').addEventListener('click', () => this.saveExamMode());
+    document.getElementById('refresh-cloudflare-usage').addEventListener('click', () => this.loadCloudflareUsage());
     document.getElementById('refresh-judge-nodes').addEventListener('click', () => this.loadJudgeNodes());
     document.getElementById('refresh-global-rejudge-tasks').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage));
     document.querySelectorAll('[data-rejudge-collapse]').forEach(button => {
@@ -917,6 +918,64 @@ class OJAdmin {
     } catch (error) {
       container.innerHTML = `<p class="empty-cell">${this.escape(error.message || '节点读取失败')}</p>`;
     }
+  }
+
+  async loadCloudflareUsage() {
+    const button = document.getElementById('refresh-cloudflare-usage');
+    const status = document.getElementById('cloudflare-usage-status');
+    const list = document.getElementById('cloudflare-usage-list');
+    if (!button || !status || !list) return;
+    button.disabled = true;
+    button.textContent = '查询中...';
+    status.className = 'cloudflare-usage-status';
+    status.textContent = '正在读取 Cloudflare 官方 Analytics 数据...';
+    try {
+      const result = await this.adminRequest('admin_cloudflare_usage');
+      if (!result.configured) {
+        list.hidden = true;
+        list.innerHTML = '';
+        status.className = 'cloudflare-usage-status warning';
+        status.textContent = '尚未配置只读 Analytics Token，配置后即可查看。';
+        return;
+      }
+      const metrics = Array.isArray(result.metrics) ? result.metrics : [];
+      list.innerHTML = metrics.map(metric => {
+        const percent = Math.max(0, Math.min(100, Number(metric.percent || 0)));
+        const level = percent >= 90 ? 'danger' : percent >= 70 ? 'warning' : 'safe';
+        const used = this.formatCloudflareMetric(metric.used, metric.unit);
+        const remaining = this.formatCloudflareMetric(metric.remaining, metric.unit);
+        const limit = this.formatCloudflareMetric(metric.limit, metric.unit);
+        const period = metric.period === 'storage' ? '存储额度' : '今日额度';
+        return `<div class="cloudflare-usage-item ${level}">
+          <div class="cloudflare-usage-item-heading"><strong>${this.escape(metric.label)}</strong><span>${percent.toFixed(percent < 1 ? 1 : 0)}%</span></div>
+          <div class="cloudflare-usage-progress"><i style="width:${percent.toFixed(2)}%"></i></div>
+          <p>剩余 <b>${this.escape(remaining)}</b></p>
+          <small>${this.escape(period)} ${this.escape(limit)} · 已用 ${this.escape(used)}</small>
+        </div>`;
+      }).join('') || '<p class="empty-cell">Cloudflare 暂未返回可展示的数据</p>';
+      list.hidden = false;
+      const resetText = result.resetAt ? ` · 每日额度将在 ${this.formatDate(result.resetAt)} 重置` : '';
+      const warningText = result.warnings?.length ? ` · ${result.warnings.length} 项指标暂不可用` : '';
+      status.className = 'cloudflare-usage-status success';
+      status.textContent = `更新时间 ${this.formatDate(result.checkedAt)}${resetText}${warningText}`;
+    } catch (error) {
+      status.className = 'cloudflare-usage-status error';
+      status.textContent = `读取失败：${error.message}`;
+    } finally {
+      button.disabled = false;
+      button.textContent = '刷新剩余资源';
+    }
+  }
+
+  formatCloudflareMetric(value, unit) {
+    const number = Math.max(0, Number(value) || 0);
+    if (unit === 'bytes') {
+      if (number >= 1024 ** 3) return `${(number / 1024 ** 3).toFixed(2)} GB`;
+      if (number >= 1024 ** 2) return `${(number / 1024 ** 2).toFixed(1)} MB`;
+      if (number >= 1024) return `${(number / 1024).toFixed(1)} KB`;
+      return `${Math.round(number)} B`;
+    }
+    return `${Math.round(number).toLocaleString('zh-CN')} ${unit || ''}`.trim();
   }
 
   async loadGlobalRejudgeTasks(page = 1, failedPage = this.globalFailedRejudgeTaskPage) {
