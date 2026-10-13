@@ -202,6 +202,17 @@ class OJAdmin {
     document.getElementById('save-exam-mode').addEventListener('click', () => this.saveExamMode());
     document.getElementById('refresh-judge-nodes').addEventListener('click', () => this.loadJudgeNodes());
     document.getElementById('refresh-global-rejudge-tasks').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage));
+    document.querySelectorAll('[data-rejudge-collapse]').forEach(button => {
+      button.addEventListener('click', () => {
+        const section = document.getElementById(button.dataset.rejudgeCollapse || '');
+        if (!section) return;
+        section.hidden = !section.hidden;
+        const expanded = !section.hidden;
+        const name = button.dataset.collapseName || '列表';
+        button.setAttribute('aria-expanded', String(expanded));
+        button.textContent = `${expanded ? '收起' : '展开'}${name}`;
+      });
+    });
     document.getElementById('global-rejudge-task-prev').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage - 1));
     document.getElementById('global-rejudge-task-next').addEventListener('click', () => this.loadGlobalRejudgeTasks(this.globalRejudgeTaskPage + 1));
     document.getElementById('global-rejudge-task-list').addEventListener('click', event => this.cancelGlobalRejudgeTask(event));

@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="vendor/katex/katex.min.css?v=0.18.7">
   <link rel="stylesheet" href="vendor/highlight/styles/github-dark.min.css?v=11.12.0">
   <link rel="stylesheet" href="css/style.css?v=20261009-01">
-  <link rel="stylesheet" href="css/admin.css?v=20261013-02">
+  <link rel="stylesheet" href="css/admin.css?v=20261013-03">
 </head>
 <body class="admin-body auth-locked">
   <section id="admin-login" class="admin-login" aria-labelledby="admin-login-title">
@@ -368,12 +368,17 @@
             </div>
           </article>
           <article id="rejudge-task-panel" class="admin-card rejudge-task-panel" hidden>
-            <div class="card-heading"><div><h3>正在判题</h3><p id="rejudge-task-summary">按需读取，不会定时刷新</p></div><div class="rejudge-task-actions"><button id="refresh-rejudge-tasks" type="button" class="admin-button secondary">刷新</button><button id="close-rejudge-tasks" type="button" class="admin-button secondary">收起</button></div></div>
-            <div id="rejudge-task-list" class="rejudge-task-list"><p class="empty-cell">请选择试卷后查看任务</p></div>
-            <div class="rejudge-task-pagination"><button id="rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="rejudge-task-page">第 1 页</span><button id="rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
-            <div class="failed-rejudge-heading"><div><h4>失败任务</h4><p id="failed-rejudge-task-summary">失败任务不会继续占用判题额度</p></div><button id="delete-exam-failed-rejudge-tasks" type="button" class="admin-button danger">批量删除本卷失败任务</button></div>
-            <div id="failed-rejudge-task-list" class="rejudge-task-list failed"><p class="empty-cell">请选择试卷后查看失败任务</p></div>
-            <div class="rejudge-task-pagination"><button id="failed-rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="failed-rejudge-task-page">第 1 页</span><button id="failed-rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
+            <div class="card-heading"><div><h3>判题任务</h3><p id="rejudge-task-summary">按需读取，不会定时刷新</p></div><div class="rejudge-task-actions"><button id="refresh-rejudge-tasks" type="button" class="admin-button secondary">刷新</button><button id="close-rejudge-tasks" type="button" class="admin-button secondary">收起全部</button></div></div>
+            <div class="rejudge-section-heading"><h4>正在判题</h4><button type="button" class="admin-button secondary" data-rejudge-collapse="rejudge-active-section" data-collapse-name="判题列表" aria-expanded="true">收起判题列表</button></div>
+            <div id="rejudge-active-section" class="rejudge-section-body">
+              <div id="rejudge-task-list" class="rejudge-task-list"><p class="empty-cell">请选择试卷后查看任务</p></div>
+              <div class="rejudge-task-pagination"><button id="rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="rejudge-task-page">第 1 页</span><button id="rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
+            </div>
+            <div class="failed-rejudge-heading"><div><h4>失败任务</h4><p id="failed-rejudge-task-summary">失败任务不会继续占用判题额度</p></div><div class="rejudge-task-actions"><button type="button" class="admin-button secondary" data-rejudge-collapse="failed-rejudge-section" data-collapse-name="失败列表" aria-expanded="true">收起失败列表</button><button id="delete-exam-failed-rejudge-tasks" type="button" class="admin-button danger">批量删除本卷失败任务</button></div></div>
+            <div id="failed-rejudge-section" class="rejudge-section-body">
+              <div id="failed-rejudge-task-list" class="rejudge-task-list failed"><p class="empty-cell">请选择试卷后查看失败任务</p></div>
+              <div class="rejudge-task-pagination"><button id="failed-rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="failed-rejudge-task-page">第 1 页</span><button id="failed-rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
+            </div>
           </article>
           <div class="exam-grading-layout">
             <article class="admin-card">
@@ -463,11 +468,16 @@
             <div><h3>后台判题队列</h3><p id="global-rejudge-task-summary">显示普通题和全部套卷的后台重判任务；进入本页或手动点击时刷新</p></div>
             <button id="refresh-global-rejudge-tasks" type="button" class="admin-button secondary">刷新队列</button>
           </div>
-          <div id="global-rejudge-task-list" class="rejudge-task-list"><p class="empty-cell">正在读取判题任务...</p></div>
-          <div class="rejudge-task-pagination"><button id="global-rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="global-rejudge-task-page">第 1 页</span><button id="global-rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
-          <div class="failed-rejudge-heading"><div><h4>失败任务</h4><p id="global-failed-rejudge-task-summary">失败任务不会继续排队，可重新判题或删除记录</p></div><button id="delete-global-failed-rejudge-tasks" type="button" class="admin-button danger">批量删除全部失败任务</button></div>
-          <div id="global-failed-rejudge-task-list" class="rejudge-task-list failed"><p class="empty-cell">正在读取失败任务...</p></div>
-          <div class="rejudge-task-pagination"><button id="global-failed-rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="global-failed-rejudge-task-page">第 1 页</span><button id="global-failed-rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
+          <div class="rejudge-section-heading"><h4>正在判题</h4><button type="button" class="admin-button secondary" data-rejudge-collapse="global-rejudge-active-section" data-collapse-name="判题列表" aria-expanded="true">收起判题列表</button></div>
+          <div id="global-rejudge-active-section" class="rejudge-section-body">
+            <div id="global-rejudge-task-list" class="rejudge-task-list"><p class="empty-cell">正在读取判题任务...</p></div>
+            <div class="rejudge-task-pagination"><button id="global-rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="global-rejudge-task-page">第 1 页</span><button id="global-rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
+          </div>
+          <div class="failed-rejudge-heading"><div><h4>失败任务</h4><p id="global-failed-rejudge-task-summary">失败任务不会继续排队，可重新判题或删除记录</p></div><div class="rejudge-task-actions"><button type="button" class="admin-button secondary" data-rejudge-collapse="global-failed-rejudge-section" data-collapse-name="失败列表" aria-expanded="true">收起失败列表</button><button id="delete-global-failed-rejudge-tasks" type="button" class="admin-button danger">批量删除全部失败任务</button></div></div>
+          <div id="global-failed-rejudge-section" class="rejudge-section-body">
+            <div id="global-failed-rejudge-task-list" class="rejudge-task-list failed"><p class="empty-cell">正在读取失败任务...</p></div>
+            <div class="rejudge-task-pagination"><button id="global-failed-rejudge-task-prev" type="button" class="admin-button secondary" disabled>上一页</button><span id="global-failed-rejudge-task-page">第 1 页</span><button id="global-failed-rejudge-task-next" type="button" class="admin-button secondary" disabled>下一页</button></div>
+          </div>
         </article>
         <div class="status-grid">
           <article class="status-card"><span id="status-worker-dot" class="status-dot pending"></span><div><h3>Cloudflare Worker</h3><p id="status-worker">检查中...</p></div></article>
@@ -506,7 +516,7 @@
   <script src="vendor/highlight/highlight.min.js?v=11.12.0"></script>
   <script src="js/languages.js?v=20261004-02"></script>
   <script src="js/admin-schedule.js?v=20261002-01"></script>
-  <script src="js/admin.js?v=20261013-02"></script>
+  <script src="js/admin.js?v=20261013-03"></script>
   <script src="js/admin-exams.js?v=20261013-01"></script>
 </body>
 </html>
