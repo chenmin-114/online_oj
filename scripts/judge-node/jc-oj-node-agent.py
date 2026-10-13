@@ -17,12 +17,13 @@ try:
 except ImportError:
     websocket = None
 
-VERSION = "3.0.2"
+VERSION = "3.1.0"
 STATE_DIR = "/var/lib/jc-oj-node"
 PAIRING_FILE = "/etc/jc-oj-node/pairing.json"
 CONFIG_FILE = os.path.join(STATE_DIR, "credentials.json")
 JUDGE0_URL = "http://127.0.0.1:2358"
 MAX_RESPONSE_BYTES = 1536 * 1024
+MAX_NODE_SLOTS = 50
 # Cloudflare Browser Integrity Check rejects Python's default urllib signature
 # before the request can reach the authenticated Worker endpoint. Use a stable,
 # browser-compatible signature; the node and pull tokens remain the authority.
@@ -50,6 +51,7 @@ state = {
     "connection_id": "",
     "sequence": 0,
     "active_jobs": set(),
+    "scheduler_connected": False,
 }
 config = {}
 self_test = {"checked_at": 0.0, "ok": False, "error": "尚未完成实际编译自检"}
@@ -95,6 +97,8 @@ def load_or_pair():
             raise RuntimeError("本地节点凭证格式不正确")
         if not value.get("pullToken") and value.get("gatewayToken"):
             value["pullToken"] = value["gatewayToken"]
+        value["capacitySlots"] = MAX_NODE_SLOTS
+        value["maxSlots"] = max(1, min(MAX_NODE_SLOTS, int(value.get("maxSlots") or 2)))
         return value
     with open(PAIRING_FILE, "r", encoding="utf-8") as handle:
         pairing = json.load(handle)
@@ -114,7 +118,8 @@ def load_or_pair():
         "nodeId": result["nodeId"],
         "nodeToken": result["nodeToken"],
         "pullToken": result.get("pullToken") or result["gatewayToken"],
-        "maxSlots": max(1, min(16, int(pairing.get("maxSlots") or 2))),
+        "maxSlots": max(1, min(MAX_NODE_SLOTS, int(pairing.get("maxSlots") or 2))),
+        "capacitySlots": MAX_NODE_SLOTS,
     }
     atomic_json_write(CONFIG_FILE, credentials)
     try:
@@ -221,7 +226,7 @@ def heartbeat(status_override=None):
         "agentVersion": VERSION,
         "judgeVersion": "1.13.1",
         "endpointUrl": "",
-        "maxSlots": config["maxSlots"],
+        "maxSlots": config["capacitySlots"],
         "busySlots": busy,
         "status": status,
         "lastError": last_error,
@@ -330,7 +335,7 @@ def socket_worker():
         raise RuntimeError("python3-websocket is not installed")
     backoff = 1
     with concurrent.futures.ThreadPoolExecutor(
-            max_workers=config["maxSlots"], thread_name_prefix="judge-slot") as executor:
+            max_workers=config["capacitySlots"], thread_name_prefix="judge-slot") as executor:
         while True:
             with state_lock:
                 if state["stopping"]:
@@ -351,6 +356,8 @@ def socket_worker():
                     state["socket"] = ws
                     state["sequence"] = 0
                     state["connection_id"] = ""
+                with state_lock:
+                    state["scheduler_connected"] = False
                 backoff = 1
                 while True:
                     try:
@@ -369,10 +376,16 @@ def socket_worker():
                     message = json.loads(raw)
                     message_type = message.get("type")
                     if message_type == "connected":
-                        server_slots = max(1, min(16, int(message.get("maxSlots") or 1)))
-                        config["maxSlots"] = min(config["maxSlots"], server_slots)
+                        server_slots = max(1, min(MAX_NODE_SLOTS, int(message.get("maxSlots") or 1)))
+                        config["maxSlots"] = min(config["capacitySlots"], server_slots)
                         with state_lock:
                             state["connection_id"] = str(message.get("connectionId") or "")
+                            state["scheduler_connected"] = True
+                            state["last_error"] = ""
+                        report_capacity()
+                    elif message_type == "config":
+                        server_slots = max(1, min(MAX_NODE_SLOTS, int(message.get("maxSlots") or 1)))
+                        config["maxSlots"] = min(config["capacitySlots"], server_slots)
                         report_capacity()
                     elif message_type == "job":
                         if message.get("connectionId") != state["connection_id"] \
@@ -391,6 +404,8 @@ def socket_worker():
                     if state["socket"] is ws:
                         state["socket"] = None
                         state["connection_id"] = ""
+                with state_lock:
+                    state["scheduler_connected"] = False
                 if ws is not None:
                     try:
                         ws.close()
@@ -493,7 +508,8 @@ def main():
             try:
                 heartbeat()
                 with state_lock:
-                    state["last_error"] = ""
+                    if state["scheduler_connected"] or websocket is None:
+                        state["last_error"] = ""
                 next_heartbeat = time.time() + (300 if self_test["ok"] else 30)
             except urllib.error.HTTPError as error:
                 if error.code == 401:

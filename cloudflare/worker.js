@@ -64,6 +64,7 @@ const JUDGE_NODE_EXECUTION_LEASE_MS = 25 * 1000;
 const JUDGE_NODE_SOCKET_MESSAGE_LIMIT = 2 * 1024 * 1024;
 const JUDGE_NODE_MAX_PENDING_JOBS = 256;
 const JUDGE_NODE_MAX_PENDING_BYTES = 8 * 1024 * 1024;
+const JUDGE_NODE_MAX_SLOTS = 50;
 const EXAM_MODE_CACHE_MS = 5000;
 let examModeCache = { value: false, expiresAt: 0 };
 
@@ -192,6 +193,7 @@ export class JudgeBroker {
       return Response.json({ error: 'Invalid request' }, { status: 400 });
     }
     if (path === '/configure') return this.configureNode(body);
+    if (path === '/status') return this.nodeStatus(body);
     if (path === '/revoke') return this.revokeNode(body);
     if (path === '/claim') return this.claimSlot(body);
     if (path === '/complete') return this.completeJob(body);
@@ -204,7 +206,7 @@ export class JudgeBroker {
     if (!/^jn_[A-Za-z0-9_-]{22}$/.test(nodeId)) {
       return Response.json({ error: 'Invalid node' }, { status: 400 });
     }
-    const maxSlots = Math.max(1, Math.min(16, Math.trunc(Number(body.maxSlots) || 1)));
+    const maxSlots = Math.max(1, Math.min(JUDGE_NODE_MAX_SLOTS, Math.trunc(Number(body.maxSlots) || 1)));
     const acceptingJobs = body.acceptingJobs === true ? 1 : 0;
     this.ctx.storage.sql.exec(`
       INSERT INTO node_config (node_id, max_slots, accepting_jobs, revoked, updated_at)
@@ -217,9 +219,39 @@ export class JudgeBroker {
     if (!acceptingJobs) {
       this.cancelWaitingSlots(nodeId, 409, 'NODE_PAUSED');
       this.closeNodeSockets(nodeId, 4001, 'NODE_PAUSED');
+    } else {
+      for (const socket of this.ctx.getWebSockets(nodeId)) {
+        if (socket.readyState !== 1) continue;
+        try {
+          socket.send(JSON.stringify({ type: 'config', maxSlots }));
+        } catch {
+          this.disconnectSocket(socket, 'LOCAL_NODE_DISCONNECTED');
+        }
+      }
     }
     this.matchQueues();
     return Response.json({ success: true, maxSlots, acceptingJobs: Boolean(acceptingJobs) });
+  }
+
+  nodeStatus(body) {
+    const requestedIds = Array.isArray(body?.nodeIds)
+      ? new Set(body.nodeIds.map(value => String(value || '')).filter(value => /^jn_[A-Za-z0-9_-]{22}$/.test(value)))
+      : null;
+    const nodes = {};
+    for (const socket of this.ctx.getWebSockets()) {
+      if (socket.readyState !== 1) continue;
+      const attachment = socket.deserializeAttachment();
+      if (!attachment?.nodeId || (requestedIds && !requestedIds.has(attachment.nodeId))) continue;
+      const activeJobs = [...this.activeJobs.values()].filter(
+        item => item.nodeId === attachment.nodeId && item.connectionId === attachment.connectionId,
+      ).length;
+      nodes[attachment.nodeId] = {
+        connected: true,
+        freeSlots: Math.max(0, Number(attachment.freeSlots || 0)),
+        activeJobs,
+      };
+    }
+    return Response.json({ success: true, nodes });
   }
 
   revokeNode(body) {
@@ -1506,7 +1538,7 @@ async function handleJudgeNodeClaim(body, env) {
     return jsonResponse({ error: '节点凭证无效或已撤销', code: 'NODE_AUTH_FAILED' }, 401);
   }
   const slotId = Math.trunc(Number(body.slotId));
-  if (!Number.isInteger(slotId) || slotId < 0 || slotId > 15) {
+  if (!Number.isInteger(slotId) || slotId < 0 || slotId >= JUDGE_NODE_MAX_SLOTS) {
     return jsonResponse({ error: '判题槽编号无效', code: 'SLOT_INVALID' }, 400);
   }
   const broker = judgeBrokerStub(env);
@@ -1549,7 +1581,7 @@ async function handleJudgeNodeHeartbeat(body, env) {
   if (!node) return jsonResponse({ error: '节点凭证无效或已撤销', code: 'NODE_AUTH_FAILED' }, 401);
   const allowedStatuses = new Set(['installing', 'ready', 'paused', 'error']);
   const status = allowedStatuses.has(body.status) ? body.status : 'error';
-  const maxSlots = Math.max(1, Math.min(16, Math.trunc(Number(body.maxSlots) || 1)));
+  const maxSlots = Math.max(1, Math.min(JUDGE_NODE_MAX_SLOTS, Math.trunc(Number(body.maxSlots) || 1)));
   const busySlots = Math.max(0, Math.min(maxSlots, Math.trunc(Number(body.busySlots) || 0)));
   const endpointUrl = normalizeJudgeNodeEndpoint(body.endpointUrl);
   if (body.endpointUrl && !endpointUrl) {
@@ -1611,6 +1643,20 @@ async function handleAdminJudgeNodesList(env) {
     ORDER BY created_at DESC
     LIMIT 100
   `).all();
+  const broker = judgeBrokerStub(env);
+  let brokerNodes = {};
+  if (broker && result.results?.length) {
+    try {
+      const brokerResponse = await broker.fetch('https://judge-broker/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeIds: result.results.map(node => node.id) }),
+      });
+      if (brokerResponse.ok) brokerNodes = (await brokerResponse.json()).nodes || {};
+    } catch (error) {
+      console.error('读取本地判题调度连接失败:', error);
+    }
+  }
   const nodes = (result.results || []).map(node => ({
     id: node.id,
     name: node.name,
@@ -1622,6 +1668,9 @@ async function handleAdminJudgeNodesList(env) {
     maxSlots: Math.max(1, Math.min(Number(node.max_slots || 1), Number(node.configured_slots) || Number(node.max_slots || 1))),
     acceptingJobs: Number(node.accepting_jobs ?? 1) === 1,
     busySlots: Number(node.busy_slots || 0),
+    schedulerConnected: brokerNodes[node.id]?.connected === true,
+    schedulerFreeSlots: Number(brokerNodes[node.id]?.freeSlots || 0),
+    schedulerActiveJobs: Number(brokerNodes[node.id]?.activeJobs || 0),
     status: node.revoked_at != null
       ? 'revoked'
         : now - Number(node.last_seen_at || 0) > JUDGE_NODE_OFFLINE_MS
@@ -1665,7 +1714,7 @@ async function handleAdminJudgeNodeUpdate(body, env) {
     SELECT max_slots, status, revoked_at FROM judge_nodes WHERE id = ?1
   `).bind(nodeId).first();
   if (!current || current.revoked_at != null) return jsonResponse({ error: '节点不存在或已撤销' }, 404);
-  const reportedSlots = Math.max(1, Math.min(16, Number(current.max_slots) || 1));
+  const reportedSlots = Math.max(1, Math.min(JUDGE_NODE_MAX_SLOTS, Number(current.max_slots) || 1));
   const configuredSlots = Math.trunc(Number(body.maxSlots));
   if (!Number.isInteger(configuredSlots) || configuredSlots < 1 || configuredSlots > reportedSlots) {
     return jsonResponse({ error: `并行数必须在 1 到 ${reportedSlots} 之间` }, 400);
@@ -5193,7 +5242,15 @@ async function fetchJudge0Submission(payload, env, options = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payload }),
       });
-      if (localResponse.ok) return localResponse;
+      if (localResponse.ok) {
+        const headers = new Headers(localResponse.headers);
+        headers.set('X-JCOJ-Judge-Provider', 'local');
+        return new Response(localResponse.body, {
+          status: localResponse.status,
+          statusText: localResponse.statusText,
+          headers,
+        });
+      }
     } catch (error) {
       console.error('本地判题调度失败，将使用公共服务:', error);
     }
@@ -5214,11 +5271,18 @@ async function fetchJudge0Submission(payload, env, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), JUDGE0_REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(`${publicBaseUrl}/submissions?base64_encoded=true&wait=true`, {
+    const response = await fetch(`${publicBaseUrl}/submissions?base64_encoded=true&wait=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
+    });
+    const headers = new Headers(response.headers);
+    headers.set('X-JCOJ-Judge-Provider', 'public');
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
     });
   } finally {
     clearTimeout(timeoutId);
@@ -5261,6 +5325,7 @@ async function handleExecute(body, env, options = {}) {
   }
 
   const data = await parseJsonResponse(judge0Res);
+  const executionProvider = judge0Res.headers.get('X-JCOJ-Judge-Provider') || 'public';
 
   if (data.code === 'BACKGROUND_JUDGE_RATE_LIMITED') {
     return jsonResponse(data, 429);
@@ -5309,6 +5374,7 @@ async function handleExecute(body, env, options = {}) {
     memory: data.memory ?? null,
     signal: data.signal ?? null,
     status: statusText,
+    executionProvider,
     code: outputLimitExceeded ? 'OUTPUT_LIMIT_EXCEEDED' : undefined,
   });
 }

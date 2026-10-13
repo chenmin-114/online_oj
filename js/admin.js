@@ -909,6 +909,11 @@ class OJAdmin {
         .filter(Boolean).join(' · ') || '尚未上报运行环境';
       const lastSeen = node.lastSeenAt ? this.formatDate(node.lastSeenAt) : '从未连接';
       const error = node.lastError ? `<small class="error">${this.escape(node.lastError)}</small>` : '';
+      const scheduler = node.status === 'ready'
+        ? `<small class="${node.schedulerConnected ? 'success' : 'error'}">${node.schedulerConnected
+          ? `调度已连接 · 空闲 ${this.escape(node.schedulerFreeSlots)} · 执行中 ${this.escape(node.schedulerActiveJobs)}`
+          : '节点心跳正常，但判题调度未连接；网站暂时不会向此节点派题'}</small>`
+        : '';
       const revoke = node.status === 'revoked'
         ? ''
         : `<button type="button" class="table-link table-link-button warning" data-revoke-judge-node="${this.escape(node.id)}">撤销节点</button>`;
@@ -923,7 +928,7 @@ class OJAdmin {
         <button type="button" class="table-link table-link-button" data-toggle-judge-node="${this.escape(node.id)}">${node.acceptingJobs ? '暂停' : '恢复'}</button>
       </div>`;
       return `<div class="judge-node-item">
-        <div class="judge-node-item-main"><strong>${this.escape(node.name)}</strong><small>${this.escape(details)} · 最近连接 ${this.escape(lastSeen)}</small>${error}</div>
+        <div class="judge-node-item-main"><strong>${this.escape(node.name)}</strong><small>${this.escape(details)} · 最近连接 ${this.escape(lastSeen)}</small>${scheduler}${error}</div>
         <span class="judge-node-capacity">执行槽 ${this.escape(node.busySlots)}/${this.escape(node.maxSlots)}（设备上限 ${this.escape(node.reportedSlots || node.maxSlots)}）</span>
         ${controls}
         <div><span class="judge-node-state ${this.escape(node.status)}">${this.escape(statusLabels[node.status] || node.status)}</span>${revoke}</div>
@@ -974,7 +979,7 @@ class OJAdmin {
     status.textContent = '正在生成一次性安全配对信息并封装安装包...';
     try {
       const pairing = await this.adminRequest('admin_judge_node_pairing_create', { name });
-      const response = await fetch(`downloads/jc-oj-judge-node-installer.zip?v=20261013-02`, { cache: 'no-store' });
+      const response = await fetch(`downloads/jc-oj-judge-node-installer.zip?v=20261013-03`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`安装器下载失败 (${response.status})`);
       const zip = await window.JSZip.loadAsync(await response.arrayBuffer());
       zip.file('pairing.json', JSON.stringify({
